@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { getWorldGeohashBboxes, iterateWorldGeohashBboxes, type BBox } from "./geohashWorld";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");
-const DEFAULT_BASEMAP_PMTILES = "https://build.protomaps.com/20251220.pmtiles";
+const DEFAULT_BASEMAP_PMTILES = "https://build.protomaps.com/20251222.pmtiles";
 
 const [, , command, ...args] = Bun.argv;
 
