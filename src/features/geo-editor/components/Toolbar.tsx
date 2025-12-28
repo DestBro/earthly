@@ -14,20 +14,18 @@ import {
 	Redo2,
 	RefreshCw,
 	Route,
-	Search,
 	Split as SplitIcon,
 	Trash2,
 	Undo2,
 	Upload,
 	UploadCloud,
-	X
 } from 'lucide-react'
 import type React from 'react'
 import { useRef } from 'react'
 import { LoginSessionButtons } from '../../../components/LoginSessionButtom'
 import { Button } from '../../../components/ui/button'
-import { Input } from '../../../components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '../../../components/ui/popover'
+import { SearchBar } from '../../../components/ui/search-bar'
 import type { EditorMode } from '../core'
 import { useEditorStore } from '../store'
 import type { GeoSearchResult } from '../types'
@@ -48,16 +46,6 @@ type IconButtonRowProps = {
 	wrap?: boolean
 }
 
-type SearchBarProps = {
-	searchQuery: string
-	searchLoading: boolean
-	placeholder: string
-	onSubmit: (event: React.FormEvent<HTMLFormElement>) => void
-	onQueryChange?: (value: string) => void
-	onClearQuery?: () => void
-	className?: string
-}
-
 function IconButtonRow({ buttons, className = '', wrap = false }: IconButtonRowProps) {
 	return (
 		<div className={`flex items-center gap-1 ${wrap ? 'flex-wrap' : ''} ${className}`}>
@@ -74,52 +62,6 @@ function IconButtonRow({ buttons, className = '', wrap = false }: IconButtonRowP
 				</Button>
 			))}
 		</div>
-	)
-}
-
-function SearchBar({
-	searchQuery,
-	searchLoading,
-	placeholder,
-	onSubmit,
-	onQueryChange,
-	onClearQuery,
-	className = ''
-}: SearchBarProps) {
-	return (
-		<form onSubmit={onSubmit} className={`flex items-center gap-2 ${className}`}>
-			<div className="relative flex-1">
-				<Input
-					value={searchQuery}
-					onChange={(event) => onQueryChange?.(event.target.value)}
-					placeholder={placeholder}
-					className="pr-9"
-				/>
-				{searchQuery && (
-					<button
-						type="button"
-						aria-label="Clear search"
-						className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-500 hover:text-gray-800"
-						onClick={() => onClearQuery?.()}
-					>
-						<X className="h-3.5 w-3.5" />
-					</button>
-				)}
-			</div>
-			<Button
-				type="submit"
-				size="icon"
-				variant="default"
-				aria-label="Search location"
-				disabled={searchLoading}
-			>
-				{searchLoading ? (
-					<RefreshCw className="h-4 w-4 animate-spin" />
-				) : (
-					<Search className="h-4 w-4" />
-				)}
-			</Button>
-		</form>
 	)
 }
 
@@ -151,7 +93,7 @@ export function Toolbar({
 	isMobile = false,
 	showLogin = true,
 	onSearchResultSelect,
-	onInspectorDeactivate
+	onInspectorDeactivate,
 }: ToolbarProps) {
 	const editor = useEditorStore((state) => state.editor)
 	const mode = useEditorStore((state) => state.mode)
@@ -162,8 +104,6 @@ export function Toolbar({
 	const setHistoryState = useEditorStore((state) => state.setHistoryState)
 
 	// UI State
-	const showTips = useEditorStore((state) => state.showTips)
-	const setShowTips = useEditorStore((state) => state.setShowTips)
 	const showDatasetsPanel = useEditorStore((state) => state.showDatasetsPanel)
 	const setShowDatasetsPanel = useEditorStore((state) => state.setShowDatasetsPanel)
 	const showInfoPanel = useEditorStore((state) => state.showInfoPanel)
@@ -228,10 +168,6 @@ export function Toolbar({
 		}
 	}
 
-	const handleToggleTips = () => {
-		setShowTips((prev) => !prev)
-	}
-
 	const handleToggleInspector = () => {
 		if (inspectorActive) {
 			setInspectorActive(false)
@@ -289,7 +225,7 @@ export function Toolbar({
 			icon: MousePointer2,
 			onClick: () => handleModeChange('select'),
 			variant: mode === 'select' ? 'default' : 'outline',
-			ariaLabel: 'Select mode'
+			ariaLabel: 'Select mode',
 		},
 		// 2. Draw: point, line, polygon
 		{
@@ -297,21 +233,21 @@ export function Toolbar({
 			icon: MapPin,
 			onClick: () => handleModeChange('draw_point'),
 			variant: mode === 'draw_point' ? 'default' : 'outline',
-			ariaLabel: 'Draw point'
+			ariaLabel: 'Draw point',
 		},
 		{
 			key: 'line',
 			icon: Route,
 			onClick: () => handleModeChange('draw_linestring'),
 			variant: mode === 'draw_linestring' ? 'default' : 'outline',
-			ariaLabel: 'Draw line'
+			ariaLabel: 'Draw line',
 		},
 		{
 			key: 'polygon',
 			icon: Pentagon,
 			onClick: () => handleModeChange('draw_polygon'),
 			variant: mode === 'draw_polygon' ? 'default' : 'outline',
-			ariaLabel: 'Draw polygon'
+			ariaLabel: 'Draw polygon',
 		},
 		// 3. Undo/Redo
 		{
@@ -319,14 +255,14 @@ export function Toolbar({
 			icon: Undo2,
 			onClick: handleUndo,
 			disabled: !history.canUndo,
-			ariaLabel: 'Undo'
+			ariaLabel: 'Undo',
 		},
 		{
 			key: 'redo',
 			icon: Redo2,
 			onClick: handleRedo,
 			disabled: !history.canRedo,
-			ariaLabel: 'Redo'
+			ariaLabel: 'Redo',
 		},
 		// Snap Toggle
 		{
@@ -334,7 +270,7 @@ export function Toolbar({
 			icon: Magnet,
 			onClick: handleToggleSnapping,
 			variant: snappingEnabled ? 'default' : 'outline',
-			ariaLabel: 'Toggle snapping'
+			ariaLabel: 'Toggle snapping',
 		},
 		// 4. Edit toggle (Vertex Editing)
 		{
@@ -342,29 +278,29 @@ export function Toolbar({
 			icon: Edit3,
 			onClick: () => handleModeChange('edit'),
 			variant: mode === 'edit' ? 'default' : 'outline',
-			ariaLabel: 'Edit mode'
+			ariaLabel: 'Edit mode',
 		},
 		// 4. Delete
 		{
 			key: 'delete',
 			icon: Trash2,
 			onClick: handleDeleteSelected,
-			ariaLabel: 'Delete selected'
+			ariaLabel: 'Delete selected',
 		},
 		// 5. Merge
 		{
 			key: 'merge',
 			icon: Merge,
 			onClick: handleMergeSelected,
-			ariaLabel: 'Merge selected'
+			ariaLabel: 'Merge selected',
 		},
 		// 6. Split
 		{
 			key: 'split',
 			icon: SplitIcon,
 			onClick: handleSplitSelected,
-			ariaLabel: 'Split selected'
-		}
+			ariaLabel: 'Split selected',
+		},
 	]
 
 	const datasetButtons: ToolbarButton[] = [
@@ -372,22 +308,22 @@ export function Toolbar({
 			key: 'import',
 			icon: Upload,
 			onClick: () => fileInputRef.current?.click(),
-			ariaLabel: 'Import GeoJSON'
+			ariaLabel: 'Import GeoJSON',
 		},
 		{
 			key: 'export',
 			icon: Download,
 			onClick: datasetActions?.onExport ?? (() => {}),
 			disabled: !datasetActions?.canExport,
-			ariaLabel: 'Export GeoJSON'
+			ariaLabel: 'Export GeoJSON',
 		},
 		{
 			key: 'clear',
 			icon: Trash2,
 			onClick: datasetActions?.onClear ?? (() => {}),
 			disabled: !datasetActions?.canClear,
-			ariaLabel: 'Clear all features'
-		}
+			ariaLabel: 'Clear all features',
+		},
 	]
 
 	const publishButtons: ToolbarButton[] = [
@@ -396,22 +332,22 @@ export function Toolbar({
 			icon: UploadCloud,
 			onClick: datasetActions?.onPublishNew ?? (() => {}),
 			disabled: !datasetActions?.canPublishNew || datasetActions?.isPublishing,
-			ariaLabel: 'Publish as new dataset'
+			ariaLabel: 'Publish as new dataset',
 		},
 		{
 			key: 'publish-update',
 			icon: RefreshCw,
 			onClick: datasetActions?.onPublishUpdate ?? (() => {}),
 			disabled: !datasetActions?.canPublishUpdate || datasetActions?.isPublishing,
-			ariaLabel: 'Update existing dataset'
+			ariaLabel: 'Update existing dataset',
 		},
 		{
 			key: 'publish-copy',
 			icon: CopyPlus,
 			onClick: datasetActions?.onPublishCopy ?? (() => {}),
 			disabled: !datasetActions?.canPublishCopy || datasetActions?.isPublishing,
-			ariaLabel: 'Fork dataset'
-		}
+			ariaLabel: 'Fork dataset',
+		},
 	]
 
 	const reverseLookupButton: ToolbarButton = {
@@ -419,7 +355,7 @@ export function Toolbar({
 		icon: Crosshair,
 		onClick: handleToggleInspector, // Reusing inspector for now as it handles reverse lookup
 		variant: inspectorActive ? 'default' : 'outline',
-		ariaLabel: 'Reverse lookup'
+		ariaLabel: 'Reverse lookup',
 	}
 
 	const actionButtons: ToolbarButton[] = [
@@ -428,7 +364,7 @@ export function Toolbar({
 			key: 'import',
 			icon: Upload,
 			onClick: () => fileInputRef.current?.click(),
-			ariaLabel: 'Import GeoJSON'
+			ariaLabel: 'Import GeoJSON',
 		},
 		// Export
 		{
@@ -436,7 +372,7 @@ export function Toolbar({
 			icon: Download,
 			onClick: datasetActions?.onExport ?? (() => {}),
 			disabled: !datasetActions?.canExport,
-			ariaLabel: 'Export GeoJSON'
+			ariaLabel: 'Export GeoJSON',
 		},
 		// Publish
 		{
@@ -444,7 +380,7 @@ export function Toolbar({
 			icon: UploadCloud,
 			onClick: datasetActions?.onPublishNew ?? (() => {}),
 			disabled: !datasetActions?.canPublishNew || datasetActions?.isPublishing,
-			ariaLabel: 'Publish as new dataset'
+			ariaLabel: 'Publish as new dataset',
 		},
 		// Update
 		{
@@ -452,8 +388,8 @@ export function Toolbar({
 			icon: RefreshCw,
 			onClick: datasetActions?.onPublishUpdate ?? (() => {}),
 			disabled: !datasetActions?.canPublishUpdate || datasetActions?.isPublishing,
-			ariaLabel: 'Update existing dataset'
-		}
+			ariaLabel: 'Update existing dataset',
+		},
 	]
 
 	const sidebarButtons: ToolbarButton[] = [
@@ -463,15 +399,15 @@ export function Toolbar({
 			icon: Layers,
 			onClick: handleToggleDatasets,
 			variant: datasetsOpen ? 'default' : 'outline',
-			ariaLabel: 'Toggle datasets panel'
+			ariaLabel: 'Toggle datasets panel',
 		},
 		{
 			key: 'info',
 			icon: FilePenLine,
 			onClick: handleToggleInfo,
 			variant: infoPanelOpen ? 'default' : 'outline',
-			ariaLabel: 'Toggle info panel'
-		}
+			ariaLabel: 'Toggle info panel',
+		},
 	]
 	// Mobile Toolbar Configuration
 	const mobileDrawButtons: ToolbarButton[] = [
@@ -480,29 +416,29 @@ export function Toolbar({
 			icon: MousePointer2,
 			onClick: () => handleModeChange('select'),
 			variant: mode === 'select' ? 'default' : 'outline',
-			ariaLabel: 'Select mode'
+			ariaLabel: 'Select mode',
 		},
 		{
 			key: 'point',
 			icon: MapPin,
 			onClick: () => handleModeChange('draw_point'),
 			variant: mode === 'draw_point' ? 'default' : 'outline',
-			ariaLabel: 'Draw point'
+			ariaLabel: 'Draw point',
 		},
 		{
 			key: 'line',
 			icon: Route,
 			onClick: () => handleModeChange('draw_linestring'),
 			variant: mode === 'draw_linestring' ? 'default' : 'outline',
-			ariaLabel: 'Draw line'
+			ariaLabel: 'Draw line',
 		},
 		{
 			key: 'polygon',
 			icon: Pentagon,
 			onClick: () => handleModeChange('draw_polygon'),
 			variant: mode === 'draw_polygon' ? 'default' : 'outline',
-			ariaLabel: 'Draw polygon'
-		}
+			ariaLabel: 'Draw polygon',
+		},
 	]
 
 	const mobileEditButtons: ToolbarButton[] = [
@@ -511,61 +447,61 @@ export function Toolbar({
 			icon: Undo2,
 			onClick: handleUndo,
 			disabled: !history.canUndo,
-			ariaLabel: 'Undo'
+			ariaLabel: 'Undo',
 		},
 		{
 			key: 'redo',
 			icon: Redo2,
 			onClick: handleRedo,
 			disabled: !history.canRedo,
-			ariaLabel: 'Redo'
+			ariaLabel: 'Redo',
 		},
 		{
 			key: 'snapping',
 			icon: Magnet,
 			onClick: handleToggleSnapping,
 			variant: snappingEnabled ? 'default' : 'outline',
-			ariaLabel: 'Toggle snapping'
+			ariaLabel: 'Toggle snapping',
 		},
 		{
 			key: 'edit',
 			icon: Edit3,
 			onClick: () => handleModeChange('edit'),
 			variant: mode === 'edit' ? 'default' : 'outline',
-			ariaLabel: 'Edit mode'
+			ariaLabel: 'Edit mode',
 		},
 		{
 			key: 'inspector',
 			icon: Crosshair,
 			onClick: handleToggleInspector,
 			variant: inspectorActive ? 'default' : 'outline',
-			ariaLabel: 'Toggle inspector'
+			ariaLabel: 'Toggle inspector',
 		},
 		{
 			key: 'delete',
 			icon: Trash2,
 			onClick: handleDeleteSelected,
-			ariaLabel: 'Delete selected'
+			ariaLabel: 'Delete selected',
 		},
 		{
 			key: 'merge',
 			icon: Merge,
 			onClick: handleMergeSelected,
-			ariaLabel: 'Merge selected'
+			ariaLabel: 'Merge selected',
 		},
 		{
 			key: 'split',
 			icon: SplitIcon,
 			onClick: handleSplitSelected,
-			ariaLabel: 'Split selected'
+			ariaLabel: 'Split selected',
 		},
 		{
 			key: 'map-settings',
 			icon: MapIcon,
 			onClick: handleToggleMapSettings,
 			variant: showMapSettings ? 'default' : 'outline',
-			ariaLabel: 'Map Settings'
-		}
+			ariaLabel: 'Map Settings',
+		},
 	]
 
 	if (isMobile) {
@@ -584,20 +520,21 @@ export function Toolbar({
 					{mobileSearchOpen && (
 						<div className="flex flex-col gap-2 rounded-lg bg-white/90 p-2 shadow-sm backdrop-blur">
 							<SearchBar
-								searchQuery={searchQuery}
-								searchLoading={searchLoading}
+								query={searchQuery}
+								loading={searchLoading}
 								placeholder="Search location..."
 								onSubmit={(e) => {
 									e.preventDefault()
 									handleSearchSubmit(e)
 								}}
 								onQueryChange={setSearchQuery}
-								onClearQuery={clearSearch}
+								onClear={clearSearch}
 							/>
 							{searchResults && searchResults.length > 0 && (
 								<div className="max-h-60 overflow-y-auto space-y-1 bg-white rounded-lg border border-gray-100">
 									{searchResults.map((result) => (
 										<button
+											type="button"
 											key={result.placeId}
 											className="w-full text-left text-sm p-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 truncate"
 											onClick={() => onSearchResultSelect?.(result)}
@@ -645,12 +582,12 @@ export function Toolbar({
 
 					<div className="relative">
 						<SearchBar
-							searchQuery={searchQuery}
-							searchLoading={searchLoading}
+							query={searchQuery}
+							loading={searchLoading}
 							placeholder="Search location..."
 							onSubmit={handleSearchSubmit}
 							onQueryChange={setSearchQuery}
-							onClearQuery={clearSearch}
+							onClear={clearSearch}
 							className="w-64"
 						/>
 						{searchResults && searchResults.length > 0 && (
@@ -669,6 +606,7 @@ export function Toolbar({
 								<div className="max-h-60 overflow-y-auto space-y-1">
 									{searchResults.map((result) => (
 										<button
+											type="button"
 											key={result.placeId}
 											className="w-full text-left text-sm p-1.5 hover:bg-gray-50 rounded truncate"
 											onClick={() => onSearchResultSelect?.(result)}
@@ -716,27 +654,5 @@ export function Toolbar({
 				</div>
 			)}
 		</div>
-	)
-}
-
-// Helper component for Help Icon
-function HelpIcon(props: any) {
-	return (
-		<svg
-			xmlns="http://www.w3.org/2000/svg"
-			width="24"
-			height="24"
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			strokeWidth="2"
-			strokeLinecap="round"
-			strokeLinejoin="round"
-			{...props}
-		>
-			<circle cx="12" cy="12" r="10" />
-			<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-			<path d="M12 17h.01" />
-		</svg>
 	)
 }

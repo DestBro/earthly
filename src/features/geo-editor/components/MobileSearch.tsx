@@ -1,64 +1,8 @@
-import { RefreshCw, Search, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import type React from 'react'
 import { Button } from '../../../components/ui/button'
-import { Input } from '../../../components/ui/input'
+import { SearchBar } from '../../../components/ui/search-bar'
 import type { GeoSearchResult } from '../types'
-
-type SearchBarProps = {
-	searchQuery: string
-	searchLoading: boolean
-	placeholder: string
-	onSubmit: (event: React.FormEvent<HTMLFormElement>) => void
-	onQueryChange?: (value: string) => void
-	onClearQuery?: () => void
-	className?: string
-}
-
-function SearchBar({
-	searchQuery,
-	searchLoading,
-	placeholder,
-	onSubmit,
-	onQueryChange,
-	onClearQuery,
-	className = ''
-}: SearchBarProps) {
-	return (
-		<form onSubmit={onSubmit} className={`flex items-center gap-2 ${className}`}>
-			<div className="relative flex-1">
-				<Input
-					value={searchQuery}
-					onChange={(event) => onQueryChange?.(event.target.value)}
-					placeholder={placeholder}
-					className="pr-9"
-				/>
-				{searchQuery && (
-					<button
-						type="button"
-						aria-label="Clear search"
-						className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-500 hover:text-gray-800"
-						onClick={() => onClearQuery?.()}
-					>
-						<X className="h-3.5 w-3.5" />
-					</button>
-				)}
-			</div>
-			<Button
-				type="submit"
-				size="icon"
-				variant="default"
-				aria-label="Search location"
-				disabled={searchLoading}
-			>
-				{searchLoading ? (
-					<RefreshCw className="h-4 w-4 animate-spin" />
-				) : (
-					<Search className="h-4 w-4" />
-				)}
-			</Button>
-		</form>
-	)
-}
 interface MobileSearchProps {
 	searchQuery?: string
 	searchResults?: GeoSearchResult[]
@@ -82,7 +26,7 @@ export function MobileSearch({
 	onSearchResultSelect,
 	onClearSearchResults,
 	onSearchClear,
-	onClose
+	onClose,
 }: MobileSearchProps) {
 	const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
 		event.preventDefault()
@@ -94,12 +38,12 @@ export function MobileSearch({
 			<div className="flex w-full flex-col gap-2">
 				<div className="flex items-center gap-2">
 					<SearchBar
-						searchQuery={searchQuery}
-						searchLoading={searchLoading}
+						query={searchQuery}
+						loading={searchLoading}
 						placeholder="Search places..."
 						onSubmit={handleSearchSubmit}
 						onQueryChange={(value) => onSearchQueryChange?.(value)}
-						onClearQuery={() => onSearchClear?.()}
+						onClear={() => onSearchClear?.()}
 						className="w-full"
 					/>
 					<Button size="icon" variant="ghost" onClick={onClose}>
