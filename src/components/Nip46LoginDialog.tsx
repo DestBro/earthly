@@ -10,7 +10,7 @@ import {
 	DialogDescription,
 	DialogHeader,
 	DialogTitle,
-	DialogTrigger
+	DialogTrigger,
 } from './ui/dialog'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
@@ -29,7 +29,7 @@ const DEFAULT_RELAYS = [
 	{ value: 'wss://relay.damus.io', label: 'relay.damus.io' },
 	{ value: 'wss://nos.lol', label: 'nos.lol' },
 	{ value: 'wss://relay.primal.net', label: 'relay.primal.net' },
-	{ value: 'wss://relay.wavefunc.live', label: 'relay.wavefunc.live' }
+	{ value: 'wss://relay.wavefunc.live', label: 'relay.wavefunc.live' },
 ]
 
 type ConnectionState = 'idle' | 'generating' | 'waiting' | 'connected' | 'error'
@@ -124,9 +124,9 @@ export function Nip46LoginDialog({ trigger, onLogin }: Nip46LoginDialogProps) {
 					metadata: JSON.stringify({
 						name: 'Earthly City',
 						description: 'Connect with Earthly City',
-						url: window.location.origin
+						url: window.location.origin,
 					}),
-					token: secretRef.current
+					token: secretRef.current,
 				})
 
 				const uri = `nostrconnect://${user.pubkey}?${params.toString()}`
@@ -167,7 +167,7 @@ export function Nip46LoginDialog({ trigger, onLogin }: Nip46LoginDialogProps) {
 
 		const sub = ndk.subscribe(
 			{ kinds: [NDKKind.NostrConnect], '#p': [pubkey] },
-			{ closeOnEose: false }
+			{ closeOnEose: false },
 		)
 
 		subscriptionRef.current = sub
@@ -189,7 +189,7 @@ export function Nip46LoginDialog({ trigger, onLogin }: Nip46LoginDialogProps) {
 					response.tags = [['p', event.pubkey]]
 					response.content = JSON.stringify({
 						id: request.id,
-						result: secretRef.current
+						result: secretRef.current,
 					})
 
 					await response.sign(signer)
@@ -529,7 +529,7 @@ export function Nip46LoginDialog({ trigger, onLogin }: Nip46LoginDialogProps) {
 									onScan={handleScan}
 									onError={handleScanError}
 									constraints={{
-										facingMode: 'environment'
+										facingMode: 'environment',
 									}}
 								/>
 							</div>

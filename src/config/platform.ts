@@ -42,7 +42,7 @@ export async function getPlatform(): Promise<Platform> {
 			macos: 'macos',
 			windows: 'windows',
 			win32: 'windows',
-			linux: 'linux'
+			linux: 'linux',
 		}
 
 		return platformMap[platformName] ?? 'web'

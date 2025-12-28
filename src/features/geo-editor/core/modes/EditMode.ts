@@ -46,7 +46,7 @@ export class EditMode {
 		this.state.draggingVertex = {
 			featureId,
 			coordinatePath,
-			startPosition: position
+			startPosition: position,
 		}
 	}
 
@@ -54,14 +54,14 @@ export class EditMode {
 		this.state.draggingFeature = {
 			featureId,
 			startLngLat,
-			startGeometry
+			startGeometry,
 		}
 	}
 
 	setHoveredVertex(featureId: string, coordinatePath: number[]): void {
 		this.state.hoveredVertex = {
 			featureId,
-			coordinatePath
+			coordinatePath,
 		}
 	}
 
@@ -85,7 +85,7 @@ export class EditMode {
 		if (feature.geometry.type === 'Point') {
 			vertices.push({
 				position: feature.geometry.coordinates as Position,
-				path: []
+				path: [],
 			})
 		} else if (feature.geometry.type === 'MultiPoint') {
 			const coords = feature.geometry.coordinates as Position[]
@@ -122,7 +122,7 @@ export class EditMode {
 						if (coordIdx < ring.length - 1) {
 							vertices.push({
 								position: coord,
-								path: [polyIdx, ringIdx, coordIdx]
+								path: [polyIdx, ringIdx, coordIdx],
 							})
 						}
 					})
@@ -142,7 +142,7 @@ export class EditMode {
 			for (let i = 0; i < coords.length - 1; i++) {
 				const mid: Position = [
 					(coords[i][0] + coords[i + 1][0]) / 2,
-					(coords[i][1] + coords[i + 1][1]) / 2
+					(coords[i][1] + coords[i + 1][1]) / 2,
 				]
 				midpoints.push({ position: mid, path: [i, i + 1] })
 			}
@@ -152,7 +152,7 @@ export class EditMode {
 				for (let i = 0; i < line.length - 1; i++) {
 					const mid: Position = [
 						(line[i][0] + line[i + 1][0]) / 2,
-						(line[i][1] + line[i + 1][1]) / 2
+						(line[i][1] + line[i + 1][1]) / 2,
 					]
 					midpoints.push({ position: mid, path: [lineIdx, i, i + 1] })
 				}
@@ -163,7 +163,7 @@ export class EditMode {
 				for (let i = 0; i < ring.length - 1; i++) {
 					const mid: Position = [
 						(ring[i][0] + ring[i + 1][0]) / 2,
-						(ring[i][1] + ring[i + 1][1]) / 2
+						(ring[i][1] + ring[i + 1][1]) / 2,
 					]
 					midpoints.push({ position: mid, path: [ringIdx, i, i + 1] })
 				}
@@ -175,11 +175,11 @@ export class EditMode {
 					for (let i = 0; i < ring.length - 1; i++) {
 						const mid: Position = [
 							(ring[i][0] + ring[i + 1][0]) / 2,
-							(ring[i][1] + ring[i + 1][1]) / 2
+							(ring[i][1] + ring[i + 1][1]) / 2,
 						]
 						midpoints.push({
 							position: mid,
-							path: [polyIdx, ringIdx, i, i + 1]
+							path: [polyIdx, ringIdx, i, i + 1],
 						})
 					}
 				})
@@ -193,7 +193,7 @@ export class EditMode {
 	updateVertexPosition(
 		feature: EditorFeature,
 		path: number[],
-		newPosition: Position
+		newPosition: Position,
 	): EditorFeature {
 		const updatedFeature = JSON.parse(JSON.stringify(feature)) as EditorFeature
 
@@ -300,7 +300,7 @@ export class EditMode {
 	translateFeature(
 		feature: EditorFeature,
 		fromLngLat: Position,
-		toLngLat: Position
+		toLngLat: Position,
 	): EditorFeature {
 		const deltaLng = toLngLat[0] - fromLngLat[0]
 		const deltaLat = toLngLat[1] - fromLngLat[1]
@@ -313,15 +313,15 @@ export class EditMode {
 
 		if (feature.geometry.type === 'Point') {
 			updatedFeature.geometry.coordinates = translatePosition(
-				feature.geometry.coordinates as Position
+				feature.geometry.coordinates as Position,
 			)
 		} else if (feature.geometry.type === 'LineString') {
 			updatedFeature.geometry.coordinates = (feature.geometry.coordinates as Position[]).map(
-				translatePosition
+				translatePosition,
 			)
 		} else if (feature.geometry.type === 'Polygon') {
 			updatedFeature.geometry.coordinates = (feature.geometry.coordinates as Position[][]).map(
-				(ring) => ring.map(translatePosition)
+				(ring) => ring.map(translatePosition),
 			)
 		}
 

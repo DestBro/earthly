@@ -74,17 +74,19 @@ export class SelectionManager implements IManager {
 		} else if (feature.geometry.type === 'MultiLineString') {
 			const lines = feature.geometry.coordinates as Position[][]
 			return lines.some((line) =>
-				line.some(([lng, lat]) => lng >= west && lng <= east && lat >= south && lat <= north)
+				line.some(([lng, lat]) => lng >= west && lng <= east && lat >= south && lat <= north),
 			)
 		} else if (feature.geometry.type === 'Polygon') {
 			const coords = feature.geometry.coordinates as Position[][]
 			return coords[0].some(
-				([lng, lat]) => lng >= west && lng <= east && lat >= south && lat <= north
+				([lng, lat]) => lng >= west && lng <= east && lat >= south && lat <= north,
 			)
 		} else if (feature.geometry.type === 'MultiPolygon') {
 			const polygons = feature.geometry.coordinates as Position[][][]
 			return polygons.some((polygon) =>
-				polygon[0]?.some(([lng, lat]) => lng >= west && lng <= east && lat >= south && lat <= north)
+				polygon[0]?.some(
+					([lng, lat]) => lng >= west && lng <= east && lat >= south && lat <= north,
+				),
 			)
 		}
 

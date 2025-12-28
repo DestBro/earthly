@@ -46,11 +46,11 @@ export class DrawPointMode extends DrawMode {
 			id: generateId(),
 			geometry: {
 				type: 'Point',
-				coordinates: [lngLat.lng, lngLat.lat]
+				coordinates: [lngLat.lng, lngLat.lat],
 			},
 			properties: {
-				meta: 'feature'
-			}
+				meta: 'feature',
+			},
 		}
 
 		this.reset()
@@ -84,11 +84,11 @@ export class DrawLineStringMode extends DrawMode {
 				id: this.currentFeature?.id || generateId(),
 				geometry: {
 					type: 'LineString',
-					coordinates: [...this.coordinates]
+					coordinates: [...this.coordinates],
 				},
 				properties: {
-					meta: 'feature-temp'
-				}
+					meta: 'feature-temp',
+				},
 			}
 		}
 
@@ -105,11 +105,11 @@ export class DrawLineStringMode extends DrawMode {
 				id: this.currentFeature?.id || generateId(),
 				geometry: {
 					type: 'LineString',
-					coordinates: tempCoords
+					coordinates: tempCoords,
 				},
 				properties: {
-					meta: 'feature-temp'
-				}
+					meta: 'feature-temp',
+				},
 			}
 		}
 	}
@@ -121,11 +121,11 @@ export class DrawLineStringMode extends DrawMode {
 				id: this.currentFeature?.id || generateId(),
 				geometry: {
 					type: 'LineString',
-					coordinates: [...this.coordinates]
+					coordinates: [...this.coordinates],
 				},
 				properties: {
-					meta: 'feature'
-				}
+					meta: 'feature',
+				},
 			}
 			this.reset()
 			return feature
@@ -143,11 +143,11 @@ export class DrawLineStringMode extends DrawMode {
 					id: this.currentFeature?.id || generateId(),
 					geometry: {
 						type: 'LineString',
-						coordinates: [...this.coordinates]
+						coordinates: [...this.coordinates],
 					},
 					properties: {
-						meta: 'feature-temp'
-					}
+						meta: 'feature-temp',
+					},
 				}
 			} else {
 				this.currentFeature = undefined
@@ -170,7 +170,7 @@ export class DrawPolygonMode extends DrawMode {
 			const firstPoint = this.coordinates[0]
 			const clickedPoint = point
 			const distance = Math.sqrt(
-				(firstPoint[0] - clickedPoint[0]) ** 2 + (firstPoint[1] - clickedPoint[1]) ** 2
+				(firstPoint[0] - clickedPoint[0]) ** 2 + (firstPoint[1] - clickedPoint[1]) ** 2,
 			)
 
 			// If close to first point, finish polygon
@@ -181,11 +181,11 @@ export class DrawPolygonMode extends DrawMode {
 					id: this.currentFeature?.id || generateId(),
 					geometry: {
 						type: 'Polygon',
-						coordinates: [closedCoords]
+						coordinates: [closedCoords],
 					},
 					properties: {
-						meta: 'feature'
-					}
+						meta: 'feature',
+					},
 				}
 				this.reset()
 				return feature
@@ -200,11 +200,11 @@ export class DrawPolygonMode extends DrawMode {
 				id: this.currentFeature?.id || generateId(),
 				geometry: {
 					type: 'Polygon',
-					coordinates: [[...this.coordinates, this.coordinates[0]]]
+					coordinates: [[...this.coordinates, this.coordinates[0]]],
 				},
 				properties: {
-					meta: 'feature-temp'
-				}
+					meta: 'feature-temp',
+				},
 			}
 		}
 
@@ -226,11 +226,11 @@ export class DrawPolygonMode extends DrawMode {
 				id: this.currentFeature?.id || generateId(),
 				geometry: {
 					type: this.coordinates.length >= 2 ? 'Polygon' : 'LineString',
-					coordinates: this.coordinates.length >= 2 ? [tempCoords] : tempCoords
+					coordinates: this.coordinates.length >= 2 ? [tempCoords] : tempCoords,
 				} as any,
 				properties: {
-					meta: 'feature-temp'
-				}
+					meta: 'feature-temp',
+				},
 			}
 		}
 	}
@@ -243,11 +243,11 @@ export class DrawPolygonMode extends DrawMode {
 				id: this.currentFeature?.id || generateId(),
 				geometry: {
 					type: 'Polygon',
-					coordinates: [closedCoords]
+					coordinates: [closedCoords],
 				},
 				properties: {
-					meta: 'feature'
-				}
+					meta: 'feature',
+				},
 			}
 			this.reset()
 			return feature
@@ -265,12 +265,12 @@ export class DrawPolygonMode extends DrawMode {
 					id: this.currentFeature?.id || generateId(),
 					geometry: {
 						type: 'Polygon',
-						coordinates: [[...this.coordinates, this.coordinates[0]]]
+						coordinates: [[...this.coordinates, this.coordinates[0]]],
 					},
 					properties: {
 						meta: 'feature',
-						active: true
-					}
+						active: true,
+					},
 				}
 			} else {
 				this.currentFeature = undefined

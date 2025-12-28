@@ -26,7 +26,7 @@ export interface DatasetColumnsContext {
 }
 
 export const createDatasetColumns = (
-	context: DatasetColumnsContext
+	context: DatasetColumnsContext,
 ): ColumnDef<DatasetRowData>[] => [
 	{
 		accessorKey: 'datasetName',
@@ -53,7 +53,7 @@ export const createDatasetColumns = (
 					)}
 				</div>
 			)
-		}
+		},
 	},
 	{
 		id: 'actions',
@@ -67,7 +67,7 @@ export const createDatasetColumns = (
 						className={cn(
 							isActive
 								? 'bg-green-600 text-white hover:bg-green-700'
-								: 'bg-blue-600 text-white hover:bg-blue-700'
+								: 'bg-blue-600 text-white hover:bg-blue-700',
 						)}
 						onClick={() => context.onLoadDataset(event)}
 						disabled={!!isActive || context.isPublishing}
@@ -128,6 +128,6 @@ export const createDatasetColumns = (
 					)}
 				</div>
 			)
-		}
-	}
+		},
+	},
 ]

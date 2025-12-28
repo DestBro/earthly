@@ -20,7 +20,7 @@ export interface CollectionColumnsContext {
 }
 
 export const createCollectionColumns = (
-	context: CollectionColumnsContext
+	context: CollectionColumnsContext,
 ): ColumnDef<CollectionRowData>[] => [
 	{
 		accessorKey: 'collectionName',
@@ -53,7 +53,7 @@ export const createCollectionColumns = (
 					)}
 				</div>
 			)
-		}
+		},
 	},
 	{
 		id: 'datasets',
@@ -73,7 +73,7 @@ export const createCollectionColumns = (
 					)}
 				</div>
 			)
-		}
+		},
 	},
 	{
 		id: 'actions',
@@ -114,6 +114,6 @@ export const createCollectionColumns = (
 					)}
 				</div>
 			)
-		}
-	}
+		},
+	},
 ]

@@ -32,7 +32,7 @@ export const Editor: React.FC<EditorProps> = ({ snapping = true }) => {
 
 		const editor = new GeoEditor(map, {
 			snapping,
-			defaultMode: 'select'
+			defaultMode: 'select',
 		})
 
 		editorRef.current = editor

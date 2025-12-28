@@ -12,7 +12,7 @@ import {
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
-	DialogTitle
+	DialogTitle,
 } from './ui/dialog'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
@@ -47,7 +47,7 @@ export function SignupDialog({ open, onOpenChange, onConfirm }: SignupDialogProp
 			if (privateKeyHex) {
 				// Convert hex to Uint8Array for encoding
 				const privateKeyBytes = new Uint8Array(
-					privateKeyHex.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || []
+					privateKeyHex.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || [],
 				)
 				setNsec(nip19.nsecEncode(privateKeyBytes))
 			}
@@ -159,7 +159,7 @@ export function SignupDialog({ open, onOpenChange, onConfirm }: SignupDialogProp
 					setScanError(null)
 				} else {
 					setScanError(
-						'The scanned QR code does not contain a valid private key (nsec or hex format)'
+						'The scanned QR code does not contain a valid private key (nsec or hex format)',
 					)
 				}
 			}
@@ -410,7 +410,7 @@ export function SignupDialog({ open, onOpenChange, onConfirm }: SignupDialogProp
 									onScan={handleScan}
 									onError={handleScanError}
 									constraints={{
-										facingMode: 'environment'
+										facingMode: 'environment',
 									}}
 								/>
 							</div>

@@ -56,7 +56,7 @@ async function fetchBlobReference(reference: GeoBlobReference): Promise<BlobPayl
 }
 
 export async function resolveGeoEventFeatureCollection(
-	event: NDKGeoEvent
+	event: NDKGeoEvent,
 ): Promise<FeatureCollection> {
 	const baseCollection = event.featureCollection
 	if (event.blobReferences.length === 0) {
@@ -100,6 +100,6 @@ export async function resolveGeoEventFeatureCollection(
 
 	return {
 		...baseCollection,
-		features
+		features,
 	}
 }

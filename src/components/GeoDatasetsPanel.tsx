@@ -6,12 +6,12 @@ import { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
 import {
 	type CollectionColumnsContext,
 	type CollectionRowData,
-	createCollectionColumns
+	createCollectionColumns,
 } from './collections-columns'
 import {
 	createDatasetColumns,
 	type DatasetColumnsContext,
-	type DatasetRowData
+	type DatasetRowData,
 } from './datasets-columns'
 import { Button } from './ui/button'
 import { DataTable } from './ui/data-table'
@@ -46,7 +46,7 @@ const getDatasetDescriptionText = (event: NDKGeoEvent): string | undefined => {
 		featureCollection?.description,
 		featureCollection?.summary,
 		featureCollection?.properties?.description,
-		featureCollection?.properties?.summary
+		featureCollection?.properties?.summary,
 	]
 	for (const value of candidates) {
 		if (typeof value === 'string' && value.trim().length > 0) {
@@ -80,7 +80,7 @@ export function GeoDatasetsPanelContent({
 	onInspectDataset,
 	onInspectCollection,
 	onOpenDebug,
-	onClose
+	onClose,
 }: GeoDatasetsPanelProps) {
 	const [activeTab, setActiveTab] = useState<'datasets' | 'collections'>('datasets')
 	const [searchQuery, setSearchQuery] = useState('')
@@ -116,7 +116,7 @@ export function GeoDatasetsPanelContent({
 			const datasetDescription = getDatasetDescriptionText(event)
 			const searchValues = [getDatasetName(event), datasetDescription]
 			return searchValues.some(
-				(value) => typeof value === 'string' && value.toLowerCase().includes(normalizedQuery)
+				(value) => typeof value === 'string' && value.toLowerCase().includes(normalizedQuery),
 			)
 		})
 	}, [geoEvents, ownedOnly, currentUserPubkey, getDatasetName, normalizedQuery])
@@ -134,10 +134,10 @@ export function GeoDatasetsPanelContent({
 				metadata.name,
 				metadata.description,
 				collection.collectionId,
-				collection.id
+				collection.id,
 			]
 			return searchValues.some(
-				(value) => typeof value === 'string' && value.toLowerCase().includes(normalizedQuery)
+				(value) => typeof value === 'string' && value.toLowerCase().includes(normalizedQuery),
 			)
 		})
 	}, [collectionEvents, ownedOnly, currentUserPubkey, normalizedQuery])
@@ -159,7 +159,7 @@ export function GeoDatasetsPanelContent({
 				isActive: !!isActive,
 				isOwned,
 				isVisible,
-				primaryLabel
+				primaryLabel,
 			}
 		})
 	}, [
@@ -168,7 +168,7 @@ export function GeoDatasetsPanelContent({
 		currentUserPubkey,
 		datasetVisibility,
 		getDatasetKey,
-		getDatasetName
+		getDatasetName,
 	])
 
 	// Prepare collection table data
@@ -187,7 +187,7 @@ export function GeoDatasetsPanelContent({
 				collectionName,
 				datasetCount,
 				referencedEvents,
-				zoomDisabled
+				zoomDisabled,
 			}
 		})
 	}, [filteredCollections, datasetReferenceMap, onZoomToCollection])
@@ -202,7 +202,7 @@ export function GeoDatasetsPanelContent({
 			onInspectDataset,
 			onOpenDebug,
 			isPublishing,
-			deletingKey
+			deletingKey,
 		}),
 		[
 			onLoadDataset,
@@ -212,8 +212,8 @@ export function GeoDatasetsPanelContent({
 			onInspectDataset,
 			onOpenDebug,
 			isPublishing,
-			deletingKey
-		]
+			deletingKey,
+		],
 	)
 
 	// Collection columns context
@@ -222,19 +222,19 @@ export function GeoDatasetsPanelContent({
 			onZoomToCollection,
 			onInspectCollection,
 			onOpenDebug,
-			getDatasetName
+			getDatasetName,
 		}),
-		[onZoomToCollection, onInspectCollection, onOpenDebug, getDatasetName]
+		[onZoomToCollection, onInspectCollection, onOpenDebug, getDatasetName],
 	)
 
 	const datasetColumns = useMemo(
 		() => createDatasetColumns(datasetColumnsContext),
-		[datasetColumnsContext]
+		[datasetColumnsContext],
 	)
 
 	const collectionColumns = useMemo(
 		() => createCollectionColumns(collectionColumnsContext),
-		[collectionColumnsContext]
+		[collectionColumnsContext],
 	)
 
 	return (

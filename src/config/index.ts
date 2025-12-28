@@ -20,5 +20,5 @@ export {
 	getPlatform,
 	isMobile,
 	isTauri,
-	type Platform
+	type Platform,
 } from './platform'

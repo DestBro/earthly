@@ -13,7 +13,7 @@ import { NDKGeoEvent } from '../ndk/NDKGeoEvent'
 export function useStations(additionalFilters: Omit<NDKFilter, 'kinds'>[] = [{}]) {
 	const filters = additionalFilters.map((filter) => ({
 		...filter,
-		kinds: NDKGeoEvent.kinds
+		kinds: NDKGeoEvent.kinds,
 	}))
 
 	const { events, eose } = useSubscribe(filters)
@@ -21,14 +21,14 @@ export function useStations(additionalFilters: Omit<NDKFilter, 'kinds'>[] = [{}]
 
 	return {
 		events: geoEvents,
-		eose
+		eose,
 	}
 }
 
 export function useGeoCollections(additionalFilters: Omit<NDKFilter, 'kinds'>[] = [{}]) {
 	const filters = additionalFilters.map((filter) => ({
 		...filter,
-		kinds: NDKGeoCollectionEvent.kinds
+		kinds: NDKGeoCollectionEvent.kinds,
 	}))
 
 	const { events, eose } = useSubscribe(filters)
@@ -36,7 +36,7 @@ export function useGeoCollections(additionalFilters: Omit<NDKFilter, 'kinds'>[] 
 
 	return {
 		events: collections,
-		eose
+		eose,
 	}
 }
 
@@ -82,7 +82,7 @@ export function useSearchStations(filter: NDKFilter, searchQuery: string) {
 
 	return {
 		events,
-		eose
+		eose,
 	}
 }
 
@@ -103,7 +103,7 @@ export function useStationsObserver(
 		hashtags?: string[]
 		relayHints?: string[]
 		collectionIds?: string[]
-	}
+	},
 ) {
 	const { ndk } = useNDK()
 	const [allEvents, setAllEvents] = useState<NDKGeoEvent[]>([])
@@ -115,7 +115,7 @@ export function useStationsObserver(
 		// Build complete filter with hardcoded geo dataset kinds
 		const filter: NDKFilter = {
 			...filterWithoutKinds,
-			kinds: NDKGeoEvent.kinds
+			kinds: NDKGeoEvent.kinds,
 		}
 
 		// Reset state
@@ -165,7 +165,7 @@ export function useStationsObserver(
 			if (collectionIds && collectionIds.length > 0) {
 				const references = event.collectionReferences.map((ref) => ref.toLowerCase())
 				const matchesCollection = collectionIds.some((needle) =>
-					references.includes(needle.toLowerCase())
+					references.includes(needle.toLowerCase()),
 				)
 				if (!matchesCollection) return false
 			}
@@ -176,6 +176,6 @@ export function useStationsObserver(
 
 	return {
 		events: filteredEvents,
-		eose
+		eose,
 	}
 }

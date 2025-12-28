@@ -2,7 +2,7 @@ import {
 	ApplesauceRelayPool,
 	NostrClientTransport,
 	type NostrTransportOptions,
-	PrivateKeySigner
+	PrivateKeySigner,
 } from '@contextvm/sdk'
 import { Client } from '@modelcontextprotocol/sdk/client'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
@@ -103,11 +103,11 @@ export class EarthlyGeoServerClient implements EarthlyGeoServer {
 		options: Partial<NostrTransportOptions> & {
 			privateKey?: string
 			relays?: string[]
-		} = {}
+		} = {},
 	) {
 		this.client = new Client({
 			name: 'EarthlyGeoServerClient',
-			version: '1.0.0'
+			version: '1.0.0',
 		})
 
 		// Private key precedence: constructor options > config file
@@ -127,7 +127,7 @@ export class EarthlyGeoServerClient implements EarthlyGeoServer {
 			signer,
 			relayHandler,
 			isStateless: true,
-			...rest
+			...rest,
 		})
 
 		// Auto-connect in constructor
@@ -143,7 +143,7 @@ export class EarthlyGeoServerClient implements EarthlyGeoServer {
 	private async call<T = unknown>(name: string, args: Record<string, unknown>): Promise<T> {
 		const result = await this.client.callTool({
 			name,
-			arguments: { ...args }
+			arguments: { ...args },
 		})
 		return result.structuredContent as T
 	}

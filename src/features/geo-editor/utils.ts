@@ -5,7 +5,7 @@ import type { CollectionMeta } from './types'
 
 export function convertGeoEventsToEditorFeatures(
 	events: NDKGeoEvent[],
-	collectionResolver?: (event: NDKGeoEvent) => FeatureCollection | undefined
+	collectionResolver?: (event: NDKGeoEvent) => FeatureCollection | undefined,
 ): EditorFeature[] {
 	const aggregated: EditorFeature[] = []
 
@@ -30,8 +30,8 @@ export function convertGeoEventsToEditorFeatures(
 					meta: 'feature',
 					datasetId,
 					sourceEventId: event.id,
-					hashtags: event.hashtags
-				}
+					hashtags: event.hashtags,
+				},
 			})
 		})
 	})
@@ -41,7 +41,7 @@ export function convertGeoEventsToEditorFeatures(
 
 export function convertGeoEventsToFeatureCollection(
 	events: NDKGeoEvent[],
-	collectionResolver?: (event: NDKGeoEvent) => FeatureCollection | undefined
+	collectionResolver?: (event: NDKGeoEvent) => FeatureCollection | undefined,
 ): FeatureCollection {
 	const features = events.flatMap((event) => {
 		const datasetId = event.datasetId ?? event.id
@@ -53,19 +53,19 @@ export function convertGeoEventsToFeatureCollection(
 				properties: {
 					...(feature.properties ?? {}),
 					datasetId,
-					sourceEventId: event.id
-				}
+					sourceEventId: event.id,
+				},
 			}))
 	})
 
 	return {
 		type: 'FeatureCollection',
-		features
+		features,
 	}
 }
 
 export async function fetchGeoJsonPayload(
-	url: string
+	url: string,
 ): Promise<{ payload: any; size?: number; mimeType?: string }> {
 	const response = await fetch(url)
 	if (!response.ok) {
@@ -83,14 +83,14 @@ export function ensureFeatureCollection(payload: any): FeatureCollection {
 		const features = Array.isArray(payload.features) ? payload.features : []
 		return {
 			type: 'FeatureCollection',
-			features
+			features,
 		}
 	}
 
 	if (payload?.type === 'Feature') {
 		return {
 			type: 'FeatureCollection',
-			features: [payload]
+			features: [payload],
 		}
 	}
 
@@ -113,7 +113,7 @@ export function summarizeFeatureCollection(collection: FeatureCollection): {
 	}
 	return {
 		featureCount: collection.features?.length ?? 0,
-		geometryTypes: Array.from(geometries)
+		geometryTypes: Array.from(geometries),
 	}
 }
 
@@ -132,9 +132,9 @@ export function detectBlobScope(collection: FeatureCollection): {
 					id: featureId,
 					geometry: null,
 					properties: {
-						externalPlaceholder: true
-					}
-				} as any
+						externalPlaceholder: true,
+					},
+				} as any,
 			]
 		} else {
 			const first = features[0]
@@ -150,17 +150,17 @@ export function detectBlobScope(collection: FeatureCollection): {
 		}
 		return {
 			scope: 'feature',
-			featureId
+			featureId,
 		}
 	}
 
 	return {
-		scope: 'collection'
+		scope: 'collection',
 	}
 }
 
 export function sanitizeEditorProperties(
-	props?: Record<string, any>
+	props?: Record<string, any>,
 ): Record<string, any> | undefined {
 	if (!props) return undefined
 	const { meta, datasetId, sourceEventId, hashtags, ...rest } = props
@@ -172,7 +172,7 @@ export function createDefaultCollectionMeta(): CollectionMeta {
 		name: '',
 		description: '',
 		color: '#1d4ed8',
-		customProperties: {}
+		customProperties: {},
 	}
 }
 

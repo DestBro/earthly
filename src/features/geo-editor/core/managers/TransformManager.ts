@@ -22,7 +22,7 @@ export class TransformManager implements IManager {
 
 		return {
 			...feature,
-			geometry: rotated.geometry
+			geometry: rotated.geometry,
 		}
 	}
 
@@ -34,12 +34,12 @@ export class TransformManager implements IManager {
 		if (!options.scale || options.scale === 1) return feature
 
 		const scaled = turf.transformScale(feature, options.scale, {
-			origin: options.center
+			origin: options.center,
 		})
 
 		return {
 			...feature,
-			geometry: scaled.geometry
+			geometry: scaled.geometry,
 		}
 	}
 
@@ -49,12 +49,12 @@ export class TransformManager implements IManager {
 
 	translate(feature: EditorFeature, distance: number, direction: number): EditorFeature {
 		const translated = turf.transformTranslate(feature, distance, direction, {
-			units: 'meters'
+			units: 'meters',
 		})
 
 		return {
 			...feature,
-			geometry: translated.geometry
+			geometry: translated.geometry,
 		}
 	}
 
@@ -80,8 +80,8 @@ export class TransformManager implements IManager {
 			id: `${feature.id}_split_1`,
 			geometry: {
 				type: 'LineString',
-				coordinates: firstHalf
-			}
+				coordinates: firstHalf,
+			},
 		}
 
 		const feature2: EditorFeature = {
@@ -89,8 +89,8 @@ export class TransformManager implements IManager {
 			id: `${feature.id}_split_2`,
 			geometry: {
 				type: 'LineString',
-				coordinates: secondHalf
-			}
+				coordinates: secondHalf,
+			},
 		}
 
 		return [feature1, feature2]
@@ -107,7 +107,7 @@ export class TransformManager implements IManager {
 				if (unioned) {
 					result = {
 						...result,
-						geometry: unioned.geometry
+						geometry: unioned.geometry,
 					}
 				}
 			}
@@ -126,7 +126,7 @@ export class TransformManager implements IManager {
 
 			return {
 				...feature1,
-				geometry: diff.geometry
+				geometry: diff.geometry,
 			}
 		} catch (error) {
 			console.error('Difference failed:', error)
@@ -137,13 +137,13 @@ export class TransformManager implements IManager {
 	buffer(
 		feature: EditorFeature,
 		radius: number,
-		units: 'meters' | 'kilometers' = 'meters'
+		units: 'meters' | 'kilometers' = 'meters',
 	): EditorFeature {
 		const buffered = turf.buffer(feature, radius, { units })
 
 		return {
 			...feature,
-			geometry: buffered!.geometry
+			geometry: buffered!.geometry,
 		}
 	}
 
@@ -152,7 +152,7 @@ export class TransformManager implements IManager {
 
 		return {
 			...feature,
-			geometry: simplified.geometry
+			geometry: simplified.geometry,
 		}
 	}
 }

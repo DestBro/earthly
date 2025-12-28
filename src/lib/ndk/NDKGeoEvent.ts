@@ -15,7 +15,7 @@ export interface GeoBlobReference {
 
 const DEFAULT_COLLECTION: FeatureCollection = {
 	type: 'FeatureCollection',
-	features: []
+	features: [],
 }
 
 /**
@@ -156,7 +156,7 @@ export class NDKGeoEvent extends NDKEvent {
 				const url = tag[2]
 				const reference: GeoBlobReference = {
 					scope: scope?.startsWith('feature:') ? 'feature' : 'collection',
-					url
+					url,
 				}
 				if (reference.scope === 'feature') {
 					reference.featureId = scope?.slice('feature:'.length)
@@ -298,7 +298,7 @@ export class NDKGeoEvent extends NDKEvent {
 		ndk: NDK,
 		dataset: NDKGeoEvent,
 		reason?: string,
-		signer?: NDKSigner
+		signer?: NDKSigner,
 	): Promise<void> {
 		const datasetId = dataset.datasetId ?? dataset.dTag
 		if (!datasetId) throw new Error('Dataset is missing a d tag and cannot be deleted.')

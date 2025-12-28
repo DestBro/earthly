@@ -4,7 +4,7 @@ import {
 	type NDKPrivateKeySigner,
 	useNDKCurrentUser,
 	useNDKSessionLogin,
-	useNDKSessionLogout
+	useNDKSessionLogout,
 } from '@nostr-dev-kit/react'
 import {
 	AppWindowIcon,
@@ -12,7 +12,7 @@ import {
 	Link,
 	LogOutIcon,
 	QrCodeIcon,
-	SettingsIcon
+	SettingsIcon,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Nip46LoginDialog } from './Nip46LoginDialog'

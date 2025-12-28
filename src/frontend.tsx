@@ -20,7 +20,7 @@ const dexieAdapter = new NDKCacheAdapterDexie({
 	profileCacheSize: 5000,
 	eventCacheSize: 10000,
 	eventTagsCacheSize: 20000,
-	saveSig: true
+	saveSig: true,
 })
 
 // App renders synchronously - config values are baked in at build time
@@ -29,11 +29,11 @@ const app = (
 		<NDKHeadless
 			ndk={{
 				explicitRelayUrls: [config.relayUrl],
-				cacheAdapter: dexieAdapter
+				cacheAdapter: dexieAdapter,
 			}}
 			session={{
 				storage: new NDKSessionLocalStorage(),
-				opts: { follows: true, profile: true }
+				opts: { follows: true, profile: true },
 			}}
 		/>
 		<App />

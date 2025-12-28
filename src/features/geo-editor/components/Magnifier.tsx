@@ -27,7 +27,7 @@ export function Magnifier({ enabled, visible, position, center, mainMap, size }:
 				zoom: mainMap.getZoom() + 1,
 				interactive: false,
 				attributionControl: false,
-				preserveDrawingBuffer: true
+				preserveDrawingBuffer: true,
 			} as any)
 
 			mapRef.current.dragPan.disable()
@@ -52,7 +52,7 @@ export function Magnifier({ enabled, visible, position, center, mainMap, size }:
 			center: center,
 			zoom: mainMap.getZoom() + 1,
 			bearing: mainMap.getBearing(),
-			pitch: mainMap.getPitch()
+			pitch: mainMap.getPitch(),
 		})
 		mapRef.current.resize()
 	}, [center, enabled, mainMap])
@@ -66,7 +66,7 @@ export function Magnifier({ enabled, visible, position, center, mainMap, size }:
 				width: size,
 				height: size,
 				left: position.x - size / 2,
-				top: position.y - size / 2
+				top: position.y - size / 2,
 			}}
 		>
 			<div className="relative h-full w-full overflow-hidden rounded-full border border-gray-300 bg-white shadow-xl">

@@ -21,7 +21,7 @@ export function LocationInspectorPanel({
 	result,
 	onPause,
 	onClear,
-	className = ''
+	className = '',
 }: LocationInspectorPanelProps) {
 	return (
 		<div className={`pointer-events-auto flex h-full flex-col ${className}`}>

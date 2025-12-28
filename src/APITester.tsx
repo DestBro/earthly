@@ -7,7 +7,7 @@ import {
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
-	SelectValue
+	SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 

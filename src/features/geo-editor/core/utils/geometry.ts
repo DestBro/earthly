@@ -66,7 +66,7 @@ export function nearestPointOnLine(point: Position, line: Position[]): Position 
 
 export function closestVertex(
 	point: Position,
-	vertices: Position[]
+	vertices: Position[],
 ): { index: number; distance: number } {
 	if (!isValidPosition(point)) {
 		return { index: -1, distance: Infinity }
@@ -127,7 +127,7 @@ export function isPointInPolygon(point: Position, polygon: Position[][]): boolea
 export function bufferPoint(
 	point: Position,
 	radius: number,
-	units: 'meters' | 'kilometers' = 'meters'
+	units: 'meters' | 'kilometers' = 'meters',
 ): Position[][] {
 	const pt = turf.point(point)
 	const buffered = turf.buffer(pt, radius, { units })

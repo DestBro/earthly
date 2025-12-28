@@ -38,7 +38,7 @@ export class HistoryManager implements IManager {
 		this.addAction({
 			type: 'create',
 			features: features.map((f) => ({ ...f })),
-			timestamp: Date.now()
+			timestamp: Date.now(),
 		})
 	}
 
@@ -47,7 +47,7 @@ export class HistoryManager implements IManager {
 			type: 'update',
 			features: features.map((f) => ({ ...f })),
 			previousFeatures: previousFeatures.map((f) => ({ ...f })),
-			timestamp: Date.now()
+			timestamp: Date.now(),
 		})
 	}
 
@@ -55,7 +55,7 @@ export class HistoryManager implements IManager {
 		this.addAction({
 			type: 'delete',
 			features: features.map((f) => ({ ...f })),
-			timestamp: Date.now()
+			timestamp: Date.now(),
 		})
 	}
 

@@ -1,6 +1,6 @@
 import type { FeatureCollection } from 'geojson'
 import type { GeoJSONSource } from 'maplibre-gl'
-import maplibregl from 'maplibre-gl'
+import type maplibregl from 'maplibre-gl'
 import { useCallback, useEffect, useState } from 'react'
 import type { NDKGeoEvent } from '../../../lib/ndk/NDKGeoEvent'
 import { useEditorStore } from '../store'

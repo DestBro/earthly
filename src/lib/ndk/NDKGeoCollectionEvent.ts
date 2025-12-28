@@ -16,7 +16,7 @@ const DEFAULT_METADATA: GeoCollectionMetadata = {
 	picture: undefined,
 	ownerPk: undefined,
 	license: undefined,
-	tags: []
+	tags: [],
 }
 
 export class NDKGeoCollectionEvent extends NDKEvent {
@@ -129,7 +129,7 @@ export class NDKGeoCollectionEvent extends NDKEvent {
 		ndk: NDK,
 		collection: NDKGeoCollectionEvent,
 		reason?: string,
-		signer?: NDKSigner
+		signer?: NDKSigner,
 	): Promise<void> {
 		const collectionId = collection.collectionId ?? collection.dTag
 		if (!collectionId) {

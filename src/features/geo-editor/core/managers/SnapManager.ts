@@ -5,7 +5,7 @@ import {
 	closestVertex,
 	isValidPosition,
 	nearestPointOnLine,
-	pixelDistance
+	pixelDistance,
 } from '../utils/geometry'
 
 export class SnapManager implements IManager {
@@ -18,7 +18,7 @@ export class SnapManager implements IManager {
 	constructor(
 		snapDistance: number = 10,
 		snapToVertices: boolean = true,
-		snapToEdges: boolean = true
+		snapToEdges: boolean = true,
 	) {
 		this.snapDistance = snapDistance
 		this.snapToVertices = snapToVertices
@@ -74,7 +74,7 @@ export class SnapManager implements IManager {
 							snapped: true,
 							point: vertices[index],
 							feature,
-							vertexIndex: index
+							vertexIndex: index,
 						}
 					}
 				}
@@ -96,7 +96,7 @@ export class SnapManager implements IManager {
 							snapped: true,
 							point: nearestPoint,
 							feature,
-							edgeIndex
+							edgeIndex,
 						}
 					}
 				})
