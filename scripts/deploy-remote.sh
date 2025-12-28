@@ -77,6 +77,15 @@ NODE_ENV=production pm2 start contextvm/server.ts \
     -o logs/contextvm-out.log \
     --merge-logs
 
+NODE_ENV=production BLOSSOM_PORT=3001 pm2 start src/blossom.ts \
+    --name earthly-blossom \
+    --interpreter "$BUN_PATH" \
+    --max-memory-restart 500M \
+    --log-date-format 'YYYY-MM-DD HH:mm:ss Z' \
+    -e logs/blossom-error.log \
+    -o logs/blossom-out.log \
+    --merge-logs
+
 pm2 save
 
 echo ""

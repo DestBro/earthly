@@ -11,17 +11,23 @@
  *   OPTIONS /<sha256>       - CORS preflight
  */
 
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { serve } from 'bun'
 
 const PORT = process.env.BLOSSOM_PORT ? parseInt(process.env.BLOSSOM_PORT, 10) : 3001
+const isProduction = process.env.NODE_ENV === 'production'
+
+// In production, map-chunks is relative to cwd; in dev, relative to this file
+const MAP_CHUNKS_DIR = isProduction
+	? join(process.cwd(), 'map-chunks')
+	: join(import.meta.dir, '..', 'map-chunks')
 
 // Blossom BUD-01 CORS headers
 const BLOSSOM_CORS_HEADERS = {
 	'Access-Control-Allow-Origin': '*',
 	'Access-Control-Allow-Headers': 'Authorization, *',
 	'Access-Control-Allow-Methods': 'GET, HEAD, PUT, DELETE',
-	'Access-Control-Max-Age': '86400'
+	'Access-Control-Max-Age': '86400',
 }
 
 // MIME type mapping for common extensions
@@ -35,7 +41,7 @@ const MIME_TYPES: Record<string, string> = {
 	webp: 'image/webp',
 	svg: 'image/svg+xml',
 	json: 'application/json',
-	txt: 'text/plain'
+	txt: 'text/plain',
 }
 
 function getMimeType(ext: string): string {
@@ -47,15 +53,13 @@ function getMimeType(ext: string): string {
  * Returns the Bun file handle if found, null otherwise.
  */
 async function resolveBlob(
-	sha256: string
+	sha256: string,
 ): Promise<{ file: ReturnType<typeof Bun.file>; ext: string } | null> {
-	const mapChunksDir = fileURLToPath(new URL('../map-chunks/', import.meta.url))
-
 	// Try to find the file with various extensions
 	const extensions = ['pmtiles', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'json']
 
 	for (const ext of extensions) {
-		const filePath = `${mapChunksDir}${sha256}.${ext}`
+		const filePath = join(MAP_CHUNKS_DIR, `${sha256}.${ext}`)
 		const f = Bun.file(filePath)
 		if (await f.exists()) {
 			return { file: f, ext }
@@ -63,7 +67,7 @@ async function resolveBlob(
 	}
 
 	// Also try without extension
-	const noExtPath = `${mapChunksDir}${sha256}`
+	const noExtPath = join(MAP_CHUNKS_DIR, sha256)
 	const noExtFile = Bun.file(noExtPath)
 	if (await noExtFile.exists()) {
 		return { file: noExtFile, ext: '' }
@@ -105,7 +109,7 @@ function parseRange(rangeHeader: string, size: number): { start: number; end: nu
 async function handleBlossomBlob(
 	sha256: string,
 	method: 'GET' | 'HEAD',
-	rangeHeader: string | null
+	rangeHeader: string | null,
 ): Promise<Response> {
 	const resolved = await resolveBlob(sha256)
 
@@ -114,8 +118,8 @@ async function handleBlossomBlob(
 			status: 404,
 			headers: {
 				...BLOSSOM_CORS_HEADERS,
-				'X-Reason': 'Blob not found'
-			}
+				'X-Reason': 'Blob not found',
+			},
 		})
 	}
 
@@ -127,7 +131,7 @@ async function handleBlossomBlob(
 		...BLOSSOM_CORS_HEADERS,
 		'Content-Type': contentType,
 		'Content-Length': String(size),
-		'Accept-Ranges': 'bytes'
+		'Accept-Ranges': 'bytes',
 	}
 
 	// HEAD request - return headers only
@@ -148,8 +152,8 @@ async function handleBlossomBlob(
 			headers: {
 				...BLOSSOM_CORS_HEADERS,
 				'Content-Range': `bytes */${size}`,
-				'Accept-Ranges': 'bytes'
-			}
+				'Accept-Ranges': 'bytes',
+			},
 		})
 	}
 
@@ -164,8 +168,8 @@ async function handleBlossomBlob(
 			'Content-Type': contentType,
 			'Accept-Ranges': 'bytes',
 			'Content-Length': String(contentLength),
-			'Content-Range': `bytes ${start}-${end}/${size}`
-		}
+			'Content-Range': `bytes ${start}-${end}/${size}`,
+		},
 	})
 }
 
@@ -184,7 +188,7 @@ const _server = serve({
 		if (method === 'OPTIONS') {
 			return new Response(null, {
 				status: 204,
-				headers: BLOSSOM_CORS_HEADERS
+				headers: BLOSSOM_CORS_HEADERS,
 			})
 		}
 
@@ -192,19 +196,21 @@ const _server = serve({
 		if (pathname === '/') {
 			return Response.json(
 				{
-					name: 'map-chunker-blossom',
+					name: 'earthly-blossom',
 					version: '1.0.0',
-					description: 'Blossom server for map-chunks PMTiles'
+					description: 'Blossom server for Earthly map-chunks PMTiles',
+					environment: isProduction ? 'production' : 'development',
+					mapChunksDir: MAP_CHUNKS_DIR,
 				},
 				{
-					headers: BLOSSOM_CORS_HEADERS
-				}
+					headers: BLOSSOM_CORS_HEADERS,
+				},
 			)
 		}
 
 		// Check if this is a Blossom blob request
 		const blobMatch = pathname.match(BLOSSOM_BLOB_REGEX)
-		if (blobMatch && (method === 'GET' || method === 'HEAD')) {
+		if (blobMatch && blobMatch[1] && (method === 'GET' || method === 'HEAD')) {
 			const sha256 = blobMatch[1]
 			const rangeHeader = req.headers.get('range')
 			return handleBlossomBlob(sha256, method, rangeHeader)
@@ -213,9 +219,11 @@ const _server = serve({
 		// Unknown route
 		return new Response('Not Found', {
 			status: 404,
-			headers: BLOSSOM_CORS_HEADERS
+			headers: BLOSSOM_CORS_HEADERS,
 		})
-	}
+	},
 })
 
 console.log(`🌸 Blossom server running at http://localhost:${PORT}/`)
+console.log(`📂 Serving map-chunks from: ${MAP_CHUNKS_DIR}`)
+console.log(`🌍 Environment: ${isProduction ? 'production' : 'development'}`)

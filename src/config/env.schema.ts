@@ -49,7 +49,7 @@ export const envSchema = z.object({
 	APP_PRIVATE_KEY: z.string().length(64).optional(),
 
 	/** Blossom base URL used by the server when publishing map layer set announcements (backend only) */
-	BLOSSOM_SERVER: z.string().default('http://localhost:3001'),
+	BLOSSOM_SERVER: z.string().default('https://blossom.earthly.city'),
 
 	/** Runtime environment */
 	NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

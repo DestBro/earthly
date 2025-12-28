@@ -8,7 +8,7 @@ import {
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
-	SelectValue
+	SelectValue,
 } from '../../../components/ui/select'
 import { useEditorStore } from '../store'
 
@@ -24,20 +24,20 @@ export function MapSettingsPanel() {
 		if (value === 'default') {
 			setMapSource({
 				type: 'default',
-				location: 'remote'
+				location: 'remote',
 			})
 		} else if (value === 'pmtiles') {
 			setMapSource({
 				type: 'pmtiles',
 				location: mapSource.location,
 				url: mapSource.url,
-				file: mapSource.file
+				file: mapSource.file,
 			})
 		} else if (value === 'blossom') {
 			setMapSource({
 				type: 'blossom',
 				location: 'remote',
-				blossomServer: mapSource.blossomServer || 'http://localhost:3001'
+				blossomServer: mapSource.blossomServer || 'https://blossom.earthly.city',
 			})
 		}
 	}
@@ -45,14 +45,14 @@ export function MapSettingsPanel() {
 	const handleLocationChange = (value: 'remote' | 'local') => {
 		setMapSource({
 			...mapSource,
-			location: value
+			location: value,
 		})
 	}
 
 	const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		setMapSource({
 			...mapSource,
-			url: e.target.value
+			url: e.target.value,
 		})
 	}
 
@@ -61,7 +61,7 @@ export function MapSettingsPanel() {
 		if (file) {
 			setMapSource({
 				...mapSource,
-				file
+				file,
 			})
 		}
 	}
@@ -69,7 +69,7 @@ export function MapSettingsPanel() {
 	const handleBlossomServerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		setMapSource({
 			...mapSource,
-			blossomServer: e.target.value
+			blossomServer: e.target.value,
 		})
 	}
 
@@ -148,7 +148,7 @@ export function MapSettingsPanel() {
 						<Input
 							value={mapSource.blossomServer || ''}
 							onChange={handleBlossomServerChange}
-							placeholder="http://localhost:3001"
+							placeholder="https://blossom.earthly.city"
 						/>
 						<p className="text-xs text-gray-500">
 							Optional override. Normally discovered from the Nostr announcement event.

@@ -18,6 +18,17 @@ www.earthly.city {
 }
 
 
+# Blossom server for map chunks
+blossom.earthly.city {
+    reverse_proxy 127.0.0.1:3001
+    encode gzip
+
+    log {
+        output file /var/log/caddy/blossom-access.log
+        format json
+    }
+}
+
 # Fallback for IP-based access (during transition or development)
 :80 {
     # Main web application

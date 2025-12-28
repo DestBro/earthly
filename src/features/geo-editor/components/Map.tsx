@@ -7,7 +7,10 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { useSubscribe } from '@nostr-dev-kit/react'
 import { config } from '@/config'
 import { type BBox, lonLatToWorldGeohash, tileCenterLonLat } from '@/lib/worldGeohash'
-import { NDKMapLayerSetEvent, type MapLayerSetAnnouncementPayload } from '@/lib/ndk/NDKMapLayerSetEvent'
+import {
+	NDKMapLayerSetEvent,
+	type MapLayerSetAnnouncementPayload,
+} from '@/lib/ndk/NDKMapLayerSetEvent'
 
 const DEFAULT_CENTER: [number, number] = [-74.006, 40.7128]
 const DEFAULT_ZOOM = 12
@@ -19,7 +22,7 @@ interface MapContextType {
 
 const MapContext = createContext<MapContextType>({
 	map: null,
-	isLoaded: false
+	isLoaded: false,
 })
 
 export const useMap = () => useContext(MapContext)
@@ -62,7 +65,7 @@ const pmworldState = {
 	announcement: null as AnnouncementRecord | null,
 	precision: 1,
 	maxZoom: 8,
-	blossomServer: 'http://localhost:3001'
+	blossomServer: 'https://blossom.earthly.city',
 }
 
 export const GeoEditorMap: React.FC<MapProps> = ({
@@ -72,7 +75,7 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 	children,
 	className = 'w-full h-full',
 	onLoad,
-	mapSource = { type: 'default', location: 'remote' }
+	mapSource = { type: 'default', location: 'remote' },
 }) => {
 	const center = centerProp ?? DEFAULT_CENTER
 	const zoom = zoomProp ?? DEFAULT_ZOOM
@@ -107,8 +110,8 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 							tiles: [`${params.url}/{z}/{x}/{y}`],
 							minzoom: 0,
 							maxzoom,
-							bounds: [-180, -90, 180, 90]
-						}
+							bounds: [-180, -90, 180, 90],
+						},
 					}
 				}
 
@@ -136,7 +139,7 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 					return {
 						data: new Uint8Array(resp.data),
 						cacheControl: resp.cacheControl,
-						expires: resp.expires
+						expires: resp.expires,
 					}
 				}
 				if (header.tileType === TileType.Mvt) return { data: new Uint8Array() }
@@ -153,8 +156,8 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 		{
 			kinds: NDKMapLayerSetEvent.kinds,
 			authors: [config.serverPubkey],
-			limit: 10
-		}
+			limit: 10,
+		},
 	])
 
 	// Derive a stable "latest content" so our effect doesn't re-trigger on every render.
@@ -197,19 +200,20 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 				payload = null
 			}
 		}
-		const chunkedVectorLayer =
-			payload?.layers.find((l) => l.kind === 'chunked-vector') ?? null
+		const chunkedVectorLayer = payload?.layers.find((l) => l.kind === 'chunked-vector') ?? null
 
-		const announcement = (chunkedVectorLayer && 'announcement' in chunkedVectorLayer
-			? chunkedVectorLayer.announcement
-			: null) as AnnouncementRecord | null
+		const announcement = (
+			chunkedVectorLayer && 'announcement' in chunkedVectorLayer
+				? chunkedVectorLayer.announcement
+				: null
+		) as AnnouncementRecord | null
 
 		const blossomServer =
 			(mapSource.blossomServer && mapSource.blossomServer.trim().length > 0
 				? mapSource.blossomServer.trim()
 				: chunkedVectorLayer && 'blossomServer' in chunkedVectorLayer
 					? chunkedVectorLayer.blossomServer
-					: 'http://localhost:3001') || 'http://localhost:3001'
+					: 'https://blossom.earthly.city') || 'https://blossom.earthly.city'
 
 		pmworldState.blossomServer = blossomServer
 
@@ -304,12 +308,12 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 						minzoom: 0,
 						maxzoom: tileSourceMaxZoom,
 						attribution:
-							'<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>'
-					}
+							'<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
+					},
 				},
 				layers: protomapsLayers('protomaps', namedFlavor('light'), {
-					lang: 'en'
-				})
+					lang: 'en',
+				}),
 			}
 		} else if (mapSource.type === 'pmtiles') {
 			let url = mapSource.url
@@ -328,12 +332,12 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 							type: 'vector',
 							url: pmtilesUrl,
 							attribution:
-								'<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>'
-						}
+								'<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
+						},
 					},
 					layers: protomapsLayers('protomaps', namedFlavor('light'), {
-						lang: 'en'
-					})
+						lang: 'en',
+					}),
 				}
 			}
 		} else if (typeof initialStyle === 'string') {
@@ -349,7 +353,7 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 			style: mapStyle,
 			center,
 			zoom,
-			maxZoom: 22
+			maxZoom: 22,
 		})
 
 		mapRef.current = map
@@ -379,7 +383,7 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 		mapSource.location,
 		initialStyle,
 		center,
-		zoom
+		zoom,
 	])
 
 	// Keep view in sync without destroying/recreating the map instance.
@@ -425,12 +429,12 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 							type: 'vector',
 							url: pmtilesUrl,
 							attribution:
-								'<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>'
-						}
+								'<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
+						},
 					},
 					layers: protomapsLayers('protomaps', namedFlavor('light'), {
-						lang: 'en'
-					})
+						lang: 'en',
+					}),
 				}
 
 				map.setStyle(style)
@@ -450,12 +454,12 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 							minzoom: 0,
 							maxzoom: tileSourceMaxZoom,
 							attribution:
-								'<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>'
-						}
+								'<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
+						},
 					},
 					layers: protomapsLayers('protomaps', namedFlavor('light'), {
-						lang: 'en'
-					})
+						lang: 'en',
+					}),
 				}
 
 				map.setStyle(style)
