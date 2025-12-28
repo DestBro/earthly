@@ -1,6 +1,8 @@
 export { GeoEditor } from './GeoEditor'
 
 export { HistoryManager } from './managers/HistoryManager'
+export { LayerManager } from './managers/LayerManager'
+export { RenderingManager } from './managers/RenderingManager'
 export { SelectionManager } from './managers/SelectionManager'
 export { SnapManager } from './managers/SnapManager'
 export { TransformManager } from './managers/TransformManager'
@@ -16,5 +18,5 @@ export type {
 	HistoryAction,
 	SelectionBounds,
 	SnapResult,
-	TransformOptions
+	TransformOptions,
 } from './types'

@@ -24,6 +24,14 @@ bun relay                  # Start Go relay on port 3334
 bun relay:reset            # Reset relay database and restart
 bun relay:kill             # Kill relay process
 bun run seed              # Generate seed data with Faker
+bun run blossom            # Start Blossom blob storage server
+```
+
+### Map Chunking
+```bash
+bun run chunk              # Chunk PMTiles basemap by geohash (default: precision=1, maxZoom=8)
+bun run chunk 2 10         # Chunk with precision=2, maxZoom=10
+bun run add-layer          # Add custom PMTiles layer to map-chunks/
 ```
 
 ### Building & Deployment
@@ -33,6 +41,12 @@ bun run build:production  # Production build with minification
 bun start                 # Run production server (requires build first)
 bun run setup:vps         # VPS setup script
 bun run deploy            # Deploy to production
+```
+
+### Code Quality
+```bash
+bun run lint              # Check code with Biome
+bun run lint:fix          # Auto-fix with Biome
 ```
 
 ### Testing
@@ -97,6 +111,12 @@ Collections (kind 30406)
 - Bluge for full-text search (NIP-50)
 - Supports Blossom blob storage
 
+**6. Map Chunking System (`map-scripts/index.ts`)**
+- PMTiles chunking by geohash for efficient regional tile serving
+- Generates announcement.json manifest mapping geohash → PMTiles file
+- Content-addressed storage using SHA-256 (deduplicates identical chunks)
+- Custom layer support for adding overlay PMTiles
+
 ### Nostr Event Specification
 
 **Kind 31991 - GeoJSON Data Event**
@@ -159,8 +179,9 @@ Full spec: See `SPEC.md`
 
 **MapLibre Ecosystem:**
 - Protomaps basemaps for tile rendering
-- PMTiles for local tile serving
+- PMTiles for local tile serving (supports raster and vector tiles)
 - OpenFreeMap styles (Liberty style default)
+- Geohash-based tile chunking for efficient regional loading
 
 ## Code Organization Principles
 
@@ -179,6 +200,8 @@ Full spec: See `SPEC.md`
 - **Blob handling:** Large GeoJSON can be external (HTTPS/IPFS) with references in event tags
 - **Mobile-first:** Responsive UI with collapsible panels
 - **Test data:** Use `bun run seed` to generate fake datasets with Faker
+- **Code quality:** Biome is used for linting and formatting (not ESLint/Prettier)
+- **Map chunking:** PMTiles are chunked by geohash and stored in `map-chunks/` with content-addressed filenames
 
 ## File References
 
