@@ -26,6 +26,9 @@ import {
 	useViewMode,
 	REMOTE_FILL_LAYER,
 	REMOTE_LINE_LAYER,
+	REMOTE_POINT_LAYER,
+	REMOTE_ANNOTATION_ANCHOR_LAYER,
+	REMOTE_ANNOTATION_LAYER,
 } from './hooks'
 import { useEditorStore } from './store'
 import type { GeoSearchResult } from './types'
@@ -168,7 +171,7 @@ export function GeoEditorView() {
 	)
 
 	// Map layers hook
-	useMapLayers({
+	const { remoteLayersReady } = useMapLayers({
 		mapRef: map,
 		mounted,
 		visibleGeoEvents,
@@ -412,10 +415,18 @@ export function GeoEditorView() {
 		}
 	}, [magnifierEnabled])
 
-	// Remote dataset click handling
+	// Remote dataset click and hover handling
 	useEffect(() => {
-		if (!map.current) return
+		if (!map.current || !remoteLayersReady) return
 		const mapInstance = map.current
+
+		const remoteLayers = [
+			REMOTE_FILL_LAYER,
+			REMOTE_LINE_LAYER,
+			REMOTE_POINT_LAYER,
+			REMOTE_ANNOTATION_ANCHOR_LAYER,
+			REMOTE_ANNOTATION_LAYER,
+		]
 
 		const handleMapDatasetClick = (event: maplibregl.MapLayerMouseEvent & any) => {
 			const feature = event.features?.[0]
@@ -433,14 +444,34 @@ export function GeoEditorView() {
 			handleInspectDataset(dataset)
 		}
 
-		mapInstance.on('click', REMOTE_FILL_LAYER, handleMapDatasetClick)
-		mapInstance.on('click', REMOTE_LINE_LAYER, handleMapDatasetClick)
+		const handleMouseEnter = () => {
+			mapInstance.getCanvas().style.cursor = 'pointer'
+		}
+
+		const handleMouseLeave = () => {
+			mapInstance.getCanvas().style.cursor = ''
+		}
+
+		for (const layer of remoteLayers) {
+			if (mapInstance.getLayer(layer)) {
+				mapInstance.on('click', layer, handleMapDatasetClick)
+				mapInstance.on('mouseenter', layer, handleMouseEnter)
+				mapInstance.on('mouseleave', layer, handleMouseLeave)
+			}
+		}
 
 		return () => {
-			mapInstance.off('click', REMOTE_FILL_LAYER, handleMapDatasetClick)
-			mapInstance.off('click', REMOTE_LINE_LAYER, handleMapDatasetClick)
+			for (const layer of remoteLayers) {
+				try {
+					mapInstance.off('click', layer, handleMapDatasetClick)
+					mapInstance.off('mouseenter', layer, handleMouseEnter)
+					mapInstance.off('mouseleave', layer, handleMouseLeave)
+				} catch {
+					// Layer may have been removed
+				}
+			}
 		}
-	}, [handleInspectDataset, ensureResolvedFeatureCollection, geoEventsRef])
+	}, [handleInspectDataset, ensureResolvedFeatureCollection, geoEventsRef, remoteLayersReady])
 
 	// Inspector click handling
 	useEffect(() => {

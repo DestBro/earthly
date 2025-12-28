@@ -1,5 +1,5 @@
 import { Maximize2, X, FileText, MessageCircle, MapPin } from 'lucide-react'
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import type { FeatureCollection } from 'geojson'
 import { useEditorStore } from '../../features/geo-editor/store'
 import type { NDKGeoCollectionEvent } from '../../lib/ndk/NDKGeoCollectionEvent'
@@ -76,6 +76,13 @@ export function ViewModePanel({
 
 	// Get the target for comments (either dataset or collection)
 	const commentTarget = viewDataset ?? viewCollection
+	const targetId = commentTarget?.id ?? commentTarget?.dTag ?? null
+
+	// Reset comment-related state when target changes
+	useEffect(() => {
+		setVisibleGeojsonCommentIds(new Set())
+		setAttachedGeojson(null)
+	}, [targetId])
 
 	// Get selected features for attachment
 	const selectedFeatures = useMemo(() => {
@@ -355,6 +362,7 @@ export function ViewModePanel({
 					</div>
 				) : (
 					<CommentsPanel
+						key={commentTarget?.id ?? commentTarget?.dTag ?? 'no-target'}
 						target={commentTarget}
 						onCommentGeojsonVisibilityChange={handleCommentGeojsonVisibilityChange}
 						onZoomToCommentGeojson={handleZoomToCommentGeojson}
