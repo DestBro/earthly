@@ -182,7 +182,125 @@ Kind Purpose
 
 ⸻
 
-8 Open Questions / TODO
+8 GeoJSON Comment Event (kind 31992)
+
+Comments allow users to discuss datasets and collections, optionally attaching GeoJSON annotations. Comments follow NIP-22 threading semantics for replies.
+
+8.1 Event Structure
+
+Field Purpose
+kind 31992 identifies a geo comment.
+content JSON with { "text": "...", "geojson": {...} }. The geojson field is optional.
+tags NIP-22 threading tags plus geo-specific tags.
+
+8.2 Content Format
+
+```json
+{
+  "text": "The park boundary seems incorrect here. I've added a suggested fix.",
+  "geojson": {
+    "type": "FeatureCollection",
+    "features": [...]
+  }
+}
+```
+
+The `text` field contains the human-readable comment. The optional `geojson` field contains a FeatureCollection with annotations, corrections, or related geometry.
+
+8.3 Threading Tags (NIP-22)
+
+Tag Purpose
+d Unique identifier for addressability.
+K Root scope kind (e.g. "31991" for datasets, "30406" for collections).
+k Parent item kind (same as K for top-level comments, "31992" for replies).
+A Root scope address: <kind>:<pubkey>:<d-tag>
+a Parent address (same as A for top-level, or the parent comment's address).
+E Root event ID (if referencing by ID instead of address).
+e Parent event ID.
+P Root event author pubkey.
+p Parent event author pubkey.
+
+8.4 Geo-specific Tags
+
+Tag Example Purpose
+bbox ["bbox", "16.1,48.1,16.7,48.4"] Bounding box of attached GeoJSON (if present).
+g ["g", "u2yh7"] Geohash of comment's GeoJSON centroid.
+
+8.5 Inline Geometry References
+
+Comments may reference datasets or specific features inline using NIP-21 style URIs:
+
+• Dataset reference: `nostr:naddr1...` pointing to a kind 31991 event.
+• Feature reference: `nostr:naddr1...#featureId` to reference a specific feature within a dataset.
+
+Clients SHOULD render these as interactive elements with:
+• Eye toggle: Show/hide the referenced geometry on the map.
+• Zoom button: Fly to the referenced geometry's bounds.
+
+8.6 Example Top-Level Comment
+
+```json
+{
+  "kind": 31992,
+  "content": "{\"text\":\"Great dataset! The eastern boundary needs adjustment.\",\"geojson\":{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"geometry\":{\"type\":\"Point\",\"coordinates\":[16.4,48.2]},\"properties\":{\"note\":\"Issue here\"}}]}}",
+  "tags": [
+    ["d", "comment-uuid-1"],
+    ["A", "31991:npub1pubkey...:dataset-uuid"],
+    ["K", "31991"],
+    ["a", "31991:npub1pubkey...:dataset-uuid"],
+    ["k", "31991"],
+    ["P", "npub1pubkey..."],
+    ["p", "npub1pubkey..."],
+    ["bbox", "16.3,48.1,16.5,48.3"],
+    ["g", "u2yh8"]
+  ]
+}
+```
+
+8.7 Example Reply to Comment
+
+```json
+{
+  "kind": 31992,
+  "content": "{\"text\":\"I agree, here's my suggested correction.\"}",
+  "tags": [
+    ["d", "comment-uuid-2"],
+    ["A", "31991:npub1pubkey...:dataset-uuid"],
+    ["K", "31991"],
+    ["a", "31992:npub1commenter...:comment-uuid-1"],
+    ["k", "31992"],
+    ["e", "parent-comment-event-id", "wss://relay.example"],
+    ["P", "npub1pubkey..."],
+    ["p", "npub1commenter..."]
+  ]
+}
+```
+
+⸻
+
+9 Reactions and Zaps
+
+Standard Nostr reactions (kind 7) and zaps (kind 9735) can target GeoJSON events:
+
+• Reactions SHOULD include an `a` tag pointing to the dataset/collection/comment address.
+• Zaps follow standard NIP-57 flow, targeting the event author.
+
+Example reaction to a dataset:
+
+```json
+{
+  "kind": 7,
+  "content": "❤️",
+  "tags": [
+    ["a", "31991:npub1pubkey...:dataset-uuid"],
+    ["p", "npub1pubkey..."]
+  ]
+}
+```
+
+⸻
+
+10 Open Questions / TODO
 • Should we reserve a separate kind for single Feature objects?
 • Add optional time tag for temporal datasets?
 • Handling tiled GeoJSON (e.g. RFC-8462 GeoJSON seq)?

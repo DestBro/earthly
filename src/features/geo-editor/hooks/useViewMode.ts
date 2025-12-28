@@ -24,6 +24,7 @@ export function useViewMode({ geoEvents, onEnsureInfoPanelVisible }: UseViewMode
 	const setViewingDataset = useEditorStore((state) => state.setViewDataset)
 	const setViewingCollection = useEditorStore((state) => state.setViewCollection)
 	const setViewingCollectionEvents = useEditorStore((state) => state.setViewCollectionEvents)
+	const setViewMode = useEditorStore((state) => state.setViewMode)
 
 	const resolveEventsForCollection = useCallback(
 		(collection: NDKGeoCollectionEvent): NDKGeoEvent[] => {
@@ -41,11 +42,12 @@ export function useViewMode({ geoEvents, onEnsureInfoPanelVisible }: UseViewMode
 
 	const exitViewMode = useCallback(() => {
 		setInfoMode('edit')
+		setViewMode('edit')
 		setViewingDataset(null)
 		setViewingCollection(null)
 		setViewingCollectionEvents([])
 		setSidebarMode('editor')
-	}, [setViewingDataset, setViewingCollection, setViewingCollectionEvents])
+	}, [setViewingDataset, setViewingCollection, setViewingCollectionEvents, setViewMode])
 
 	const handleInspectDataset = useCallback(
 		(event: NDKGeoEvent) => {
@@ -53,10 +55,17 @@ export function useViewMode({ geoEvents, onEnsureInfoPanelVisible }: UseViewMode
 			setViewingCollection(null)
 			setViewingCollectionEvents([])
 			setInfoMode('view')
+			setViewMode('view')
 			setSidebarMode('dataset')
 			onEnsureInfoPanelVisible()
 		},
-		[setViewingDataset, setViewingCollection, setViewingCollectionEvents, onEnsureInfoPanelVisible],
+		[
+			setViewingDataset,
+			setViewingCollection,
+			setViewingCollectionEvents,
+			setViewMode,
+			onEnsureInfoPanelVisible,
+		],
 	)
 
 	const handleInspectCollection = useCallback(
@@ -67,6 +76,7 @@ export function useViewMode({ geoEvents, onEnsureInfoPanelVisible }: UseViewMode
 			setViewingCollectionEvents(referencedEvents)
 			setViewingDataset(null)
 			setInfoMode('view')
+			setViewMode('view')
 			setSidebarMode('dataset')
 			onEnsureInfoPanelVisible()
 		},
@@ -75,6 +85,7 @@ export function useViewMode({ geoEvents, onEnsureInfoPanelVisible }: UseViewMode
 			setViewingCollection,
 			setViewingCollectionEvents,
 			setViewingDataset,
+			setViewMode,
 			onEnsureInfoPanelVisible,
 		],
 	)

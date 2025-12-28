@@ -1,4 +1,5 @@
 import { X } from 'lucide-react'
+import type { FeatureCollection } from 'geojson'
 import { cn } from '@/lib/utils'
 import { useEditorStore } from '../features/geo-editor/store'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
@@ -24,6 +25,10 @@ export interface GeoEditorInfoPanelProps {
 	onClose?: () => void
 	getDatasetKey: (event: NDKGeoEvent) => string
 	getDatasetName: (event: NDKGeoEvent) => string
+	/** Callback to add/remove comment GeoJSON overlay on map */
+	onCommentGeometryVisibility?: (commentId: string, geojson: FeatureCollection | null) => void
+	/** Callback to zoom to a bounding box */
+	onZoomToBounds?: (bounds: [number, number, number, number]) => void
 }
 
 export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
@@ -39,6 +44,8 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 		onClose,
 		getDatasetKey,
 		getDatasetName,
+		onCommentGeometryVisibility,
+		onZoomToBounds,
 	} = props
 
 	// Store state
@@ -71,6 +78,8 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 				onClose={onClose}
 				getDatasetKey={getDatasetKey}
 				getDatasetName={getDatasetName}
+				onCommentGeometryVisibility={onCommentGeometryVisibility}
+				onZoomToBounds={onZoomToBounds}
 			/>
 		)
 	}

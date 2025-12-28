@@ -44,6 +44,11 @@ export function GeoEditorView() {
 	const [deletingKey, setDeletingKey] = useState<string | null>(null)
 	const [resolvedCollectionsVersion, setResolvedCollectionsVersion] = useState(0)
 
+	// Comment geometry layers - track which comment geometries are visible on map
+	const commentGeometryLayers = useRef<Map<string, { sourceId: string; layerIds: string[] }>>(
+		new Map(),
+	)
+
 	// Drawing mode state
 	const [isDrawingMode, setIsDrawingMode] = useState(false)
 	const [magnifierEnabled, setMagnifierEnabled] = useState(false)
@@ -514,6 +519,105 @@ export function GeoEditorView() {
 		setSidebarMode('info')
 	}, [previousMode, editor, setCurrentMode, setInspectorActive, setSidebarMode])
 
+	// Comment geometry visibility handler - adds/removes GeoJSON layers on map
+	const handleCommentGeometryVisibility = useCallback(
+		(commentId: string, geojson: FeatureCollection | null) => {
+			if (!map.current) return
+
+			const mapInstance = map.current
+			const existing = commentGeometryLayers.current.get(commentId)
+
+			// Remove existing layers for this comment
+			if (existing) {
+				for (const layerId of existing.layerIds) {
+					if (mapInstance.getLayer(layerId)) {
+						mapInstance.removeLayer(layerId)
+					}
+				}
+				if (mapInstance.getSource(existing.sourceId)) {
+					mapInstance.removeSource(existing.sourceId)
+				}
+				commentGeometryLayers.current.delete(commentId)
+			}
+
+			// If hiding, we're done
+			if (!geojson) return
+
+			// Add new layers
+			const sourceId = `comment-geo-${commentId}`
+			const fillLayerId = `comment-fill-${commentId}`
+			const lineLayerId = `comment-line-${commentId}`
+			const pointLayerId = `comment-point-${commentId}`
+
+			mapInstance.addSource(sourceId, {
+				type: 'geojson',
+				data: geojson,
+			})
+
+			// Add fill layer for polygons
+			mapInstance.addLayer({
+				id: fillLayerId,
+				type: 'fill',
+				source: sourceId,
+				filter: ['==', ['geometry-type'], 'Polygon'],
+				paint: {
+					'fill-color': '#f97316', // Orange for comments
+					'fill-opacity': 0.3,
+				},
+			})
+
+			// Add line layer
+			mapInstance.addLayer({
+				id: lineLayerId,
+				type: 'line',
+				source: sourceId,
+				filter: [
+					'any',
+					['==', ['geometry-type'], 'LineString'],
+					['==', ['geometry-type'], 'Polygon'],
+				],
+				paint: {
+					'line-color': '#f97316',
+					'line-width': 2,
+					'line-dasharray': [2, 2], // Dashed line for comments
+				},
+			})
+
+			// Add point layer
+			mapInstance.addLayer({
+				id: pointLayerId,
+				type: 'circle',
+				source: sourceId,
+				filter: ['==', ['geometry-type'], 'Point'],
+				paint: {
+					'circle-color': '#f97316',
+					'circle-radius': 6,
+					'circle-stroke-color': '#fff',
+					'circle-stroke-width': 2,
+				},
+			})
+
+			commentGeometryLayers.current.set(commentId, {
+				sourceId,
+				layerIds: [fillLayerId, lineLayerId, pointLayerId],
+			})
+		},
+		[],
+	)
+
+	// Zoom to bounds handler
+	const handleZoomToBounds = useCallback((bounds: [number, number, number, number]) => {
+		if (!map.current) return
+		const [west, south, east, north] = bounds
+		map.current.fitBounds(
+			[
+				[west, south],
+				[east, north],
+			],
+			{ padding: 50, duration: 500 },
+		)
+	}, [])
+
 	const multiSelectModifierLabel = editor?.getMultiSelectModifierLabel() ?? 'Shift'
 
 	return (
@@ -664,6 +768,8 @@ export function GeoEditorView() {
 										onClose={() => setShowInfoPanel(false)}
 										getDatasetKey={getDatasetKey}
 										getDatasetName={getDatasetName}
+										onCommentGeometryVisibility={handleCommentGeometryVisibility}
+										onZoomToBounds={handleZoomToBounds}
 									/>
 								) : (
 									<div className="text-sm text-gray-600">
@@ -683,6 +789,8 @@ export function GeoEditorView() {
 									onClose={() => setShowInfoPanel(false)}
 									getDatasetKey={getDatasetKey}
 									getDatasetName={getDatasetName}
+									onCommentGeometryVisibility={handleCommentGeometryVisibility}
+									onZoomToBounds={handleZoomToBounds}
 								/>
 							)}
 						</div>
@@ -738,6 +846,8 @@ export function GeoEditorView() {
 									onClose={() => setMobileInfoOpen(false)}
 									getDatasetKey={getDatasetKey}
 									getDatasetName={getDatasetName}
+									onCommentGeometryVisibility={handleCommentGeometryVisibility}
+									onZoomToBounds={handleZoomToBounds}
 								/>
 							</div>
 						</SheetContent>
