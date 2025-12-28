@@ -147,7 +147,12 @@ export class LayerManager {
 					['any', ['==', ['get', 'meta'], 'feature'], ['==', ['get', 'meta'], 'feature-temp']],
 				],
 				paint: {
-					'fill-color': ['case', ['==', ['get', 'active'], true], '#fbb03b', '#3bb2d0'],
+					'fill-color': [
+						'case',
+						['==', ['get', 'active'], true],
+						'#fbb03b',
+						['coalesce', ['get', 'color'], '#3bb2d0'],
+					],
 					'fill-opacity': ['case', ['==', ['get', 'meta'], 'feature-temp'], 0.2, 0.3],
 					'fill-outline-color': ['case', ['==', ['get', 'active'], true], '#1d4ed8', '#1f2937'],
 				},
@@ -190,7 +195,12 @@ export class LayerManager {
 					['any', ['==', ['get', 'meta'], 'feature'], ['==', ['get', 'meta'], 'feature-temp']],
 				],
 				paint: {
-					'line-color': ['case', ['==', ['get', 'active'], true], '#1d4ed8', '#3bb2d0'],
+					'line-color': [
+						'case',
+						['==', ['get', 'active'], true],
+						'#1d4ed8',
+						['coalesce', ['get', 'color'], '#3bb2d0'],
+					],
 					'line-width': ['case', ['==', ['get', 'active'], true], 4, 2],
 					'line-dasharray': [
 						'case',
@@ -236,7 +246,12 @@ export class LayerManager {
 				],
 				paint: {
 					'circle-radius': ['case', ['==', ['get', 'active'], true], 8, 6],
-					'circle-color': ['case', ['==', ['get', 'active'], true], '#1d4ed8', '#3bb2d0'],
+					'circle-color': [
+						'case',
+						['==', ['get', 'active'], true],
+						'#1d4ed8',
+						['coalesce', ['get', 'color'], '#3bb2d0'],
+					],
 					'circle-stroke-width': ['case', ['==', ['get', 'active'], true], 3, 2],
 					'circle-stroke-color': ['case', ['==', ['get', 'active'], true], '#93c5fd', '#fff'],
 				},

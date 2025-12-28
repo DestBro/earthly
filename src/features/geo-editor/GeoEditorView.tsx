@@ -3,6 +3,7 @@ import type { FeatureCollection } from 'geojson'
 import { Edit3, FilePenLine, Layers, Search, UploadCloud } from 'lucide-react'
 import type maplibregl from 'maplibre-gl'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { DebugDialog } from '../../components/DebugDialog'
 import { GeoDatasetsPanelContent } from '../../components/GeoDatasetsPanel'
 import { GeoEditorInfoPanelContent } from '../../components/GeoEditorInfoPanel'
 import { LoginSessionButtons } from '../../components/LoginSessionButtom'
@@ -144,6 +145,9 @@ export function GeoEditorView() {
 		setInfoMode,
 		sidebarMode,
 		setSidebarMode,
+		debugEvent,
+		debugDialogOpen,
+		setDebugDialogOpen,
 		viewingDataset,
 		viewingCollection,
 		exitViewMode,
@@ -819,6 +823,10 @@ export function GeoEditorView() {
 						</Button>
 					</div>
 				</>
+			)}
+
+			{debugEvent && (
+				<DebugDialog event={debugEvent} open={debugDialogOpen} onOpenChange={setDebugDialogOpen} />
 			)}
 		</div>
 	)

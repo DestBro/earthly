@@ -13,6 +13,9 @@ export function convertGeoEventsToEditorFeatures(
 		const datasetId = event.datasetId ?? event.id
 		const collection = collectionResolver?.(event) ?? event.featureCollection
 
+		// Extract collection-level color to propagate to features
+		const collectionColor = getCollectionColor(collection)
+
 		collection.features.forEach((feature, index) => {
 			if (!feature.geometry) return
 
@@ -20,6 +23,9 @@ export function convertGeoEventsToEditorFeatures(
 				typeof feature.id === 'string'
 					? feature.id
 					: `${datasetId}:${typeof feature.id === 'number' ? feature.id : index}`
+
+			// Use feature-level color if present, otherwise use collection color
+			const featureColor = (feature.properties as any)?.color ?? collectionColor
 
 			aggregated.push({
 				type: 'Feature',
@@ -31,12 +37,24 @@ export function convertGeoEventsToEditorFeatures(
 					datasetId,
 					sourceEventId: event.id,
 					hashtags: event.hashtags,
+					...(featureColor ? { color: featureColor } : {}),
 				},
 			})
 		})
 	})
 
 	return aggregated
+}
+
+/**
+ * Extract color from collection-level properties.
+ * Checks both root-level `color` and `properties.color`.
+ */
+function getCollectionColor(collection: FeatureCollection): string | undefined {
+	const asAny = collection as any
+	if (typeof asAny.color === 'string') return asAny.color
+	if (typeof asAny.properties?.color === 'string') return asAny.properties.color
+	return undefined
 }
 
 export function convertGeoEventsToFeatureCollection(
@@ -46,16 +64,26 @@ export function convertGeoEventsToFeatureCollection(
 	const features = events.flatMap((event) => {
 		const datasetId = event.datasetId ?? event.id
 		const collection = collectionResolver?.(event) ?? event.featureCollection
+
+		// Extract collection-level color to propagate to features
+		const collectionColor = getCollectionColor(collection)
+
 		return collection.features
 			.filter((feature) => Boolean(feature.geometry))
-			.map((feature) => ({
-				...feature,
-				properties: {
-					...(feature.properties ?? {}),
-					datasetId,
-					sourceEventId: event.id,
-				},
-			}))
+			.map((feature) => {
+				// Use feature-level color if present, otherwise use collection color
+				const featureColor = (feature.properties as any)?.color ?? collectionColor
+
+				return {
+					...feature,
+					properties: {
+						...(feature.properties ?? {}),
+						datasetId,
+						sourceEventId: event.id,
+						...(featureColor ? { color: featureColor } : {}),
+					},
+				}
+			})
 	})
 
 	return {
