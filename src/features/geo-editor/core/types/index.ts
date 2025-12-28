@@ -5,6 +5,7 @@ export type EditorMode =
 	| 'draw_point'
 	| 'draw_linestring'
 	| 'draw_polygon'
+	| 'draw_annotation'
 	| 'edit'
 	| 'select'
 	| 'static'
@@ -59,6 +60,13 @@ export interface EditorFeature extends Feature {
 		description?: string
 		color?: string
 		customProperties?: Record<string, any>
+		// Annotation-specific properties (flat for MapLibre compatibility)
+		featureType?: 'annotation' | 'marker'
+		text?: string
+		textFontSize?: number
+		textColor?: string
+		textHaloColor?: string
+		textHaloWidth?: number
 	}
 }
 

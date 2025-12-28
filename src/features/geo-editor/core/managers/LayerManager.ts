@@ -24,6 +24,8 @@ export class LayerManager {
 	readonly LAYER_LINE = 'geo-editor-line'
 	readonly LAYER_FILL = 'geo-editor-fill'
 	readonly LAYER_POINT = 'geo-editor-point'
+	readonly LAYER_ANNOTATION_ANCHOR = 'geo-editor-annotation-anchor'
+	readonly LAYER_ANNOTATION = 'geo-editor-annotation'
 	readonly LAYER_VERTEX = 'geo-editor-vertex'
 	readonly LAYER_MIDPOINT = 'geo-editor-midpoint'
 	readonly LAYER_SELECTION_FILL = 'geo-editor-selection-fill'
@@ -228,7 +230,7 @@ export class LayerManager {
 			})
 		}
 
-		// 5. Main point layer
+		// 5. Main point layer (excludes annotations)
 		if (!this.map.getLayer(this.LAYER_POINT)) {
 			this.map.addLayer({
 				id: this.LAYER_POINT,
@@ -238,6 +240,7 @@ export class LayerManager {
 					'all',
 					['any', ['==', ['geometry-type'], 'Point'], ['==', ['geometry-type'], 'MultiPoint']],
 					['==', ['get', 'meta'], 'feature'],
+					['!=', ['get', 'featureType'], 'annotation'],
 				],
 				paint: {
 					'circle-radius': ['case', ['==', ['get', 'active'], true], 8, 6],
@@ -249,6 +252,70 @@ export class LayerManager {
 					],
 					'circle-stroke-width': ['case', ['==', ['get', 'active'], true], 3, 2],
 					'circle-stroke-color': ['case', ['==', ['get', 'active'], true], '#93c5fd', '#fff'],
+				},
+			})
+		}
+
+		// 5b. Annotation anchor layer (small circle for click/drag interaction)
+		if (!this.map.getLayer(this.LAYER_ANNOTATION_ANCHOR)) {
+			this.map.addLayer({
+				id: this.LAYER_ANNOTATION_ANCHOR,
+				type: 'circle',
+				source: this.SOURCE_ID,
+				filter: [
+					'all',
+					['==', ['geometry-type'], 'Point'],
+					['==', ['get', 'meta'], 'feature'],
+					['==', ['get', 'featureType'], 'annotation'],
+				],
+				paint: {
+					'circle-radius': ['case', ['==', ['get', 'active'], true], 6, 4],
+					'circle-color': [
+						'case',
+						['==', ['get', 'active'], true],
+						'#1d4ed8',
+						'#f59e0b', // Amber color for annotations
+					],
+					'circle-stroke-width': 2,
+					'circle-stroke-color': '#fff',
+				},
+			})
+		}
+
+		// 5c. Annotation text layer (symbol layer for text annotations)
+		if (!this.map.getLayer(this.LAYER_ANNOTATION)) {
+			this.map.addLayer({
+				id: this.LAYER_ANNOTATION,
+				type: 'symbol',
+				source: this.SOURCE_ID,
+				filter: [
+					'all',
+					['==', ['geometry-type'], 'Point'],
+					['==', ['get', 'meta'], 'feature'],
+					['==', ['get', 'featureType'], 'annotation'],
+				],
+				layout: {
+					'text-field': ['coalesce', ['get', 'text'], 'Annotation'],
+					'text-size': ['coalesce', ['get', 'textFontSize'], 14],
+					'text-anchor': 'top',
+					'text-offset': [0, 0.8],
+					'text-allow-overlap': true,
+					'text-ignore-placement': true,
+				},
+				paint: {
+					'text-color': [
+						'case',
+						['==', ['get', 'active'], true],
+						'#1d4ed8',
+						['coalesce', ['get', 'textColor'], '#1f2937'],
+					],
+					'text-halo-color': [
+						'case',
+						['==', ['get', 'active'], true],
+						'#93c5fd',
+						['coalesce', ['get', 'textHaloColor'], '#ffffff'],
+					],
+					'text-halo-width': ['coalesce', ['get', 'textHaloWidth'], 1.5],
 				},
 			})
 		}
@@ -413,6 +480,9 @@ export class LayerManager {
 			if (this.map.getLayer(this.LAYER_GIZMO_LINE)) this.map.removeLayer(this.LAYER_GIZMO_LINE)
 			if (this.map.getLayer(this.LAYER_SELECTION_POINT))
 				this.map.removeLayer(this.LAYER_SELECTION_POINT)
+			if (this.map.getLayer(this.LAYER_ANNOTATION)) this.map.removeLayer(this.LAYER_ANNOTATION)
+			if (this.map.getLayer(this.LAYER_ANNOTATION_ANCHOR))
+				this.map.removeLayer(this.LAYER_ANNOTATION_ANCHOR)
 			if (this.map.getLayer(this.LAYER_POINT)) this.map.removeLayer(this.LAYER_POINT)
 			if (this.map.getLayer(this.LAYER_SELECTION_LINE))
 				this.map.removeLayer(this.LAYER_SELECTION_LINE)

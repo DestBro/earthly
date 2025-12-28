@@ -12,7 +12,12 @@ import { RenderingManager } from './managers/RenderingManager'
 import { SelectionManager } from './managers/SelectionManager'
 import { SnapManager } from './managers/SnapManager'
 import { TransformManager } from './managers/TransformManager'
-import { DrawLineStringMode, DrawPointMode, DrawPolygonMode } from './modes/DrawMode'
+import {
+	DrawAnnotationMode,
+	DrawLineStringMode,
+	DrawPointMode,
+	DrawPolygonMode,
+} from './modes/DrawMode'
 import { EditMode } from './modes/EditMode'
 import type {
 	EditorEvent,
@@ -64,6 +69,7 @@ export class GeoEditor {
 	private drawPointMode: DrawPointMode
 	private drawLineMode: DrawLineStringMode
 	private drawPolygonMode: DrawPolygonMode
+	private drawAnnotationMode: DrawAnnotationMode
 	private editMode: EditMode
 	private doubleClickZoomDisabled: boolean = false
 
@@ -125,6 +131,7 @@ export class GeoEditor {
 		this.drawPointMode = new DrawPointMode()
 		this.drawLineMode = new DrawLineStringMode()
 		this.drawPolygonMode = new DrawPolygonMode()
+		this.drawAnnotationMode = new DrawAnnotationMode()
 		this.editMode = new EditMode()
 
 		this.initialize()
@@ -143,6 +150,7 @@ export class GeoEditor {
 		this.drawPointMode.onAdd(this.map)
 		this.drawLineMode.onAdd(this.map)
 		this.drawPolygonMode.onAdd(this.map)
+		this.drawAnnotationMode.onAdd(this.map)
 		this.editMode.onAdd(this.map)
 
 		// Setup layers/sources only once the style is loaded
@@ -227,6 +235,15 @@ export class GeoEditor {
 				this.addFeature(feature)
 				this.emit('create', { type: 'create', features: [feature] })
 			}
+		} else if (this.mode === 'draw_annotation') {
+			const feature = this.drawAnnotationMode.onClick(e)
+			if (feature) {
+				this.addFeature(feature)
+				this.emit('create', { type: 'create', features: [feature] })
+				// Auto-select the new annotation so user can immediately edit text
+				this.selection.select(feature.id)
+				this.render()
+			}
 		} else if (this.mode === 'draw_linestring') {
 			const feature = this.drawLineMode.onClick(e)
 			if (feature) {
@@ -253,7 +270,12 @@ export class GeoEditor {
 	private handleSelectClick(e: MapMouseEvent): void {
 		if (!this.map.getLayer(this.layers.LAYER_FILL)) return
 		const features = this.map.queryRenderedFeatures(e.point, {
-			layers: [this.layers.LAYER_FILL, this.layers.LAYER_LINE, this.layers.LAYER_POINT],
+			layers: [
+				this.layers.LAYER_FILL,
+				this.layers.LAYER_LINE,
+				this.layers.LAYER_POINT,
+				this.layers.LAYER_ANNOTATION_ANCHOR,
+			],
 		})
 
 		if (features.length > 0) {
@@ -602,7 +624,14 @@ export class GeoEditor {
 				[minX, minY],
 				[maxX, maxY],
 			],
-			{ layers: [this.layers.LAYER_FILL, this.layers.LAYER_LINE, this.layers.LAYER_POINT] },
+			{
+				layers: [
+					this.layers.LAYER_FILL,
+					this.layers.LAYER_LINE,
+					this.layers.LAYER_POINT,
+					this.layers.LAYER_ANNOTATION_ANCHOR,
+				],
+			},
 		)
 
 		const featureIds = Array.from(
@@ -1071,6 +1100,7 @@ export class GeoEditor {
 		this.drawPointMode.onRemove()
 		this.drawLineMode.onRemove()
 		this.drawPolygonMode.onRemove()
+		this.drawAnnotationMode.onRemove()
 		this.editMode.onRemove()
 
 		this.features.clear()
@@ -1122,7 +1152,12 @@ export class GeoEditor {
 	}
 
 	private isDrawMode(mode: EditorMode): boolean {
-		return mode === 'draw_point' || mode === 'draw_linestring' || mode === 'draw_polygon'
+		return (
+			mode === 'draw_point' ||
+			mode === 'draw_linestring' ||
+			mode === 'draw_polygon' ||
+			mode === 'draw_annotation'
+		)
 	}
 
 	private updateDoubleClickZoomState(): void {
@@ -1242,6 +1277,20 @@ export class GeoEditor {
 			if (feature) {
 				this.addFeature(feature)
 				this.emit('create', { type: 'create', features: [feature] })
+			}
+			return
+		}
+
+		if (this.mode === 'draw_annotation') {
+			const feature = this.drawAnnotationMode.onClick({
+				lngLat: { lng: position[0], lat: position[1] },
+			} as MapMouseEvent)
+			if (feature) {
+				this.addFeature(feature)
+				this.emit('create', { type: 'create', features: [feature] })
+				// Auto-select the new annotation so user can immediately edit text
+				this.selection.select(feature.id)
+				this.render()
 			}
 			return
 		}

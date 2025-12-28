@@ -11,11 +11,19 @@ const REMOTE_SOURCE_ID = 'geo-editor-remote-datasets'
 const REMOTE_FILL_LAYER = 'geo-editor-remote-fill'
 const REMOTE_LINE_LAYER = 'geo-editor-remote-line'
 const REMOTE_POINT_LAYER = 'geo-editor-remote-point'
+const REMOTE_ANNOTATION_ANCHOR_LAYER = 'geo-editor-remote-annotation-anchor'
+const REMOTE_ANNOTATION_LAYER = 'geo-editor-remote-annotation'
 const BLOB_PREVIEW_SOURCE_ID = 'geo-editor-blob-preview'
 const BLOB_PREVIEW_FILL_LAYER = 'geo-editor-blob-preview-fill'
 const BLOB_PREVIEW_LINE_LAYER = 'geo-editor-blob-preview-line'
 
-export { REMOTE_FILL_LAYER, REMOTE_LINE_LAYER, REMOTE_POINT_LAYER }
+export {
+	REMOTE_FILL_LAYER,
+	REMOTE_LINE_LAYER,
+	REMOTE_POINT_LAYER,
+	REMOTE_ANNOTATION_ANCHOR_LAYER,
+	REMOTE_ANNOTATION_LAYER,
+}
 
 interface UseMapLayersOptions {
 	mapRef: React.MutableRefObject<maplibregl.Map | null>
@@ -48,89 +56,147 @@ export function useMapLayers({
 				// Check if we can safely access the style
 				const style = mapInstance.getStyle()
 				if (!style) return
-				if (mapInstance.getSource(REMOTE_SOURCE_ID)) {
-					// Source already exists, mark as ready
-					if (!remoteLayersReady) setRemoteLayersReady(true)
-					return
-				}
 			} catch {
 				return
 			}
 
 			try {
-				// Remote dataset preview source/layers
-				mapInstance.addSource(REMOTE_SOURCE_ID, {
-					type: 'geojson',
-					data: { type: 'FeatureCollection', features: [] },
-				})
-				mapInstance.addLayer({
-					id: REMOTE_FILL_LAYER,
-					type: 'fill',
-					source: REMOTE_SOURCE_ID,
-					filter: [
-						'any',
-						['==', ['geometry-type'], 'Polygon'],
-						['==', ['geometry-type'], 'MultiPolygon'],
-					],
-					paint: {
-						'fill-color': ['coalesce', ['get', 'color'], '#1d4ed8'],
-						'fill-opacity': 0.15,
-					},
-				})
-				mapInstance.addLayer({
-					id: REMOTE_LINE_LAYER,
-					type: 'line',
-					source: REMOTE_SOURCE_ID,
-					paint: {
-						'line-color': ['coalesce', ['get', 'color'], '#1d4ed8'],
-						'line-width': 2,
-					},
-				})
-				mapInstance.addLayer({
-					id: REMOTE_POINT_LAYER,
-					type: 'circle',
-					source: REMOTE_SOURCE_ID,
-					filter: [
-						'any',
-						['==', ['geometry-type'], 'Point'],
-						['==', ['geometry-type'], 'MultiPoint'],
-					],
-					paint: {
-						'circle-radius': 6,
-						'circle-color': ['coalesce', ['get', 'color'], '#1d4ed8'],
-						'circle-stroke-width': 2,
-						'circle-stroke-color': '#fff',
-					},
-				})
+				// Add source if it doesn't exist
+				if (!mapInstance.getSource(REMOTE_SOURCE_ID)) {
+					mapInstance.addSource(REMOTE_SOURCE_ID, {
+						type: 'geojson',
+						data: { type: 'FeatureCollection', features: [] },
+					})
+				}
+				// Add layers only if they don't exist
+				if (!mapInstance.getLayer(REMOTE_FILL_LAYER)) {
+					mapInstance.addLayer({
+						id: REMOTE_FILL_LAYER,
+						type: 'fill',
+						source: REMOTE_SOURCE_ID,
+						filter: [
+							'any',
+							['==', ['geometry-type'], 'Polygon'],
+							['==', ['geometry-type'], 'MultiPolygon'],
+						],
+						paint: {
+							'fill-color': ['coalesce', ['get', 'color'], '#1d4ed8'],
+							'fill-opacity': 0.15,
+						},
+					})
+				}
+				if (!mapInstance.getLayer(REMOTE_LINE_LAYER)) {
+					mapInstance.addLayer({
+						id: REMOTE_LINE_LAYER,
+						type: 'line',
+						source: REMOTE_SOURCE_ID,
+						paint: {
+							'line-color': ['coalesce', ['get', 'color'], '#1d4ed8'],
+							'line-width': 2,
+						},
+					})
+				}
+				// Point layer (excludes annotations)
+				if (!mapInstance.getLayer(REMOTE_POINT_LAYER)) {
+					mapInstance.addLayer({
+						id: REMOTE_POINT_LAYER,
+						type: 'circle',
+						source: REMOTE_SOURCE_ID,
+						filter: [
+							'all',
+							['any', ['==', ['geometry-type'], 'Point'], ['==', ['geometry-type'], 'MultiPoint']],
+							['!=', ['get', 'featureType'], 'annotation'],
+						],
+						paint: {
+							'circle-radius': 6,
+							'circle-color': ['coalesce', ['get', 'color'], '#1d4ed8'],
+							'circle-stroke-width': 2,
+							'circle-stroke-color': '#fff',
+						},
+					})
+				}
+
+				// Annotation anchor layer (small circle marker)
+				if (!mapInstance.getLayer(REMOTE_ANNOTATION_ANCHOR_LAYER)) {
+					mapInstance.addLayer({
+						id: REMOTE_ANNOTATION_ANCHOR_LAYER,
+						type: 'circle',
+						source: REMOTE_SOURCE_ID,
+						filter: [
+							'all',
+							['==', ['geometry-type'], 'Point'],
+							['==', ['get', 'featureType'], 'annotation'],
+						],
+						paint: {
+							'circle-radius': 4,
+							'circle-color': '#f59e0b', // Amber
+							'circle-stroke-width': 2,
+							'circle-stroke-color': '#fff',
+						},
+					})
+				}
+
+				// Annotation text layer
+				if (!mapInstance.getLayer(REMOTE_ANNOTATION_LAYER)) {
+					mapInstance.addLayer({
+						id: REMOTE_ANNOTATION_LAYER,
+						type: 'symbol',
+						source: REMOTE_SOURCE_ID,
+						filter: [
+							'all',
+							['==', ['geometry-type'], 'Point'],
+							['==', ['get', 'featureType'], 'annotation'],
+						],
+						layout: {
+							'text-field': ['coalesce', ['get', 'text'], 'Annotation'],
+							'text-size': ['coalesce', ['get', 'textFontSize'], 14],
+							'text-anchor': 'top',
+							'text-offset': [0, 0.8],
+							'text-allow-overlap': true,
+							'text-ignore-placement': true,
+						},
+						paint: {
+							'text-color': ['coalesce', ['get', 'textColor'], '#1f2937'],
+							'text-halo-color': ['coalesce', ['get', 'textHaloColor'], '#ffffff'],
+							'text-halo-width': ['coalesce', ['get', 'textHaloWidth'], 1.5],
+						},
+					})
+				}
 
 				// Blob preview source/layers
-				mapInstance.addSource(BLOB_PREVIEW_SOURCE_ID, {
-					type: 'geojson',
-					data: { type: 'FeatureCollection', features: [] },
-				})
-				mapInstance.addLayer({
-					id: BLOB_PREVIEW_FILL_LAYER,
-					type: 'fill',
-					source: BLOB_PREVIEW_SOURCE_ID,
-					filter: [
-						'any',
-						['==', ['geometry-type'], 'Polygon'],
-						['==', ['geometry-type'], 'MultiPolygon'],
-					],
-					paint: {
-						'fill-color': '#f97316',
-						'fill-opacity': 0.2,
-					},
-				})
-				mapInstance.addLayer({
-					id: BLOB_PREVIEW_LINE_LAYER,
-					type: 'line',
-					source: BLOB_PREVIEW_SOURCE_ID,
-					paint: {
-						'line-color': '#f97316',
-						'line-width': 2,
-					},
-				})
+				if (!mapInstance.getSource(BLOB_PREVIEW_SOURCE_ID)) {
+					mapInstance.addSource(BLOB_PREVIEW_SOURCE_ID, {
+						type: 'geojson',
+						data: { type: 'FeatureCollection', features: [] },
+					})
+				}
+				if (!mapInstance.getLayer(BLOB_PREVIEW_FILL_LAYER)) {
+					mapInstance.addLayer({
+						id: BLOB_PREVIEW_FILL_LAYER,
+						type: 'fill',
+						source: BLOB_PREVIEW_SOURCE_ID,
+						filter: [
+							'any',
+							['==', ['geometry-type'], 'Polygon'],
+							['==', ['geometry-type'], 'MultiPolygon'],
+						],
+						paint: {
+							'fill-color': '#f97316',
+							'fill-opacity': 0.2,
+						},
+					})
+				}
+				if (!mapInstance.getLayer(BLOB_PREVIEW_LINE_LAYER)) {
+					mapInstance.addLayer({
+						id: BLOB_PREVIEW_LINE_LAYER,
+						type: 'line',
+						source: BLOB_PREVIEW_SOURCE_ID,
+						paint: {
+							'line-color': '#f97316',
+							'line-width': 2,
+						},
+					})
+				}
 				setRemoteLayersReady(true)
 			} catch (error) {
 				console.warn('Failed to initialize remote map layers:', error)
@@ -160,7 +226,7 @@ export function useMapLayers({
 				// Map may have been removed
 			}
 		}
-	}, [mounted, mapRef, remoteLayersReady])
+	}, [mounted, mapRef])
 
 	// Update remote datasets layer
 	useEffect(() => {
@@ -205,6 +271,7 @@ export function useMapLayers({
 		REMOTE_SOURCE_ID,
 		REMOTE_FILL_LAYER,
 		REMOTE_LINE_LAYER,
+		REMOTE_ANNOTATION_LAYER,
 		BLOB_PREVIEW_SOURCE_ID,
 	}
 }

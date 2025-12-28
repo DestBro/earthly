@@ -282,7 +282,13 @@ export function GeometryDisplay({ geometry }: { geometry: Geometry }) {
 }
 
 // Compact badge for table display
-export function GeometryBadge({ geometry }: { geometry: Geometry }) {
+export function GeometryBadge({
+	geometry,
+	isAnnotation,
+}: {
+	geometry: Geometry
+	isAnnotation?: boolean
+}) {
 	const typeShort: Record<string, string> = {
 		Point: 'Pt',
 		LineString: 'Line',
@@ -299,6 +305,15 @@ export function GeometryBadge({ geometry }: { geometry: Geometry }) {
 		MultiPoint: 'bg-green-50 text-green-600',
 		MultiLineString: 'bg-blue-50 text-blue-600',
 		MultiPolygon: 'bg-purple-50 text-purple-600',
+	}
+
+	// Special styling for annotations
+	if (isAnnotation) {
+		return (
+			<span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700">
+				Text
+			</span>
+		)
 	}
 
 	return (

@@ -16,6 +16,7 @@ import {
 	Route,
 	Split as SplitIcon,
 	Trash2,
+	Type,
 	Undo2,
 	Upload,
 	UploadCloud,
@@ -250,6 +251,14 @@ export function Toolbar({
 			variant: mode === 'draw_polygon' ? 'default' : 'outline',
 			ariaLabel: 'Draw polygon',
 		},
+		// 2b. Draw annotation
+		{
+			key: 'annotation',
+			icon: Type,
+			onClick: () => handleModeChange('draw_annotation'),
+			variant: mode === 'draw_annotation' ? 'default' : 'outline',
+			ariaLabel: 'Draw text annotation',
+		},
 		// 3. Undo/Redo
 		{
 			key: 'undo',
@@ -439,6 +448,13 @@ export function Toolbar({
 			onClick: () => handleModeChange('draw_polygon'),
 			variant: mode === 'draw_polygon' ? 'default' : 'outline',
 			ariaLabel: 'Draw polygon',
+		},
+		{
+			key: 'annotation',
+			icon: Type,
+			onClick: () => handleModeChange('draw_annotation'),
+			variant: mode === 'draw_annotation' ? 'default' : 'outline',
+			ariaLabel: 'Draw text annotation',
 		},
 	]
 

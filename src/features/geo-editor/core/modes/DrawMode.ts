@@ -3,6 +3,12 @@ import type { Map, MapMouseEvent } from 'maplibre-gl'
 import type { DrawFeatureType, EditorFeature } from '../types'
 import { generateId } from '../utils/geometry'
 
+const DEFAULT_ANNOTATION_TEXT = 'Annotation'
+const DEFAULT_TEXT_FONT_SIZE = 14
+const DEFAULT_TEXT_COLOR = '#1f2937'
+const DEFAULT_TEXT_HALO_COLOR = '#ffffff'
+const DEFAULT_TEXT_HALO_WIDTH = 1.5
+
 export abstract class DrawMode {
 	protected map?: Map
 	protected currentFeature?: EditorFeature
@@ -277,6 +283,45 @@ export class DrawPolygonMode extends DrawMode {
 			}
 		}
 
+		return null
+	}
+}
+
+export class DrawAnnotationMode extends DrawMode {
+	readonly type: DrawFeatureType = 'Point'
+
+	onClick(e: MapMouseEvent): EditorFeature | null {
+		const lngLat = e.lngLat
+		const feature: EditorFeature = {
+			type: 'Feature',
+			id: generateId(),
+			geometry: {
+				type: 'Point',
+				coordinates: [lngLat.lng, lngLat.lat],
+			},
+			properties: {
+				meta: 'feature',
+				featureType: 'annotation',
+				text: DEFAULT_ANNOTATION_TEXT,
+				textFontSize: DEFAULT_TEXT_FONT_SIZE,
+				textColor: DEFAULT_TEXT_COLOR,
+				textHaloColor: DEFAULT_TEXT_HALO_COLOR,
+				textHaloWidth: DEFAULT_TEXT_HALO_WIDTH,
+			},
+		}
+
+		this.reset()
+		return feature
+	}
+
+	onMove(_e: MapMouseEvent): void {
+		// Annotation mode doesn't need move handling
+	}
+
+	onKeyDown(e: KeyboardEvent): EditorFeature | null {
+		if (e.key === 'Escape') {
+			this.reset()
+		}
 		return null
 	}
 }

@@ -16,11 +16,32 @@ export function FeaturePropertiesSection({ feature }: FeaturePropertiesSectionPr
 	const newFeatureProp = useEditorStore((state) => state.newFeatureProp)
 	const setNewFeatureProp = useEditorStore((state) => state.setNewFeatureProp)
 
+	const isAnnotation = feature.properties?.featureType === 'annotation'
+
 	const onFieldChange = (field: 'name' | 'description' | 'color', value: string) => {
 		if (!editor) return
 		editor.updateFeature(feature.id, {
 			...feature,
 			properties: { ...feature.properties, [field]: value },
+		})
+	}
+
+	const onAnnotationTextChange = (text: string) => {
+		if (!editor) return
+		editor.updateFeature(feature.id, {
+			...feature,
+			properties: { ...feature.properties, text },
+		})
+	}
+
+	const onAnnotationStyleChange = (
+		styleProp: 'textFontSize' | 'textColor' | 'textHaloColor' | 'textHaloWidth',
+		value: string | number,
+	) => {
+		if (!editor) return
+		editor.updateFeature(feature.id, {
+			...feature,
+			properties: { ...feature.properties, [styleProp]: value },
 		})
 	}
 
@@ -76,9 +97,58 @@ export function FeaturePropertiesSection({ feature }: FeaturePropertiesSectionPr
 	return (
 		<div className="space-y-2">
 			<div className="flex items-center justify-between">
-				<span className="text-xs font-medium text-gray-700">Feature</span>
+				<span className="text-xs font-medium text-gray-700">
+					{isAnnotation ? 'Annotation' : 'Feature'}
+				</span>
 				<span className="text-[10px] text-gray-400 font-mono">{feature.id.slice(0, 10)}…</span>
 			</div>
+
+			{/* Annotation-specific: Text input prominently displayed */}
+			{isAnnotation && (
+				<div className="space-y-2 p-2 bg-amber-50 rounded border border-amber-200">
+					<div className="text-[10px] text-amber-700 uppercase tracking-wide font-medium">
+						Annotation Text
+					</div>
+					<textarea
+						className="w-full h-16 rounded border border-amber-300 px-2 py-1 text-sm resize-none bg-white"
+						placeholder="Enter annotation text..."
+						value={(feature.properties?.text as string) ?? ''}
+						onChange={(e) => onAnnotationTextChange(e.target.value)}
+						autoFocus
+					/>
+					<div className="flex items-center gap-2">
+						<div className="flex items-center gap-1 flex-1">
+							<span className="text-[10px] text-gray-500">Size</span>
+							<Input
+								type="number"
+								className="h-6 text-xs w-14"
+								min={8}
+								max={72}
+								value={feature.properties?.textFontSize ?? 14}
+								onChange={(e) => onAnnotationStyleChange('textFontSize', Number(e.target.value))}
+							/>
+						</div>
+						<div className="flex items-center gap-1">
+							<span className="text-[10px] text-gray-500">Color</span>
+							<Input
+								type="color"
+								className="h-6 w-8 p-0.5 rounded border border-gray-200"
+								value={(feature.properties?.textColor as string) ?? '#1f2937'}
+								onChange={(e) => onAnnotationStyleChange('textColor', e.target.value)}
+							/>
+						</div>
+						<div className="flex items-center gap-1">
+							<span className="text-[10px] text-gray-500">Halo</span>
+							<Input
+								type="color"
+								className="h-6 w-8 p-0.5 rounded border border-gray-200"
+								value={(feature.properties?.textHaloColor as string) ?? '#ffffff'}
+								onChange={(e) => onAnnotationStyleChange('textHaloColor', e.target.value)}
+							/>
+						</div>
+					</div>
+				</div>
+			)}
 
 			{/* Name + Color inline */}
 			<div className="flex items-center gap-2">

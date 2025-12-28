@@ -88,6 +88,27 @@ function FeatureRow({
 		}
 	}
 
+	const isAnnotation = feature.properties?.featureType === 'annotation'
+
+	const onAnnotationTextChange = (text: string) => {
+		if (!editor) return
+		editor.updateFeature(feature.id, {
+			...feature,
+			properties: { ...feature.properties, text },
+		})
+	}
+
+	const onAnnotationStyleChange = (
+		styleProp: 'textFontSize' | 'textColor' | 'textHaloColor' | 'textHaloWidth',
+		value: string | number,
+	) => {
+		if (!editor) return
+		editor.updateFeature(feature.id, {
+			...feature,
+			properties: { ...feature.properties, [styleProp]: value },
+		})
+	}
+
 	const customProperties = feature.properties?.customProperties ?? {}
 
 	return (
@@ -107,7 +128,7 @@ function FeatureRow({
 					{isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
 				</button>
 
-				<GeometryBadge geometry={feature.geometry} />
+				<GeometryBadge geometry={feature.geometry} isAnnotation={isAnnotation} />
 
 				<button
 					type="button"
@@ -131,6 +152,54 @@ function FeatureRow({
 			{/* Expanded content */}
 			{isExpanded && (
 				<div className="border-t border-gray-100 px-2 py-2 bg-gray-50/50 space-y-2">
+					{/* Annotation-specific: Text input prominently displayed */}
+					{isAnnotation && (
+						<div className="space-y-1.5 p-1.5 bg-amber-50 rounded border border-amber-200">
+							<div className="text-[10px] text-amber-700 uppercase tracking-wide font-medium">
+								Annotation Text
+							</div>
+							<textarea
+								className="w-full h-12 rounded border border-amber-300 px-1.5 py-1 text-xs resize-none bg-white"
+								placeholder="Enter annotation text..."
+								value={(feature.properties?.text as string) ?? ''}
+								onChange={(e) => onAnnotationTextChange(e.target.value)}
+							/>
+							<div className="flex items-center gap-2">
+								<div className="flex items-center gap-1 flex-1">
+									<span className="text-[9px] text-gray-500">Size</span>
+									<Input
+										type="number"
+										className="h-5 text-[11px] w-12"
+										min={8}
+										max={72}
+										value={feature.properties?.textFontSize ?? 14}
+										onChange={(e) =>
+											onAnnotationStyleChange('textFontSize', Number(e.target.value))
+										}
+									/>
+								</div>
+								<div className="flex items-center gap-1">
+									<span className="text-[9px] text-gray-500">Text</span>
+									<Input
+										type="color"
+										className="h-5 w-6 p-0.5 rounded border border-gray-200"
+										value={(feature.properties?.textColor as string) ?? '#1f2937'}
+										onChange={(e) => onAnnotationStyleChange('textColor', e.target.value)}
+									/>
+								</div>
+								<div className="flex items-center gap-1">
+									<span className="text-[9px] text-gray-500">Halo</span>
+									<Input
+										type="color"
+										className="h-5 w-6 p-0.5 rounded border border-gray-200"
+										value={(feature.properties?.textHaloColor as string) ?? '#ffffff'}
+										onChange={(e) => onAnnotationStyleChange('textHaloColor', e.target.value)}
+									/>
+								</div>
+							</div>
+						</div>
+					)}
+
 					{/* Name + Color inline */}
 					<div className="flex items-center gap-1">
 						<Input
@@ -248,13 +317,24 @@ export function GeometriesTable({ className }: GeometriesTableProps) {
 
 	const rows = useMemo(
 		() =>
-			features.map((feature) => ({
-				feature,
-				name:
-					(feature.properties?.name as string) ||
-					`${feature.geometry.type} • ${feature.id.slice(0, 6)}`,
-				isSelected: selectedFeatureIds.includes(feature.id),
-			})),
+			features.map((feature) => {
+				const isAnnotation = feature.properties?.featureType === 'annotation'
+				let name = feature.properties?.name as string
+				if (!name) {
+					if (isAnnotation) {
+						// Show annotation text (truncated) or fallback
+						const text = feature.properties?.text as string
+						name = text ? `"${text.slice(0, 20)}${text.length > 20 ? '…' : ''}"` : 'Annotation'
+					} else {
+						name = `${feature.geometry.type} • ${feature.id.slice(0, 6)}`
+					}
+				}
+				return {
+					feature,
+					name,
+					isSelected: selectedFeatureIds.includes(feature.id),
+				}
+			}),
 		[features, selectedFeatureIds],
 	)
 
