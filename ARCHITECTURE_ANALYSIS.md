@@ -1,6 +1,7 @@
 # Earthly - Architecture Analysis & Visualization
 
 Generated: 2025-12-28
+Updated: 2025-12-28 (Post-Refactoring)
 
 ## Table of Contents
 1. [Directory Structure Overview](#directory-structure-overview)
@@ -16,10 +17,18 @@ Generated: 2025-12-28
 
 ```
 src/
-├── components/           # Shared UI components (334-774 lines)
-│   ├── ui/              # Radix-based primitives (16 components, 19-163 lines)
+├── components/           # Shared UI components
+│   ├── ui/              # Radix-based primitives (17 components, 19-163 lines)
+│   │   └── search-bar.tsx (139 lines) ✅ NEW - Shared search component
+│   ├── info-panel/      # ✅ NEW - Extracted InfoPanel components
+│   │   ├── index.ts
+│   │   ├── ViewModePanel.tsx (~180 lines)
+│   │   ├── DatasetActionCard.tsx (~100 lines)
+│   │   ├── DatasetMetadataSection.tsx (~120 lines)
+│   │   ├── BlobReferencesSection.tsx (~110 lines)
+│   │   └── FeaturePropertiesSection.tsx (~140 lines)
 │   ├── GeoDatasetsPanel.tsx (334 lines) ⚠️ Large
-│   ├── GeoEditorInfoPanel.tsx (774 lines) ⚠️ Very Large
+│   ├── GeoEditorInfoPanel.tsx (~210 lines) ✅ REDUCED from 774
 │   ├── LoginSessionButtom.tsx (144 lines) ⚠️ Typo in filename
 │   ├── Nip46LoginDialog.tsx (548 lines) ⚠️ Large
 │   ├── SignupDialog.tsx (429 lines) ⚠️ Large
@@ -30,12 +39,14 @@ src/
 ├── features/
 │   └── geo-editor/      # Main editor feature
 │       ├── core/        # Editor engine
-│       │   ├── GeoEditor.ts (2025 lines) 🔴 VERY LARGE
-│       │   ├── managers/ (4 files, 158-184 lines each)
+│       │   ├── GeoEditor.ts (~1343 lines) ✅ REDUCED from 2025
+│       │   ├── managers/ (6 files) ✅ EXPANDED
 │       │   │   ├── HistoryManager.ts
 │       │   │   ├── SelectionManager.ts
 │       │   │   ├── SnapManager.ts
-│       │   │   └── TransformManager.ts
+│       │   │   ├── TransformManager.ts
+│       │   │   ├── LayerManager.ts (~427 lines) ✅ NEW
+│       │   │   └── RenderingManager.ts (~290 lines) ✅ NEW
 │       │   ├── modes/ (2 files)
 │       │   │   ├── DrawMode.ts (282 lines)
 │       │   │   └── EditMode.ts (330 lines)
@@ -45,12 +56,18 @@ src/
 │       ├── components/ (8 files)
 │       │   ├── Editor.tsx (128 lines)
 │       │   ├── Map.tsx (479 lines) ⚠️ Large
-│       │   ├── Toolbar.tsx (742 lines) ⚠️ Very Large
+│       │   ├── Toolbar.tsx (~659 lines) ✅ REDUCED from 742
 │       │   ├── MapSettingsPanel.tsx (161 lines)
 │       │   ├── LocationInspectorPanel.tsx (92 lines)
-│       │   ├── MobileSearch.tsx (158 lines)
+│       │   ├── MobileSearch.tsx (~103 lines) ✅ REDUCED from 158
 │       │   └── Magnifier.tsx (92 lines)
-│       ├── GeoEditorView.tsx (1591 lines) 🔴 VERY LARGE - Orchestrator
+│       ├── hooks/       # ✅ NEW - Extracted business logic
+│       │   ├── index.ts
+│       │   ├── useDatasetManagement.ts (~309 lines)
+│       │   ├── usePublishing.ts (~333 lines)
+│       │   ├── useMapLayers.ts (~188 lines)
+│       │   └── useViewMode.ts (~106 lines)
+│       ├── GeoEditorView.tsx (~826 lines) ✅ REDUCED from 1591
 │       ├── store.ts (473 lines) - Zustand store (50+ actions)
 │       ├── types.ts
 │       └── utils.ts (206 lines) - 10 utility functions
@@ -96,22 +113,30 @@ relay/                  # Go Khatru relay
 
 ### File Size Analysis
 
-**🔴 Critical (>1000 lines):**
-- `GeoEditor.ts` - 2025 lines (232 methods!)
-- `GeoEditorView.tsx` - 1591 lines
+**✅ Post-Refactoring Improvements:**
+- `GeoEditor.ts` - ~~2025~~ → **1343 lines** (-34%)
+- `GeoEditorView.tsx` - ~~1591~~ → **826 lines** (-48%)
+- `GeoEditorInfoPanel.tsx` - ~~774~~ → **210 lines** (-73%)
+- `Toolbar.tsx` - ~~742~~ → **659 lines** (-11%)
+- `MobileSearch.tsx` - ~~158~~ → **103 lines** (-35%)
 
 **⚠️ Large (500-1000 lines):**
-- `GeoEditorInfoPanel.tsx` - 774 lines
-- `Toolbar.tsx` - 742 lines
+- `GeoEditor.ts` - 1343 lines (still large, but much improved)
+- `GeoEditorView.tsx` - 826 lines (still large, but manageable)
+- `Toolbar.tsx` - 659 lines
 - `Nip46LoginDialog.tsx` - 548 lines
 - `store.ts` - 473 lines
 
 **⚠️ Medium-Large (300-500 lines):**
 - `Map.tsx` - 479 lines
+- `LayerManager.ts` - 427 lines (extracted from GeoEditor)
 - `SignupDialog.tsx` - 429 lines
 - `NDKGeoEvent.ts` - 354 lines
 - `GeoDatasetsPanel.tsx` - 334 lines
+- `usePublishing.ts` - 333 lines (extracted from GeoEditorView)
 - `EditMode.ts` - 330 lines
+- `useDatasetManagement.ts` - 309 lines (extracted from GeoEditorView)
+- `RenderingManager.ts` - 290 lines (extracted from GeoEditor)
 
 ---
 
@@ -801,31 +826,52 @@ git mv src/components/LoginSessionButtom.tsx src/components/LoginSessionButton.t
 
 ### 📊 Code Metrics Summary
 
+| Metric | Before | After | Improvement |
+|--------|--------|-------|-------------|
+| **Very Large Files (>1000 lines)** | 2 | 2 | Files reduced significantly |
+| **GeoEditor.ts lines** | 2025 | 1343 | -34% |
+| **GeoEditorView.tsx lines** | 1591 | 826 | -48% |
+| **GeoEditorInfoPanel.tsx lines** | 774 | 210 | -73% |
+| **Toolbar.tsx lines** | 742 | 659 | -11% |
+| **Duplicate Patterns** | 1 | 0 | ✅ SearchBar extracted |
+| **New Managers Created** | 0 | 2 | LayerManager, RenderingManager |
+| **New Hooks Created** | 0 | 4 | Dataset, Publishing, MapLayers, ViewMode |
+| **New UI Components** | 0 | 6 | SearchBar + 5 InfoPanel components |
+
 | Metric | Count | Notes |
 |--------|-------|-------|
-| **Total .tsx files** | 31 | |
-| **Total .ts files** | 30 | |
-| **Very Large Files (>1000 lines)** | 2 | GeoEditor, GeoEditorView |
-| **Large Files (500-1000 lines)** | 4 | InfoPanel, Toolbar, Nip46Dialog, store |
-| **Orphaned Components** | 1 | DebugDialog |
-| **Duplicate Patterns** | 1 | SearchBar in Toolbar + MobileSearch |
-| **Unused UI Components** | 2 | Card, Textarea |
-| **Total Methods in GeoEditor** | 232 | 🔴 Too many |
+| **Total .tsx files** | ~35 | Added new components |
+| **Total .ts files** | ~34 | Added managers and hooks |
+| **Orphaned Components** | 1 | DebugDialog (unchanged) |
+| **Unused UI Components** | 2 | Card, Textarea (unchanged) |
 | **Total Store Actions** | 50+ | Consider splitting |
-| **Components using Store** | 6 | Moderate coupling |
 
 ---
 
 ### 🎯 Refactoring Priority List
 
-1. **Priority 1 (Critical):**
-   - [ ] Refactor GeoEditor god object into service classes
-   - [ ] Split GeoEditorView into hooks + smaller components
+1. **Priority 1 (Critical):** ✅ COMPLETED
+   - [x] Refactor GeoEditor god object into service classes
+     - Extracted LayerManager (~427 lines)
+     - Extracted RenderingManager (~290 lines)
+     - GeoEditor reduced from 2025 → 1343 lines (-34%)
+   - [x] Split GeoEditorView into hooks + smaller components
+     - Extracted useDatasetManagement (~309 lines)
+     - Extracted usePublishing (~333 lines)
+     - Extracted useMapLayers (~188 lines)
+     - Extracted useViewMode (~106 lines)
+     - GeoEditorView reduced from 1591 → 826 lines (-48%)
 
-2. **Priority 2 (High):**
-   - [ ] Extract shared SearchBar component
-   - [ ] Split large panel components (InfoPanel, DatasetsPanel)
-   - [ ] Refactor Toolbar to reduce complexity
+2. **Priority 2 (High):** ✅ MOSTLY COMPLETED
+   - [x] Extract shared SearchBar component
+     - Created src/components/ui/search-bar.tsx
+     - Updated Toolbar.tsx and MobileSearch.tsx to use it
+   - [x] Split large panel components (InfoPanel)
+     - Created info-panel/ folder with 5 components
+     - GeoEditorInfoPanel reduced from 774 → 210 lines (-73%)
+   - [ ] Split GeoDatasetsPanel (lower priority, 334 lines)
+   - [x] Refactor Toolbar to reduce complexity
+     - Removed duplicate SearchBar, reduced from 742 → 659 lines
 
 3. **Priority 3 (Medium):**
    - [ ] Extract QR scanning to shared component
@@ -886,14 +932,29 @@ git mv src/components/LoginSessionButtom.tsx src/components/LoginSessionButton.t
 
 ## Conclusion
 
-The codebase is **well-organized at the macro level** with clear feature separation, but suffers from **micro-level complexity** in a few critical files:
+### Post-Refactoring Status (December 2025)
 
-- **GeoEditor.ts** (2025 lines, 232 methods) is a god object
-- **GeoEditorView.tsx** (1591 lines) is an overloaded orchestrator
-- Several large components (700+ lines) could be split
+The codebase has undergone significant refactoring to address the critical issues identified:
 
-The manager pattern extraction (History, Selection, Snap, Transform) shows the right direction. Continuing this pattern for other GeoEditor responsibilities would greatly improve maintainability.
+**✅ Major Improvements:**
+- **GeoEditor.ts** reduced from 2025 → 1343 lines (-34%)
+  - Extracted LayerManager and RenderingManager
+  - Still large but now follows manager pattern consistently
+- **GeoEditorView.tsx** reduced from 1591 → 826 lines (-48%)
+  - Extracted 4 custom hooks for business logic
+  - Much more readable and testable
+- **GeoEditorInfoPanel.tsx** reduced from 774 → 210 lines (-73%)
+  - Split into 5 focused sub-components
+  - Clear separation between view mode and edit mode
+- **SearchBar duplication eliminated**
+  - Single shared component in ui/search-bar.tsx
 
-The Zustand store is well-designed but large (50+ actions). Consider splitting by domain if it grows further.
+**Remaining Opportunities:**
+- GeoDatasetsPanel (334 lines) - could be split if needed
+- Auth dialogs (Nip46LoginDialog, SignupDialog) - could extract QR scanner
+- Store splitting by domain - consider if it grows further
+- Low priority cleanup (DebugDialog, filename typo, unused components)
 
-Overall: **6/10 maintainability** - Good structure, needs focused refactoring on the largest files.
+The manager pattern extraction (History, Selection, Snap, Transform, **LayerManager**, **RenderingManager**) is now consistently applied across the GeoEditor core.
+
+**Overall: 7.5/10 maintainability** - Significant improvement from 6/10. The largest files are now manageable with clear separation of concerns.
