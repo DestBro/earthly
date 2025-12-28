@@ -1,10 +1,12 @@
+import { ExternalLink, Eye, EyeOff, Plus, Trash2, X } from 'lucide-react'
 import { useEditorStore } from '../../features/geo-editor/store'
+import { cn } from '@/lib/utils'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 
 /**
- * Section for managing external GeoJSON blob references.
- * Allows users to attach remote GeoJSON files that will be referenced via blob tags.
+ * Compact section for managing external GeoJSON blob references.
+ * Inline add with minimal clicks.
  */
 export function BlobReferencesSection() {
 	const blobReferences = useEditorStore((state) => state.blobReferences)
@@ -17,106 +19,105 @@ export function BlobReferencesSection() {
 	const previewBlobReference = useEditorStore((state) => state.previewBlobReference)
 	const removeBlobReference = useEditorStore((state) => state.removeBlobReference)
 
-	return (
-		<section className="rounded-lg border border-gray-200 p-3 space-y-3">
-			<div>
-				<h4 className="text-sm font-semibold text-gray-800">External geometry references</h4>
-				<p className="text-xs text-gray-500">
-					Link remote GeoJSON blobs for oversized geometries. They will be referenced via blob tags
-					when publishing.
-				</p>
-			</div>
+	const handleKeyDown = (e: React.KeyboardEvent) => {
+		if (e.key === 'Enter' && blobDraftUrl && blobDraftStatus !== 'loading') {
+			fetchBlobReference()
+		}
+	}
 
-			{/* Add new reference */}
-			<div className="flex flex-col gap-2">
+	return (
+		<section className="space-y-2">
+			<div className="text-xs font-medium text-gray-700">External references</div>
+
+			{/* Inline add */}
+			<div className="flex items-center gap-1">
 				<Input
-					placeholder="https://example.org/dataset.geojson"
+					placeholder="https://…/dataset.geojson"
 					value={blobDraftUrl}
 					onChange={(e) => setBlobDraftUrl(e.target.value)}
+					onKeyDown={handleKeyDown}
 					disabled={blobDraftStatus === 'loading'}
+					className="h-7 text-xs flex-1"
 				/>
 				<Button
+					size="icon-xs"
+					variant="outline"
 					onClick={fetchBlobReference}
 					disabled={!blobDraftUrl || blobDraftStatus === 'loading'}
+					aria-label="Add reference"
 				>
-					{blobDraftStatus === 'loading' ? 'Fetching…' : 'Fetch & attach'}
+					<Plus className="h-3 w-3" />
 				</Button>
-				{blobDraftStatus === 'error' && blobDraftError && (
-					<p className="text-xs text-red-600">{blobDraftError}</p>
-				)}
 			</div>
 
-			{/* Reference list */}
-			<div className="space-y-2">
-				{blobReferences.length === 0 && (
-					<p className="text-xs text-gray-500">No external references added yet.</p>
-				)}
-				{blobReferences.map((reference) => {
-					const isPreviewing =
-						previewingBlobReferenceId === reference.id && reference.status === 'ready'
-					return (
-						<div
-							key={reference.id}
-							className="rounded border border-gray-200 p-3 text-sm space-y-2 bg-white"
-						>
-							<div className="flex items-start justify-between gap-2">
-								<div className="space-y-1">
-									<div className="font-semibold text-gray-900 break-all">{reference.url}</div>
-									<div className="text-[11px] text-gray-500 space-x-2">
-										<span>
-											Scope: {reference.scope === 'feature' ? 'Single feature' : 'Full collection'}
-										</span>
-										{reference.scope === 'feature' && reference.featureId && (
-											<span>Feature ID: {reference.featureId}</span>
+			{blobDraftStatus === 'error' && blobDraftError && (
+				<p className="text-[10px] text-red-600">{blobDraftError}</p>
+			)}
+
+			{/* Reference list - compact */}
+			{blobReferences.length > 0 && (
+				<div className="space-y-1">
+					{blobReferences.map((ref) => {
+						const isPreviewing = previewingBlobReferenceId === ref.id && ref.status === 'ready'
+						const isLoading = ref.status === 'loading'
+						const isError = ref.status === 'error'
+
+						// Extract filename from URL for compact display
+						const filename = ref.url.split('/').pop() || ref.url
+
+						return (
+							<div
+								key={ref.id}
+								className={cn(
+									'flex items-center gap-1 text-xs py-1 px-1.5 rounded border',
+									isError ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white',
+								)}
+							>
+								<span className="flex-1 truncate text-gray-700" title={ref.url}>
+									{filename}
+								</span>
+
+								{ref.featureCount !== undefined && (
+									<span className="text-[10px] text-gray-400">{ref.featureCount}</span>
+								)}
+
+								<div className="flex items-center gap-0.5">
+									<Button
+										size="icon-xs"
+										variant="ghost"
+										onClick={() => previewBlobReference(ref.id)}
+										disabled={isLoading}
+										aria-label={isPreviewing ? 'Hide preview' : 'Preview'}
+									>
+										{isPreviewing ? (
+											<EyeOff className="h-3 w-3 text-blue-500" />
+										) : (
+											<Eye className="h-3 w-3" />
 										)}
-									</div>
-									{reference.featureCount !== undefined && (
-										<div className="text-[11px] text-gray-500 space-x-2">
-											<span>Features: {reference.featureCount}</span>
-											{reference.geometryTypes && reference.geometryTypes.length > 0 && (
-												<span>Geometry: {reference.geometryTypes.join(', ')}</span>
-											)}
-										</div>
-									)}
-									<div className="text-[11px] text-gray-500">
-										Status:{' '}
-										{reference.status === 'loading'
-											? 'Loading…'
-											: reference.status === 'error'
-												? (reference.error ?? 'Error')
-												: 'Ready'}
-									</div>
-									{reference.status === 'error' && reference.error && (
-										<div className="text-[11px] text-red-600">{reference.error}</div>
-									)}
+									</Button>
+									<Button
+										size="icon-xs"
+										variant="ghost"
+										onClick={() => window.open(ref.url, '_blank')}
+										aria-label="Open in new tab"
+									>
+										<ExternalLink className="h-3 w-3" />
+									</Button>
+									<Button
+										size="icon-xs"
+										variant="ghost"
+										className="text-red-500 hover:text-red-700"
+										onClick={() => removeBlobReference(ref.id)}
+										aria-label="Remove"
+									>
+										<Trash2 className="h-3 w-3" />
+									</Button>
 								</div>
-								<Button
-									variant="ghost"
-									size="sm"
-									className="text-red-600"
-									onClick={() => removeBlobReference(reference.id)}
-								>
-									Remove
-								</Button>
 							</div>
-							<div className="flex gap-2">
-								<Button
-									size="sm"
-									variant="outline"
-									onClick={() => previewBlobReference(reference.id)}
-									disabled={reference.status === 'loading'}
-								>
-									{reference.status === 'loading'
-										? 'Loading…'
-										: isPreviewing
-											? 'Previewing'
-											: 'Preview on map'}
-								</Button>
-							</div>
-						</div>
-					)
-				})}
-			</div>
+						)
+					})}
+				</div>
+			)}
 		</section>
 	)
 }

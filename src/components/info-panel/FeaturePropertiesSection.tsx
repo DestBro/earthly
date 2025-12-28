@@ -1,3 +1,4 @@
+import { Plus, Trash2 } from 'lucide-react'
 import type { EditorFeature } from '../../features/geo-editor/core'
 import { useEditorStore } from '../../features/geo-editor/store'
 import { Button } from '../ui/button'
@@ -8,8 +9,7 @@ export interface FeaturePropertiesSectionProps {
 }
 
 /**
- * Section for editing properties of a selected feature.
- * Displays name, description, color, and custom properties.
+ * Compact section for editing properties of a selected feature.
  */
 export function FeaturePropertiesSection({ feature }: FeaturePropertiesSectionProps) {
 	const editor = useEditorStore((state) => state.editor)
@@ -38,9 +38,7 @@ export function FeaturePropertiesSection({ feature }: FeaturePropertiesSectionPr
 
 	const onRemoveCustomProperty = (key: string) => {
 		if (!editor) return
-		const currentProps = {
-			...(feature.properties?.customProperties || {}),
-		}
+		const currentProps = { ...(feature.properties?.customProperties || {}) }
 		delete currentProps[key]
 		editor.updateFeature(feature.id, {
 			...feature,
@@ -67,82 +65,93 @@ export function FeaturePropertiesSection({ feature }: FeaturePropertiesSectionPr
 		setNewFeatureProp({ key: '', value: '' })
 	}
 
+	const handleKeyDown = (e: React.KeyboardEvent) => {
+		if (e.key === 'Enter' && newFeatureProp.key) {
+			onAddCustomProperty()
+		}
+	}
+
 	const customProperties = feature.properties?.customProperties ?? {}
 
 	return (
-		<section className="rounded-lg border border-gray-200 p-3 space-y-3">
-			<div className="text-sm font-semibold text-gray-800">Feature properties</div>
-			<p className="text-[11px] text-gray-500 break-all">ID: {feature.id}</p>
+		<div className="space-y-2">
+			<div className="flex items-center justify-between">
+				<span className="text-xs font-medium text-gray-700">Feature</span>
+				<span className="text-[10px] text-gray-400 font-mono">{feature.id.slice(0, 10)}…</span>
+			</div>
 
-			<label className="block text-xs text-gray-600">
-				Name
+			{/* Name + Color inline */}
+			<div className="flex items-center gap-2">
 				<Input
-					className="mt-1 w-full rounded border border-gray-200 px-2 py-1 text-sm"
+					className="h-7 text-xs flex-1"
+					placeholder="Name"
 					value={(feature.properties?.name as string) ?? ''}
 					onChange={(e) => onFieldChange('name', e.target.value)}
 				/>
-			</label>
-
-			<label className="block text-xs text-gray-600">
-				Description
-				<textarea
-					className="mt-1 w-full rounded border border-gray-200 px-2 py-1 text-sm"
-					rows={2}
-					value={(feature.properties?.description as string) ?? ''}
-					onChange={(e) => onFieldChange('description', e.target.value)}
-				/>
-			</label>
-
-			<label className="block text-xs text-gray-600">
-				Color
 				<Input
 					type="color"
-					className="mt-1 h-8 w-16 rounded border border-gray-200"
+					className="h-7 w-10 p-0.5 rounded border border-gray-200"
 					value={(feature.properties?.color as string) ?? '#16a34a'}
 					onChange={(e) => onFieldChange('color', e.target.value)}
 				/>
-			</label>
+			</div>
 
-			{/* Custom properties */}
-			<div className="space-y-2">
-				<div className="text-xs font-semibold text-gray-600">Custom properties</div>
-				{Object.entries(customProperties).length === 0 ? (
-					<p className="text-[11px] text-gray-500">No custom properties</p>
-				) : (
-					Object.entries(customProperties).map(([key, value]) => (
-						<div key={key} className="flex items-center gap-2 text-xs">
-							<span className="min-w-[60px] font-medium text-gray-700">{key}</span>
-							<Input
-								className="flex-1 rounded border border-gray-200 px-2 py-1"
-								value={String(value)}
-								onChange={(e) => onCustomPropertyChange(key, e.target.value)}
-							/>
-							<Button size="sm" variant="destructive" onClick={() => onRemoveCustomProperty(key)}>
-								✕
-							</Button>
-						</div>
-					))
-				)}
+			{/* Description */}
+			<textarea
+				className="w-full h-10 rounded border border-gray-200 px-2 py-1 text-xs resize-none"
+				placeholder="Description"
+				value={(feature.properties?.description as string) ?? ''}
+				onChange={(e) => onFieldChange('description', e.target.value)}
+			/>
 
-				{/* Add new custom property */}
-				<div className="flex items-center gap-2">
+			{/* Custom properties - compact */}
+			<div className="space-y-1">
+				<div className="text-[10px] text-gray-500 uppercase tracking-wide">Properties</div>
+				{Object.entries(customProperties).map(([key, value]) => (
+					<div key={key} className="flex items-center gap-1">
+						<span className="text-[10px] text-gray-600 min-w-[40px] truncate">{key}</span>
+						<Input
+							className="h-6 text-xs flex-1"
+							value={String(value)}
+							onChange={(e) => onCustomPropertyChange(key, e.target.value)}
+						/>
+						<Button
+							size="icon-xs"
+							variant="ghost"
+							className="text-red-500"
+							onClick={() => onRemoveCustomProperty(key)}
+						>
+							<Trash2 className="h-3 w-3" />
+						</Button>
+					</div>
+				))}
+
+				{/* Add new */}
+				<div className="flex items-center gap-1">
 					<Input
-						className="flex-1 rounded border border-gray-200 px-2 py-1 text-xs"
+						className="h-6 text-xs flex-1"
 						placeholder="key"
 						value={newFeatureProp.key}
 						onChange={(e) => setNewFeatureProp({ ...newFeatureProp, key: e.target.value })}
+						onKeyDown={handleKeyDown}
 					/>
 					<Input
-						className="flex-1 rounded border border-gray-200 px-2 py-1 text-xs"
+						className="h-6 text-xs flex-1"
 						placeholder="value"
 						value={newFeatureProp.value}
 						onChange={(e) => setNewFeatureProp({ ...newFeatureProp, value: e.target.value })}
+						onKeyDown={handleKeyDown}
 					/>
-					<Button size="sm" onClick={onAddCustomProperty}>
-						Add
+					<Button
+						size="icon-xs"
+						variant="outline"
+						onClick={onAddCustomProperty}
+						disabled={!newFeatureProp.key}
+					>
+						<Plus className="h-3 w-3" />
 					</Button>
 				</div>
 			</div>
-		</section>
+		</div>
 	)
 }

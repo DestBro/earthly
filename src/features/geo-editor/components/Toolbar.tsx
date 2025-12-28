@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import type React from 'react'
 import { useRef } from 'react'
+import { HelpPopover } from '../../../components/HelpPopover'
 import { LoginSessionButtons } from '../../../components/LoginSessionButtom'
 import { Button } from '../../../components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '../../../components/ui/popover'
@@ -560,6 +561,7 @@ export function Toolbar({
 								accept=".geojson,.json"
 								onChange={handleFileImport}
 							/>
+							<HelpPopover multiSelectModifier={editor?.getMultiSelectModifierLabel() ?? 'Shift'} />
 							{showLogin && (
 								<div className="ml-2">
 									<LoginSessionButtons />
@@ -643,6 +645,8 @@ export function Toolbar({
 					<IconButtonRow buttons={sidebarButtons} />
 
 					<div className="flex-1" />
+
+					<HelpPopover multiSelectModifier={editor?.getMultiSelectModifierLabel() ?? 'Shift'} />
 
 					{showLogin && <LoginSessionButtons />}
 				</div>
