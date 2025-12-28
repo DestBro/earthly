@@ -84,7 +84,6 @@ export function useMapLayers({
 					paint: {
 						'line-color': ['coalesce', ['get', 'color'], '#1d4ed8'],
 						'line-width': 2,
-						'line-dasharray': [2, 2],
 					},
 				})
 				mapInstance.addLayer({

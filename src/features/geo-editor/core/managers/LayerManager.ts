@@ -202,12 +202,7 @@ export class LayerManager {
 						['coalesce', ['get', 'color'], '#3bb2d0'],
 					],
 					'line-width': ['case', ['==', ['get', 'active'], true], 4, 2],
-					'line-dasharray': [
-						'case',
-						['==', ['get', 'active'], true],
-						['literal', [2, 2]],
-						['literal', [1, 0]],
-					],
+					'line-dasharray': ['literal', [2, 2]],
 				},
 			})
 		}
