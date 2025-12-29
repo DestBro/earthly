@@ -9,6 +9,7 @@ import { Button } from '../ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { DatasetActionCard } from './DatasetActionCard'
 import { CommentsPanel } from '../comments'
+import type { GeoFeatureItem } from '../editor/GeoRichTextEditor'
 
 export interface ViewModePanelProps {
 	currentUserPubkey?: string
@@ -26,6 +27,16 @@ export interface ViewModePanelProps {
 	onCommentGeometryVisibility?: (commentId: string, geojson: FeatureCollection | null) => void
 	/** Callback to zoom to a bounding box */
 	onZoomToBounds?: (bounds: [number, number, number, number]) => void
+	/** Available features for $ mentions in comments */
+	availableFeatures?: GeoFeatureItem[]
+	/** Callback when a geo mention's visibility is toggled */
+	onMentionVisibilityToggle?: (
+		address: string,
+		featureId: string | undefined,
+		visible: boolean,
+	) => void
+	/** Callback to zoom to a mentioned geometry */
+	onMentionZoomTo?: (address: string, featureId: string | undefined) => void
 }
 
 type ViewTab = 'details' | 'comments'
@@ -59,6 +70,9 @@ export function ViewModePanel({
 	getDatasetName,
 	onCommentGeometryVisibility,
 	onZoomToBounds,
+	availableFeatures = [],
+	onMentionVisibilityToggle,
+	onMentionZoomTo,
 }: ViewModePanelProps) {
 	const [activeTab, setActiveTab] = useState<ViewTab>('details')
 	const [visibleGeojsonCommentIds, setVisibleGeojsonCommentIds] = useState<Set<string>>(new Set())
@@ -76,13 +90,13 @@ export function ViewModePanel({
 
 	// Get the target for comments (either dataset or collection)
 	const commentTarget = viewDataset ?? viewCollection
-	const targetId = commentTarget?.id ?? commentTarget?.dTag ?? null
 
 	// Reset comment-related state when target changes
+	// biome-ignore lint/correctness/useExhaustiveDependencies: intentional reset on target change
 	useEffect(() => {
 		setVisibleGeojsonCommentIds(new Set())
 		setAttachedGeojson(null)
-	}, [targetId])
+	}, [viewDataset, viewCollection])
 
 	// Get selected features for attachment
 	const selectedFeatures = useMemo(() => {
@@ -369,6 +383,9 @@ export function ViewModePanel({
 						visibleGeojsonCommentIds={visibleGeojsonCommentIds}
 						attachedGeojson={attachedGeojson}
 						onClearAttachment={handleClearAttachment}
+						availableFeatures={availableFeatures}
+						onMentionVisibilityToggle={onMentionVisibilityToggle}
+						onMentionZoomTo={onMentionZoomTo}
 					/>
 				)}
 			</div>

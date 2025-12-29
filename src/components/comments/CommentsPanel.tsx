@@ -9,6 +9,7 @@ import { Button } from '../ui/button'
 import { GeoComment } from './GeoComment'
 import { GeoCommentForm } from './GeoCommentForm'
 import { GeoSocialActions } from './GeoSocialActions'
+import type { GeoFeatureItem } from '../editor/GeoRichTextEditor'
 
 interface CommentsPanelProps {
 	/** The dataset or collection to show comments for */
@@ -31,6 +32,8 @@ interface CommentsPanelProps {
 	attachedGeojson?: FeatureCollection | null
 	/** Callback to clear attached GeoJSON */
 	onClearAttachment?: () => void
+	/** Available features for $ mentions in the comment form */
+	availableFeatures?: GeoFeatureItem[]
 	className?: string
 }
 
@@ -50,6 +53,7 @@ export function CommentsPanel({
 	visibleGeojsonCommentIds = new Set(),
 	attachedGeojson,
 	onClearAttachment,
+	availableFeatures = [],
 	className = '',
 }: CommentsPanelProps) {
 	const { comments, count, isLoading, postComment, postReply } = useGeoComments({ target })
@@ -131,6 +135,7 @@ export function CommentsPanel({
 					placeholder="Share your thoughts..."
 					attachedGeojson={attachedGeojson}
 					onClearAttachment={onClearAttachment}
+					availableFeatures={availableFeatures}
 				/>
 			</div>
 

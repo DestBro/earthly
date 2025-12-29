@@ -10,6 +10,7 @@ import { LoginSessionButtons } from '../../components/LoginSessionButtom'
 import { Button } from '../../components/ui/button'
 import { Sheet, SheetContent } from '../../components/ui/sheet'
 import { earthlyGeoServer, type ReverseLookupOutput } from '../../ctxcn/EarthlyGeoServerClient'
+import { useAvailableGeoFeatures } from '../../lib/hooks/useAvailableGeoFeatures'
 import { useIsMobile } from '../../lib/hooks/useIsMobile'
 import { useGeoCollections, useStations } from '../../lib/hooks/useStations'
 import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
@@ -169,6 +170,9 @@ export function GeoEditorView() {
 		() => geoEvents.filter((event) => datasetVisibility[getDatasetKey(event)] !== false),
 		[geoEvents, datasetVisibility, getDatasetKey],
 	)
+
+	// Available features for $ mentions in comments
+	const availableFeatures = useAvailableGeoFeatures(visibleGeoEvents, resolvedCollectionResolver)
 
 	// Map layers hook
 	const { remoteLayersReady } = useMapLayers({
@@ -649,6 +653,92 @@ export function GeoEditorView() {
 		)
 	}, [])
 
+	// Resolve naddr to dataset
+	const resolveNaddrToDataset = useCallback(
+		(address: string): NDKGeoEvent | null => {
+			try {
+				// Decode naddr to get kind, pubkey, identifier
+				const { nip19 } = require('nostr-tools')
+				const decoded = nip19.decode(address)
+				if (decoded.type !== 'naddr') return null
+
+				const { kind, pubkey, identifier } = decoded.data
+
+				// Find matching dataset
+				return (
+					geoEvents.find(
+						(ev) =>
+							ev.kind === kind &&
+							ev.pubkey === pubkey &&
+							(ev.datasetId === identifier || ev.dTag === identifier),
+					) ?? null
+				)
+			} catch {
+				console.warn('Failed to decode naddr:', address)
+				return null
+			}
+		},
+		[geoEvents],
+	)
+
+	// Handle mention zoom
+	const handleMentionZoomTo = useCallback(
+		(address: string, featureId: string | undefined) => {
+			const dataset = resolveNaddrToDataset(address)
+			if (!dataset) {
+				console.warn('Could not find dataset for address:', address)
+				return
+			}
+
+			// Get the feature collection
+			const collection = resolvedCollectionResolver?.(dataset) ?? dataset.featureCollection
+
+			if (featureId) {
+				// Find specific feature and zoom to it
+				const feature = collection?.features.find(
+					(f) => f.id === featureId || String(f.id) === featureId || f.properties?.id === featureId,
+				)
+				if (feature?.geometry) {
+					import('@turf/turf')
+						.then((turf) => {
+							const bbox = turf.bbox(feature) as [number, number, number, number]
+							if (bbox.every((v) => Number.isFinite(v))) {
+								handleZoomToBounds(bbox)
+							}
+						})
+						.catch(() => {
+							// Fallback to dataset zoom
+							zoomToDataset(dataset)
+						})
+				} else {
+					// Feature not found, zoom to whole dataset
+					zoomToDataset(dataset)
+				}
+			} else {
+				// Zoom to whole dataset
+				zoomToDataset(dataset)
+			}
+		},
+		[resolveNaddrToDataset, resolvedCollectionResolver, handleZoomToBounds, zoomToDataset],
+	)
+
+	// Handle mention visibility toggle
+	const handleMentionVisibilityToggle = useCallback(
+		(address: string, _featureId: string | undefined, _visible: boolean) => {
+			const dataset = resolveNaddrToDataset(address)
+			if (!dataset) {
+				console.warn('Could not find dataset for address:', address)
+				return
+			}
+
+			// Toggle the dataset visibility
+			// Note: For now, we toggle the whole dataset. Feature-level visibility
+			// would require additional layer/filter management.
+			toggleDatasetVisibility(dataset)
+		},
+		[resolveNaddrToDataset, toggleDatasetVisibility],
+	)
+
 	const multiSelectModifierLabel = editor?.getMultiSelectModifierLabel() ?? 'Shift'
 
 	return (
@@ -801,6 +891,9 @@ export function GeoEditorView() {
 										getDatasetName={getDatasetName}
 										onCommentGeometryVisibility={handleCommentGeometryVisibility}
 										onZoomToBounds={handleZoomToBounds}
+										availableFeatures={availableFeatures}
+										onMentionVisibilityToggle={handleMentionVisibilityToggle}
+										onMentionZoomTo={handleMentionZoomTo}
 									/>
 								) : (
 									<div className="text-sm text-gray-600">
@@ -822,6 +915,9 @@ export function GeoEditorView() {
 									getDatasetName={getDatasetName}
 									onCommentGeometryVisibility={handleCommentGeometryVisibility}
 									onZoomToBounds={handleZoomToBounds}
+									availableFeatures={availableFeatures}
+									onMentionVisibilityToggle={handleMentionVisibilityToggle}
+									onMentionZoomTo={handleMentionZoomTo}
 								/>
 							)}
 						</div>
@@ -879,6 +975,9 @@ export function GeoEditorView() {
 									getDatasetName={getDatasetName}
 									onCommentGeometryVisibility={handleCommentGeometryVisibility}
 									onZoomToBounds={handleZoomToBounds}
+									availableFeatures={availableFeatures}
+									onMentionVisibilityToggle={handleMentionVisibilityToggle}
+									onMentionZoomTo={handleMentionZoomTo}
 								/>
 							</div>
 						</SheetContent>

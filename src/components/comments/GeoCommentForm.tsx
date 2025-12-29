@@ -1,10 +1,15 @@
 import { MapPin, Send, X } from 'lucide-react'
-import { forwardRef, useState } from 'react'
+import { forwardRef, useState, useRef, useCallback } from 'react'
 import { useNDKCurrentUser } from '@nostr-dev-kit/react'
 import type { FeatureCollection } from 'geojson'
 import { Button } from '../ui/button'
 import { Textarea } from '../ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
+import {
+	GeoRichTextEditor,
+	type GeoRichTextEditorRef,
+	type GeoFeatureItem,
+} from '../editor/GeoRichTextEditor'
 
 interface GeoCommentFormProps {
 	onSubmit: (text: string, geojson?: FeatureCollection) => Promise<void>
@@ -15,11 +20,14 @@ interface GeoCommentFormProps {
 	/** Optional attached GeoJSON (from editor selection) */
 	attachedGeojson?: FeatureCollection | null
 	onClearAttachment?: () => void
+	/** Available features for $ mentions */
+	availableFeatures?: GeoFeatureItem[]
 	className?: string
 }
 
 /**
  * Form for posting geo comments with optional GeoJSON attachments.
+ * Supports rich text editing with geo mentions when availableFeatures is provided.
  */
 export const GeoCommentForm = forwardRef<HTMLTextAreaElement, GeoCommentFormProps>(
 	(
@@ -31,6 +39,7 @@ export const GeoCommentForm = forwardRef<HTMLTextAreaElement, GeoCommentFormProp
 			autoFocus = false,
 			attachedGeojson,
 			onClearAttachment,
+			availableFeatures = [],
 			className = '',
 		},
 		ref,
@@ -38,6 +47,10 @@ export const GeoCommentForm = forwardRef<HTMLTextAreaElement, GeoCommentFormProp
 		const currentUser = useNDKCurrentUser()
 		const [text, setText] = useState('')
 		const [isSubmitting, setIsSubmitting] = useState(false)
+		const richEditorRef = useRef<GeoRichTextEditorRef>(null)
+
+		// Use rich editor when features are available
+		const useRichEditor = availableFeatures.length > 0
 
 		const hasAttachment = attachedGeojson && attachedGeojson.features.length > 0
 		const featureCount = attachedGeojson?.features.length ?? 0
@@ -45,12 +58,19 @@ export const GeoCommentForm = forwardRef<HTMLTextAreaElement, GeoCommentFormProp
 		const handleSubmit = async (e: React.FormEvent) => {
 			e.preventDefault()
 
-			if (!text.trim() && !hasAttachment) return
+			// Get text from rich editor or plain textarea
+			const submitText = useRichEditor ? (richEditorRef.current?.getText() ?? '') : text
+
+			if (!submitText.trim() && !hasAttachment) return
 
 			setIsSubmitting(true)
 			try {
-				await onSubmit(text, hasAttachment ? attachedGeojson : undefined)
-				setText('')
+				await onSubmit(submitText, hasAttachment ? attachedGeojson : undefined)
+				if (useRichEditor) {
+					richEditorRef.current?.clear()
+				} else {
+					setText('')
+				}
 				onClearAttachment?.()
 				onCancel?.()
 			} catch (error) {
@@ -60,25 +80,49 @@ export const GeoCommentForm = forwardRef<HTMLTextAreaElement, GeoCommentFormProp
 			}
 		}
 
+		const handleRichEditorChange = useCallback((newText: string) => {
+			setText(newText)
+		}, [])
+
 		const canSubmit = (text.trim().length > 0 || hasAttachment) && !isSubmitting && !!currentUser
+
+		const effectivePlaceholder = currentUser
+			? useRichEditor
+				? 'Type here... Use $ to reference features'
+				: placeholder
+			: 'Log in to comment...'
 
 		return (
 			<form onSubmit={handleSubmit} className={`space-y-2 ${className}`}>
-				{/* Textarea */}
+				{/* Editor */}
 				<div className="relative">
-					<Textarea
-						ref={ref}
-						value={text}
-						onChange={(e) => setText(e.target.value)}
-						placeholder={currentUser ? placeholder : 'Log in to comment...'}
-						rows={isReply ? 2 : 3}
-						autoFocus={autoFocus}
-						disabled={isSubmitting || !currentUser}
-						className="resize-none pr-16 text-sm"
-					/>
-
-					{/* Character count */}
-					<div className="absolute bottom-2 right-2 text-[10px] text-gray-400">{text.length}</div>
+					{useRichEditor ? (
+						<GeoRichTextEditor
+							ref={richEditorRef}
+							placeholder={effectivePlaceholder}
+							availableFeatures={availableFeatures}
+							onChange={handleRichEditorChange}
+							disabled={isSubmitting || !currentUser}
+							rows={isReply ? 2 : 3}
+						/>
+					) : (
+						<>
+							<Textarea
+								ref={ref}
+								value={text}
+								onChange={(e) => setText(e.target.value)}
+								placeholder={effectivePlaceholder}
+								rows={isReply ? 2 : 3}
+								autoFocus={autoFocus}
+								disabled={isSubmitting || !currentUser}
+								className="resize-none pr-16 text-sm"
+							/>
+							{/* Character count */}
+							<div className="absolute bottom-2 right-2 text-[10px] text-gray-400">
+								{text.length}
+							</div>
+						</>
+					)}
 				</div>
 
 				{/* Attachment indicator */}

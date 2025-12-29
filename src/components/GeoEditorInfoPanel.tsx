@@ -12,6 +12,7 @@ import {
 } from './info-panel'
 import { Button } from './ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
+import type { GeoFeatureItem } from './editor/GeoRichTextEditor'
 
 export interface GeoEditorInfoPanelProps {
 	currentUserPubkey?: string
@@ -29,6 +30,16 @@ export interface GeoEditorInfoPanelProps {
 	onCommentGeometryVisibility?: (commentId: string, geojson: FeatureCollection | null) => void
 	/** Callback to zoom to a bounding box */
 	onZoomToBounds?: (bounds: [number, number, number, number]) => void
+	/** Available features for $ mentions in comments */
+	availableFeatures?: GeoFeatureItem[]
+	/** Callback when a geo mention's visibility is toggled */
+	onMentionVisibilityToggle?: (
+		address: string,
+		featureId: string | undefined,
+		visible: boolean,
+	) => void
+	/** Callback to zoom to a mentioned geometry */
+	onMentionZoomTo?: (address: string, featureId: string | undefined) => void
 }
 
 export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
@@ -46,6 +57,9 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 		getDatasetName,
 		onCommentGeometryVisibility,
 		onZoomToBounds,
+		availableFeatures = [],
+		onMentionVisibilityToggle,
+		onMentionZoomTo,
 	} = props
 
 	// Store state
@@ -80,6 +94,9 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 				getDatasetName={getDatasetName}
 				onCommentGeometryVisibility={onCommentGeometryVisibility}
 				onZoomToBounds={onZoomToBounds}
+				availableFeatures={availableFeatures}
+				onMentionVisibilityToggle={onMentionVisibilityToggle}
+				onMentionZoomTo={onMentionZoomTo}
 			/>
 		)
 	}
