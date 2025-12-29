@@ -1,4 +1,4 @@
-import { Maximize2, X, FileText, MessageCircle, MapPin } from 'lucide-react'
+import { Maximize2, X, FileText, MessageCircle, MapPin, Pencil } from 'lucide-react'
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import type { FeatureCollection } from 'geojson'
 import { useEditorStore } from '../../features/geo-editor/store'
@@ -85,11 +85,21 @@ export function ViewModePanel({
 	const viewCollectionEvents = useEditorStore((state) => state.viewCollectionEvents)
 	const features = useEditorStore((state) => state.features)
 	const selectedFeatureIds = useEditorStore((state) => state.selectedFeatureIds)
+	const setViewMode = useEditorStore((state) => state.setViewMode)
+	const setViewDataset = useEditorStore((state) => state.setViewDataset)
+	const setViewCollection = useEditorStore((state) => state.setViewCollection)
 
 	const headerTitle = viewCollection ? 'Collection overview' : 'Dataset overview'
 
 	// Get the target for comments (either dataset or collection)
 	const commentTarget = viewDataset ?? viewCollection
+
+	// Switch to edit mode
+	const handleSwitchToEdit = useCallback(() => {
+		setViewMode('edit')
+		setViewDataset(null)
+		setViewCollection(null)
+	}, [setViewMode, setViewDataset, setViewCollection])
 
 	// Reset comment-related state when target changes
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentional reset on target change
@@ -194,15 +204,20 @@ export function ViewModePanel({
 		<div className="flex flex-col h-full text-sm">
 			{/* Header */}
 			<div className="flex-shrink-0 flex items-center justify-between gap-2 mb-3">
-				<div>
+				<div className="flex items-center gap-2">
 					<h2 className="text-lg font-bold text-gray-900">{headerTitle}</h2>
+					<Button
+						size="xs"
+						variant="ghost"
+						onClick={handleSwitchToEdit}
+						title="Switch to edit mode"
+						className="h-6 px-2 text-xs text-gray-500 hover:text-gray-700"
+					>
+						<Pencil className="h-3 w-3 mr-1" />
+						Edit
+					</Button>
 				</div>
 				<div className="flex gap-2">
-					{onExitViewMode && (
-						<Button variant="outline" size="sm" onClick={onExitViewMode}>
-							Back to editing
-						</Button>
-					)}
 					{onClose && (
 						<Button
 							size="icon"

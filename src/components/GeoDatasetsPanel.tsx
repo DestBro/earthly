@@ -293,11 +293,6 @@ export function GeoDatasetsPanelContent({
 
 			{activeTab === 'datasets' ? (
 				<>
-					{activeDataset && (
-						<Button size="sm" onClick={onClearEditing} variant="destructive" className="w-full">
-							Cancel editing
-						</Button>
-					)}
 
 					{geoEvents.length === 0 ? (
 						<p className="text-xs text-gray-500">Listening for GeoJSON datasets…</p>

@@ -47,6 +47,9 @@ export function useDatasetManagement(
 	const setBlobDraftUrl = useEditorStore((state) => state.setBlobDraftUrl)
 	const setBlobDraftStatus = useEditorStore((state) => state.setBlobDraftStatus)
 	const setBlobDraftError = useEditorStore((state) => state.setBlobDraftError)
+	const setViewMode = useEditorStore((state) => state.setViewMode)
+	const setViewDataset = useEditorStore((state) => state.setViewDataset)
+	const setViewCollection = useEditorStore((state) => state.setViewCollection)
 
 	const getDatasetKey = useCallback(
 		(event: NDKGeoEvent) => `${event.pubkey}:${event.datasetId ?? event.id}`,
@@ -223,6 +226,10 @@ export function useDatasetManagement(
 			setBlobDraftUrl('')
 			setBlobDraftStatus('idle')
 			setBlobDraftError(null)
+			// Switch to edit mode and clear view state
+			setViewMode('edit')
+			setViewDataset(null)
+			setViewCollection(null)
 		},
 		[
 			editor,
@@ -243,6 +250,9 @@ export function useDatasetManagement(
 			setBlobDraftUrl,
 			setBlobDraftStatus,
 			setBlobDraftError,
+			setViewMode,
+			setViewDataset,
+			setViewCollection,
 		],
 	)
 

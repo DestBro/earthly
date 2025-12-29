@@ -70,7 +70,7 @@ export const createDatasetColumns = (
 								: 'bg-blue-600 text-white hover:bg-blue-700',
 						)}
 						onClick={() => context.onLoadDataset(event)}
-						disabled={!!isActive || context.isPublishing}
+						disabled={context.isPublishing}
 						aria-label={isActive ? 'Loaded in editor' : isOwned ? 'Edit dataset' : 'Load copy'}
 						title={isActive ? 'Loaded in editor' : isOwned ? 'Edit dataset' : 'Load copy'}
 					>

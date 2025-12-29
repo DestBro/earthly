@@ -293,7 +293,6 @@ export function GeoEditorView() {
 
 	// Dataset actions
 	const handleDatasetSelect = (event: NDKGeoEvent) => {
-		if (activeDataset?.id === event.id) return
 		loadDatasetForEditing(event)
 	}
 

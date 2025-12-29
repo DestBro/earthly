@@ -1,4 +1,4 @@
-import { X } from 'lucide-react'
+import { X, Eye, Pencil } from 'lucide-react'
 import type { FeatureCollection } from 'geojson'
 import { cn } from '@/lib/utils'
 import { useEditorStore } from '../features/geo-editor/store'
@@ -69,6 +69,8 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 	const publishMessage = useEditorStore((state) => state.publishMessage)
 	const publishError = useEditorStore((state) => state.publishError)
 	const viewMode = useEditorStore((state) => state.viewMode)
+	const setViewMode = useEditorStore((state) => state.setViewMode)
+	const setViewDataset = useEditorStore((state) => state.setViewDataset)
 
 	const activeDatasetInfo = activeDataset
 		? {
@@ -76,6 +78,14 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 				isOwner: currentUserPubkey === activeDataset.pubkey,
 			}
 		: null
+
+	// Toggle to view mode - show the active dataset in view mode
+	const handleSwitchToView = () => {
+		if (activeDataset) {
+			setViewDataset(activeDataset)
+			setViewMode('view')
+		}
+	}
 
 	// View mode - delegate to ViewModePanel
 	if (viewMode === 'view') {
@@ -106,19 +116,33 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 		<div className="space-y-2 text-sm">
 			{/* Header */}
 			<div className="flex items-center justify-between gap-2 pb-1 border-b border-gray-100">
-				<div>
+				<div className="flex items-center gap-2">
 					<h2 className="text-base font-semibold text-gray-900">Editor</h2>
-					{activeDatasetInfo && (
-						<p className="text-[10px] text-gray-500">
-							{activeDatasetInfo.name} {activeDatasetInfo.isOwner ? '' : '(copy)'}
-						</p>
+					{activeDataset && (
+						<Button
+							size="xs"
+							variant="ghost"
+							onClick={handleSwitchToView}
+							title="Switch to view mode"
+							className="h-6 px-2 text-xs text-gray-500 hover:text-gray-700"
+						>
+							<Eye className="h-3 w-3 mr-1" />
+							View
+						</Button>
 					)}
 				</div>
-				{onClose && (
-					<Button size="icon-xs" variant="ghost" onClick={onClose} aria-label="Close">
-						<X className="h-3 w-3" />
-					</Button>
-				)}
+				<div className="flex items-center gap-1">
+					{activeDatasetInfo && (
+						<span className="text-[10px] text-gray-500 truncate max-w-[100px]">
+							{activeDatasetInfo.name} {activeDatasetInfo.isOwner ? '' : '(copy)'}
+						</span>
+					)}
+					{onClose && (
+						<Button size="icon-xs" variant="ghost" onClick={onClose} aria-label="Close">
+							<X className="h-3 w-3" />
+						</Button>
+					)}
+				</div>
 			</div>
 
 			{/* Stats row - inline */}
