@@ -15,7 +15,7 @@ import { useIsMobile } from '../../lib/hooks/useIsMobile'
 import { useGeoCollections, useStations } from '../../lib/hooks/useStations'
 import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
 import { Editor } from './components/Editor'
-import { LocationInspectorPanel } from './components/LocationInspectorPanel'
+import { LocationInspectorPopup } from './components/LocationInspectorPopup'
 import { Magnifier } from './components/Magnifier'
 import { GeoEditorMap as MapComponent } from './components/Map'
 import { Toolbar } from './components/Toolbar'
@@ -68,6 +68,11 @@ export function GeoEditorView() {
 		'idle',
 	)
 	const [reverseLookupError, setReverseLookupError] = useState<string | null>(null)
+	const [inspectorClickPosition, setInspectorClickPosition] = useState<{
+		x: number
+		y: number
+	} | null>(null)
+	const mapContainerRef = useRef<HTMLDivElement>(null)
 
 	// Store state
 	const editor = useEditorStore((state) => state.editor)
@@ -152,8 +157,6 @@ export function GeoEditorView() {
 	const {
 		infoMode,
 		setInfoMode,
-		sidebarMode,
-		setSidebarMode,
 		debugEvent,
 		debugDialogOpen,
 		setDebugDialogOpen,
@@ -484,6 +487,8 @@ export function GeoEditorView() {
 
 		const handleInspectorClick = async (event: maplibregl.MapMouseEvent & any) => {
 			const { lng, lat } = event.lngLat
+			// Capture click position for popup positioning
+			setInspectorClickPosition({ x: event.point.x, y: event.point.y })
 			setReverseLookupStatus('loading')
 			setReverseLookupError(null)
 			setReverseLookupResult(null)
@@ -551,8 +556,7 @@ export function GeoEditorView() {
 			editor.setMode((previousMode as EditorMode) || 'select')
 			setCurrentMode((previousMode as EditorMode) || 'select')
 		}
-		setSidebarMode('info')
-	}, [previousMode, editor, setCurrentMode, setInspectorActive, setSidebarMode])
+	}, [previousMode, editor, setCurrentMode, setInspectorActive])
 
 	// Comment geometry visibility handler - adds/removes GeoJSON layers on map
 	const handleCommentGeometryVisibility = useCallback(
@@ -742,7 +746,7 @@ export function GeoEditorView() {
 	const multiSelectModifierLabel = editor?.getMultiSelectModifierLabel() ?? 'Shift'
 
 	return (
-		<div className="relative h-screen w-full">
+		<div ref={mapContainerRef} className="relative h-screen w-full">
 			<MapComponent
 				onLoad={(m) => {
 					map.current = m
@@ -760,6 +764,21 @@ export function GeoEditorView() {
 				center={magnifierCenter}
 				mainMap={map.current}
 				size={MAGNIFIER_SIZE}
+			/>
+
+			{/* Inspector Popup - appears near cursor when inspector is active */}
+			<LocationInspectorPopup
+				isOpen={inspectorActive && inspectorClickPosition !== null}
+				loading={reverseLookupStatus === 'loading'}
+				error={reverseLookupError}
+				result={reverseLookupResult}
+				clickPosition={inspectorClickPosition}
+				containerRef={mapContainerRef}
+				onClose={() => {
+					setInspectorClickPosition(null)
+					setReverseLookupResult(null)
+					setReverseLookupError(null)
+				}}
 			/>
 
 			{mapError && (
@@ -848,78 +867,25 @@ export function GeoEditorView() {
 								{editor.getMode() === 'edit' && 'Drag vertices to edit'}
 							</div>
 						)}
-						<div className="flex items-center gap-2 border-b border-gray-100 px-4 py-2 text-sm font-medium">
-							{[
-								{ id: 'editor', label: 'Editor' },
-								{ id: 'inspector', label: 'Inspector' },
-								{ id: 'dataset', label: 'Dataset' },
-							].map((mode) => (
-								<Button
-									key={mode.id}
-									size="sm"
-									variant={sidebarMode === mode.id ? 'default' : 'ghost'}
-									className="h-8 px-3"
-									onClick={() => setSidebarMode(mode.id as any)}
-								>
-									{mode.label}
-								</Button>
-							))}
-						</div>
 						<div className="h-full overflow-y-auto p-4">
-							{sidebarMode === 'inspector' ? (
-								<LocationInspectorPanel
-									inspectorActive={inspectorActive}
-									loading={reverseLookupStatus === 'loading'}
-									error={reverseLookupError}
-									result={reverseLookupResult}
-									onPause={() => setInspectorActive(false)}
-									onClear={() => setReverseLookupResult(null)}
-								/>
-							) : sidebarMode === 'dataset' ? (
-								viewingDataset || viewingCollection ? (
-									<GeoEditorInfoPanelContent
-										currentUserPubkey={currentUser?.pubkey}
-										onLoadDataset={loadDatasetForEditing}
-										onToggleVisibility={toggleDatasetVisibility}
-										onZoomToDataset={zoomToDataset}
-										onDeleteDataset={onDeleteDataset}
-										onZoomToCollection={zoomToCollection}
-										deletingKey={deletingKey}
-										onExitViewMode={exitViewMode}
-										onClose={() => setShowInfoPanel(false)}
-										getDatasetKey={getDatasetKey}
-										getDatasetName={getDatasetName}
-										onCommentGeometryVisibility={handleCommentGeometryVisibility}
-										onZoomToBounds={handleZoomToBounds}
-										availableFeatures={availableFeatures}
-										onMentionVisibilityToggle={handleMentionVisibilityToggle}
-										onMentionZoomTo={handleMentionZoomTo}
-									/>
-								) : (
-									<div className="text-sm text-gray-600">
-										Select a dataset or collection to inspect.
-									</div>
-								)
-							) : (
-								<GeoEditorInfoPanelContent
-									currentUserPubkey={currentUser?.pubkey}
-									onLoadDataset={loadDatasetForEditing}
-									onToggleVisibility={toggleDatasetVisibility}
-									onZoomToDataset={zoomToDataset}
-									onDeleteDataset={onDeleteDataset}
-									onZoomToCollection={zoomToCollection}
-									deletingKey={deletingKey}
-									onExitViewMode={exitViewMode}
-									onClose={() => setShowInfoPanel(false)}
-									getDatasetKey={getDatasetKey}
-									getDatasetName={getDatasetName}
-									onCommentGeometryVisibility={handleCommentGeometryVisibility}
-									onZoomToBounds={handleZoomToBounds}
-									availableFeatures={availableFeatures}
-									onMentionVisibilityToggle={handleMentionVisibilityToggle}
-									onMentionZoomTo={handleMentionZoomTo}
-								/>
-							)}
+							<GeoEditorInfoPanelContent
+								currentUserPubkey={currentUser?.pubkey}
+								onLoadDataset={loadDatasetForEditing}
+								onToggleVisibility={toggleDatasetVisibility}
+								onZoomToDataset={zoomToDataset}
+								onDeleteDataset={onDeleteDataset}
+								onZoomToCollection={zoomToCollection}
+								deletingKey={deletingKey}
+								onExitViewMode={exitViewMode}
+								onClose={() => setShowInfoPanel(false)}
+								getDatasetKey={getDatasetKey}
+								getDatasetName={getDatasetName}
+								onCommentGeometryVisibility={handleCommentGeometryVisibility}
+								onZoomToBounds={handleZoomToBounds}
+								availableFeatures={availableFeatures}
+								onMentionVisibilityToggle={handleMentionVisibilityToggle}
+								onMentionZoomTo={handleMentionZoomTo}
+							/>
 						</div>
 					</div>
 				</div>
