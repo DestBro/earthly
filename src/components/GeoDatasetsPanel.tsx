@@ -29,6 +29,7 @@ export interface GeoDatasetsPanelProps {
 	onClearEditing: () => void
 	onLoadDataset: (event: NDKGeoEvent) => void
 	onToggleVisibility: (event: NDKGeoEvent) => void
+	onToggleAllVisibility: (visible: boolean) => void
 	onZoomToDataset: (event: NDKGeoEvent) => void
 	onDeleteDataset: (event: NDKGeoEvent) => void
 	getDatasetKey: (event: NDKGeoEvent) => string
@@ -76,6 +77,7 @@ export function GeoDatasetsPanelContent({
 	onClearEditing,
 	onLoadDataset,
 	onToggleVisibility,
+	onToggleAllVisibility,
 	onZoomToDataset,
 	onDeleteDataset,
 	getDatasetKey,
@@ -178,6 +180,15 @@ export function GeoDatasetsPanelContent({
 		getDatasetName,
 	])
 
+	// Compute visibility state for all filtered datasets (for header checkbox)
+	const allVisibleState = useMemo((): 'all' | 'none' | 'some' => {
+		if (datasetTableData.length === 0) return 'none'
+		const visibleCount = datasetTableData.filter((row) => row.isVisible).length
+		if (visibleCount === 0) return 'none'
+		if (visibleCount === datasetTableData.length) return 'all'
+		return 'some'
+	}, [datasetTableData])
+
 	// Prepare collection table data
 	const collectionTableData: CollectionRowData[] = useMemo(() => {
 		return filteredCollections.map((collection) => {
@@ -205,21 +216,25 @@ export function GeoDatasetsPanelContent({
 			onLoadDataset,
 			onDeleteDataset,
 			onToggleVisibility,
+			onToggleAllVisibility,
 			onZoomToDataset,
 			onInspectDataset,
 			onOpenDebug,
 			isPublishing,
 			deletingKey,
+			allVisibleState,
 		}),
 		[
 			onLoadDataset,
 			onDeleteDataset,
 			onToggleVisibility,
+			onToggleAllVisibility,
 			onZoomToDataset,
 			onInspectDataset,
 			onOpenDebug,
 			isPublishing,
 			deletingKey,
+			allVisibleState,
 		],
 	)
 

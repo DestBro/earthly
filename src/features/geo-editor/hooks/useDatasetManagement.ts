@@ -199,6 +199,20 @@ export function useDatasetManagement(
 		[getDatasetKey, setDatasetVisibility],
 	)
 
+	const toggleAllDatasetVisibility = useCallback(
+		(visible: boolean) => {
+			setDatasetVisibility((prev) => {
+				const next = { ...prev }
+				for (const event of geoEventsRef.current) {
+					const key = getDatasetKey(event)
+					next[key] = visible
+				}
+				return next
+			})
+		},
+		[getDatasetKey, setDatasetVisibility],
+	)
+
 	const loadDatasetForEditing = useCallback(
 		async (event: NDKGeoEvent) => {
 			if (!editor) return
@@ -312,6 +326,7 @@ export function useDatasetManagement(
 		zoomToDataset,
 		zoomToCollection,
 		toggleDatasetVisibility,
+		toggleAllDatasetVisibility,
 		loadDatasetForEditing,
 		clearEditingSession,
 	}

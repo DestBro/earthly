@@ -140,6 +140,7 @@ export function GeoEditorView() {
 		zoomToDataset,
 		zoomToCollection,
 		toggleDatasetVisibility,
+		toggleAllDatasetVisibility,
 		loadDatasetForEditing,
 		clearEditingSession,
 	} = useDatasetManagement(map, geoEvents)
@@ -902,6 +903,7 @@ export function GeoEditorView() {
 								onClearEditing={clearEditingSession}
 								onLoadDataset={handleDatasetSelect}
 								onToggleVisibility={toggleDatasetVisibility}
+								onToggleAllVisibility={toggleAllDatasetVisibility}
 								onZoomToDataset={zoomToDataset}
 								onDeleteDataset={onDeleteDataset}
 								getDatasetKey={getDatasetKey}
@@ -981,6 +983,7 @@ export function GeoEditorView() {
 									onClearEditing={clearEditingSession}
 									onLoadDataset={loadDatasetForEditing}
 									onToggleVisibility={toggleDatasetVisibility}
+									onToggleAllVisibility={toggleAllDatasetVisibility}
 									onZoomToDataset={zoomToDataset}
 									onDeleteDataset={onDeleteDataset}
 									getDatasetKey={getDatasetKey}

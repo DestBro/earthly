@@ -20,11 +20,13 @@ export interface DatasetColumnsContext {
 	onLoadDataset: (event: NDKGeoEvent) => void
 	onDeleteDataset: (event: NDKGeoEvent) => void
 	onToggleVisibility: (event: NDKGeoEvent) => void
+	onToggleAllVisibility: (visible: boolean) => void
 	onZoomToDataset: (event: NDKGeoEvent) => void
 	onInspectDataset?: (event: NDKGeoEvent) => void
 	onOpenDebug?: (event: NDKGeoEvent) => void
 	isPublishing: boolean
 	deletingKey: string | null
+	allVisibleState: 'all' | 'none' | 'some'
 }
 
 export const createDatasetColumns = (
@@ -32,7 +34,23 @@ export const createDatasetColumns = (
 ): ColumnDef<DatasetRowData>[] => [
 	{
 		id: 'visibility',
-		header: '',
+		header: () => {
+			const isAllVisible = context.allVisibleState === 'all'
+			const isIndeterminate = context.allVisibleState === 'some'
+			return (
+				<input
+					type="checkbox"
+					checked={isAllVisible}
+					ref={(el) => {
+						if (el) el.indeterminate = isIndeterminate
+					}}
+					onChange={() => context.onToggleAllVisibility(!isAllVisible)}
+					className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+					aria-label={isAllVisible ? 'Hide all datasets' : 'Show all datasets'}
+					title={isAllVisible ? 'Hide all datasets' : 'Show all datasets'}
+				/>
+			)
+		},
 		size: 32,
 		cell: ({ row }) => {
 			const { event, isVisible } = row.original
