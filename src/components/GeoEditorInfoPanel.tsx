@@ -110,6 +110,10 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 				onClose={onCloseCollectionEditor}
 				onSave={onSaveCollection}
 				availableFeatures={availableFeatures}
+				onCommentGeometryVisibility={onCommentGeometryVisibility}
+				onZoomToBounds={onZoomToBounds}
+				onMentionVisibilityToggle={onMentionVisibilityToggle}
+				onMentionZoomTo={onMentionZoomTo}
 			/>
 		)
 	}

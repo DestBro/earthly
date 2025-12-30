@@ -920,7 +920,7 @@ export function GeoEditorView() {
 			)}
 
 			{!isMobile && mounted && showInfoPanel && (
-				<div className="pointer-events-auto absolute right-4 top-[88px] bottom-4 z-40 hidden md:flex w-96">
+				<div className="pointer-events-auto absolute right-4 top-[88px] bottom-4 z-40 hidden md:flex w-[25vw]">
 					<div className="flex-1 overflow-hidden rounded-2xl bg-white shadow-xl">
 						{editor && (
 							<div className="pointer-events-none absolute bottom-8 left-1/2 -translate-x-1/2 rounded-full bg-black/75 px-4 py-1 text-xs text-white backdrop-blur">
