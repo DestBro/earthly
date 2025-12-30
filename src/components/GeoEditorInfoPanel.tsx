@@ -10,6 +10,7 @@ import {
 	GeometriesTable,
 	ViewModePanel,
 } from './info-panel'
+import { GeoCollectionEditorPanel } from './GeoCollectionEditorPanel'
 import { Button } from './ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
 import type { GeoFeatureItem } from './editor/GeoRichTextEditor'
@@ -41,6 +42,14 @@ export interface GeoEditorInfoPanelProps {
 	/** Callback to zoom to a mentioned geometry */
 	onMentionZoomTo?: (address: string, featureId: string | undefined) => void
 	onEditCollection?: (collection: NDKGeoCollectionEvent) => void
+	/** Collection editor mode */
+	collectionEditorMode?: 'none' | 'create' | 'edit'
+	/** Collection being edited */
+	editingCollection?: NDKGeoCollectionEvent | null
+	/** Callback when collection is saved */
+	onSaveCollection?: (collection: NDKGeoCollectionEvent) => void
+	/** Callback to close collection editor */
+	onCloseCollectionEditor?: () => void
 }
 
 export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
@@ -62,6 +71,10 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 		onMentionVisibilityToggle,
 		onMentionZoomTo,
 		onEditCollection,
+		collectionEditorMode = 'none',
+		editingCollection,
+		onSaveCollection,
+		onCloseCollectionEditor,
 	} = props
 
 	// Store state
@@ -87,6 +100,18 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 			setViewDataset(activeDataset)
 			setViewMode('view')
 		}
+	}
+
+	// Collection Editor mode takes precedence
+	if (collectionEditorMode !== 'none' && onSaveCollection && onCloseCollectionEditor) {
+		return (
+			<GeoCollectionEditorPanel
+				initialCollection={editingCollection}
+				onClose={onCloseCollectionEditor}
+				onSave={onSaveCollection}
+				availableFeatures={availableFeatures}
+			/>
+		)
 	}
 
 	// View mode - delegate to ViewModePanel

@@ -15,7 +15,6 @@ import { useIsMobile } from '../../lib/hooks/useIsMobile'
 import { useGeoCollections, useStations } from '../../lib/hooks/useStations'
 import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
 import type { NDKGeoCollectionEvent } from '../../lib/ndk/NDKGeoCollectionEvent'
-import { GeoCollectionEditorPanel } from '../../components/GeoCollectionEditorPanel'
 import { Editor } from './components/Editor'
 import { LocationInspectorPopup } from './components/LocationInspectorPopup'
 import { Magnifier } from './components/Magnifier'
@@ -299,7 +298,7 @@ export function GeoEditorView() {
 
 	// Dataset actions
 	const handleDatasetSelect = (event: NDKGeoEvent) => {
-		loadDatasetForEditing(event)
+		handleLoadDatasetForEditing(event)
 	}
 
 	const handleClear = useCallback(() => {
@@ -752,16 +751,20 @@ export function GeoEditorView() {
 	const handleCreateCollection = useCallback(() => {
 		setCollectionEditorMode('create')
 		setEditingCollection(null)
+		// Exit view mode if active
+		exitViewMode()
 		if (!isMobile) setShowInfoPanel(true)
-	}, [isMobile, setShowInfoPanel])
+	}, [isMobile, setShowInfoPanel, exitViewMode])
 
 	const handleEditCollection = useCallback(
 		(collection: NDKGeoCollectionEvent) => {
 			setCollectionEditorMode('edit')
 			setEditingCollection(collection)
+			// Exit view mode if active
+			exitViewMode()
 			if (!isMobile) setShowInfoPanel(true)
 		},
-		[isMobile, setShowInfoPanel],
+		[isMobile, setShowInfoPanel, exitViewMode],
 	)
 
 	const handleSaveCollection = useCallback((collection: NDKGeoCollectionEvent) => {
@@ -773,6 +776,36 @@ export function GeoEditorView() {
 		setCollectionEditorMode('none')
 		setEditingCollection(null)
 	}, [])
+
+	// Wrapper that clears collection editor mode when loading a dataset for editing
+	const handleLoadDatasetForEditing = useCallback(
+		(event: NDKGeoEvent) => {
+			setCollectionEditorMode('none')
+			setEditingCollection(null)
+			loadDatasetForEditing(event)
+		},
+		[loadDatasetForEditing],
+	)
+
+	// Wrapper that clears collection editor mode when inspecting a dataset
+	const handleInspectDatasetWithModeSwitch = useCallback(
+		(event: NDKGeoEvent) => {
+			setCollectionEditorMode('none')
+			setEditingCollection(null)
+			handleInspectDataset(event)
+		},
+		[handleInspectDataset],
+	)
+
+	// Wrapper that clears collection editor mode when inspecting a collection
+	const handleInspectCollectionWithModeSwitch = useCallback(
+		(collection: NDKGeoCollectionEvent, events: NDKGeoEvent[]) => {
+			setCollectionEditorMode('none')
+			setEditingCollection(null)
+			handleInspectCollection(collection, events)
+		},
+		[handleInspectCollection],
+	)
 
 	const multiSelectModifierLabel = editor?.getMultiSelectModifierLabel() ?? 'Shift'
 
@@ -874,6 +907,8 @@ export function GeoEditorView() {
 								getDatasetKey={getDatasetKey}
 								getDatasetName={getDatasetName}
 								onZoomToCollection={zoomToCollection}
+								onInspectDataset={handleInspectDatasetWithModeSwitch}
+								onInspectCollection={handleInspectCollectionWithModeSwitch}
 								onOpenDebug={handleOpenDebug}
 								onClose={() => setShowDatasetsPanel(false)}
 								onCreateCollection={handleCreateCollection}
@@ -898,35 +933,30 @@ export function GeoEditorView() {
 								{editor.getMode() === 'edit' && 'Drag vertices to edit'}
 							</div>
 						)}
-						<div className={`h-full overflow-y-auto ${collectionEditorMode === 'none' ? 'p-4' : ''}`}>
-							{collectionEditorMode !== 'none' ? (
-								<GeoCollectionEditorPanel
-									initialCollection={editingCollection}
-									onClose={handleCloseCollectionEditor}
-									onSave={handleSaveCollection}
-									availableFeatures={availableFeatures}
-								/>
-							) : (
-								<GeoEditorInfoPanelContent
-									currentUserPubkey={currentUser?.pubkey}
-									onLoadDataset={loadDatasetForEditing}
-									onToggleVisibility={toggleDatasetVisibility}
-									onZoomToDataset={zoomToDataset}
-									onDeleteDataset={onDeleteDataset}
-									onZoomToCollection={zoomToCollection}
-									deletingKey={deletingKey}
-									onExitViewMode={exitViewMode}
-									onClose={() => setShowInfoPanel(false)}
-									getDatasetKey={getDatasetKey}
-									getDatasetName={getDatasetName}
-									onCommentGeometryVisibility={handleCommentGeometryVisibility}
-									onZoomToBounds={handleZoomToBounds}
-									availableFeatures={availableFeatures}
-									onMentionVisibilityToggle={handleMentionVisibilityToggle}
-									onMentionZoomTo={handleMentionZoomTo}
-									onEditCollection={handleEditCollection}
-								/>
-							)}
+						<div className="h-full overflow-y-auto p-4">
+							<GeoEditorInfoPanelContent
+								currentUserPubkey={currentUser?.pubkey}
+								onLoadDataset={handleLoadDatasetForEditing}
+								onToggleVisibility={toggleDatasetVisibility}
+								onZoomToDataset={zoomToDataset}
+								onDeleteDataset={onDeleteDataset}
+								onZoomToCollection={zoomToCollection}
+								deletingKey={deletingKey}
+								onExitViewMode={exitViewMode}
+								onClose={() => setShowInfoPanel(false)}
+								getDatasetKey={getDatasetKey}
+								getDatasetName={getDatasetName}
+								onCommentGeometryVisibility={handleCommentGeometryVisibility}
+								onZoomToBounds={handleZoomToBounds}
+								availableFeatures={availableFeatures}
+								onMentionVisibilityToggle={handleMentionVisibilityToggle}
+								onMentionZoomTo={handleMentionZoomTo}
+								onEditCollection={handleEditCollection}
+								collectionEditorMode={collectionEditorMode}
+								editingCollection={editingCollection}
+								onSaveCollection={handleSaveCollection}
+								onCloseCollectionEditor={handleCloseCollectionEditor}
+							/>
 						</div>
 					</div>
 				</div>
@@ -956,8 +986,8 @@ export function GeoEditorView() {
 									getDatasetKey={getDatasetKey}
 									getDatasetName={getDatasetName}
 									onZoomToCollection={zoomToCollection}
-									onInspectDataset={handleInspectDataset}
-									onInspectCollection={handleInspectCollection}
+									onInspectDataset={handleInspectDatasetWithModeSwitch}
+									onInspectCollection={handleInspectCollectionWithModeSwitch}
 									onOpenDebug={handleOpenDebug}
 									onClose={() => setMobileDatasetsOpen(false)}
 									onCreateCollection={handleCreateCollection}
@@ -988,6 +1018,10 @@ export function GeoEditorView() {
 									onMentionVisibilityToggle={handleMentionVisibilityToggle}
 									onMentionZoomTo={handleMentionZoomTo}
 									onEditCollection={handleEditCollection}
+									collectionEditorMode={collectionEditorMode}
+									editingCollection={editingCollection}
+									onSaveCollection={handleSaveCollection}
+									onCloseCollectionEditor={handleCloseCollectionEditor}
 								/>
 							</div>
 						</SheetContent>
