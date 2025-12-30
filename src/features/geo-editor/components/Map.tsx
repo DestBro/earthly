@@ -82,6 +82,7 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 	const mapContainer = useRef<HTMLDivElement>(null)
 	const mapRef = useRef<maplibregl.Map | null>(null)
 	const protocolRef = useRef<Protocol | null>(null)
+	const resizeObserverRef = useRef<ResizeObserver | null>(null)
 	const [isLoaded, setIsLoaded] = useState(false)
 	const [_announcement, setAnnouncement] = useState<AnnouncementRecord | null>(null)
 	const [tileSourceMaxZoom, setTileSourceMaxZoom] = useState<number | null>(null)
@@ -282,15 +283,10 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 		}
 	}, [mapSource.type, mapSource.blossomServer, latestLayerSetContent])
 
-	// Initialize map
+	// Initialize map (create once; style switches handled separately via setStyle).
 	useEffect(() => {
 		if (!mapContainer.current) return
 		if (mapRef.current) return
-
-		// For blossom, wait until we have the announcement
-		if (mapSource.type === 'blossom' && tileSourceMaxZoom === null) {
-			return
-		}
 
 		let mapStyle: string | maplibregl.StyleSpecification = initialStyle
 		let initialStyleKey: string | null = null
@@ -368,23 +364,37 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 			map.resize()
 		})
 		resizeObserver.observe(mapContainer.current)
-
-		return () => {
-			resizeObserver.disconnect()
-			map.remove()
-			mapRef.current = null
-			setIsLoaded(false)
-		}
+		resizeObserverRef.current = resizeObserver
 	}, [
-		mapSource.type,
-		tileSourceMaxZoom,
-		mapSource.url,
-		mapSource.file,
-		mapSource.location,
 		initialStyle,
 		center,
 		zoom,
+		mapSource.type,
+		mapSource.location,
+		mapSource.url,
+		mapSource.file,
+		tileSourceMaxZoom,
 	])
+
+	// Cleanup map on unmount only.
+	useEffect(() => {
+		return () => {
+			try {
+				resizeObserverRef.current?.disconnect()
+			} catch {
+				// ignore
+			}
+			resizeObserverRef.current = null
+
+			try {
+				mapRef.current?.remove()
+			} catch {
+				// ignore
+			}
+			mapRef.current = null
+			setIsLoaded(false)
+		}
+	}, [])
 
 	// Keep view in sync without destroying/recreating the map instance.
 	useEffect(() => {
@@ -405,7 +415,7 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 		const updateStyle = async () => {
 			if (mapSource.type === 'default') {
 				if (currentStyleUrlRef.current === initialStyle) return
-				map.setStyle(initialStyle)
+				map.setStyle(initialStyle, { diff: false })
 				currentStyleUrlRef.current = initialStyle as string
 			} else if (mapSource.type === 'pmtiles') {
 				let url = mapSource.url
@@ -437,7 +447,7 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 					}),
 				}
 
-				map.setStyle(style)
+				map.setStyle(style, { diff: false })
 				currentStyleUrlRef.current = pmtilesUrl
 			} else if (mapSource.type === 'blossom' && tileSourceMaxZoom !== null) {
 				const styleKey = `pmworld:${tileSourceMaxZoom}`
@@ -462,7 +472,7 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 					}),
 				}
 
-				map.setStyle(style)
+				map.setStyle(style, { diff: false })
 				currentStyleUrlRef.current = styleKey
 			}
 		}

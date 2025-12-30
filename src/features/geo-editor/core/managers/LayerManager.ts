@@ -49,10 +49,46 @@ export class LayerManager {
 	isStyleReady(): boolean {
 		try {
 			if (!this.map?.getStyle?.()) return false
-			return this.map.isStyleLoaded() ?? false
+			return true
 		} catch {
 			return false
 		}
+	}
+
+	private getDefaultTextFontStack(): string[] | null {
+		const isStringArray = (value: unknown): value is string[] =>
+			Array.isArray(value) && value.every((v) => typeof v === 'string')
+
+		const extract = (value: unknown): string[] | null => {
+			if (typeof value === 'string') return [value]
+			if (isStringArray(value)) return value
+			if (!Array.isArray(value) || value.length === 0) return null
+
+			const [op, ...rest] = value
+			if (op === 'literal' && rest.length > 0 && isStringArray(rest[0])) return rest[0]
+			if (op === 'case') {
+				for (const part of rest) {
+					const extracted = extract(part)
+					if (extracted) return extracted
+				}
+			}
+			return null
+		}
+
+		try {
+			const style = this.map.getStyle?.()
+			const layers = style?.layers ?? []
+			for (const layer of layers) {
+				const layout = (layer as unknown as { layout?: Record<string, unknown> }).layout
+				const textFont = layout?.['text-font']
+				const extracted = extract(textFont)
+				if (extracted) return extracted
+			}
+		} catch {
+			// ignore
+		}
+
+		return null
 	}
 
 	/**
@@ -89,380 +125,393 @@ export class LayerManager {
 	 */
 	setupLayers(getFeatureCollection: () => FeatureCollection): void {
 		if (!this.isStyleReady()) return
+		try {
+			// === SOURCES ===
+			// Add main feature source
+			if (!this.safeGetGeoJSONSource(this.SOURCE_ID)) {
+				this.map.addSource(this.SOURCE_ID, {
+					type: 'geojson',
+					data: getFeatureCollection(),
+				})
+			}
 
-		// === SOURCES ===
-		// Add main feature source
-		if (!this.safeGetGeoJSONSource(this.SOURCE_ID)) {
-			this.map.addSource(this.SOURCE_ID, {
-				type: 'geojson',
-				data: getFeatureCollection(),
-			})
-		}
+			// Add vertices source for edit mode
+			if (!this.safeGetGeoJSONSource(this.SOURCE_VERTICES)) {
+				this.map.addSource(this.SOURCE_VERTICES, {
+					type: 'geojson',
+					data: { type: 'FeatureCollection', features: [] },
+				})
+			}
 
-		// Add vertices source for edit mode
-		if (!this.safeGetGeoJSONSource(this.SOURCE_VERTICES)) {
-			this.map.addSource(this.SOURCE_VERTICES, {
-				type: 'geojson',
-				data: { type: 'FeatureCollection', features: [] },
-			})
-		}
+			if (!this.safeGetGeoJSONSource(this.SOURCE_SELECTION)) {
+				this.map.addSource(this.SOURCE_SELECTION, {
+					type: 'geojson',
+					data: { type: 'FeatureCollection', features: [] },
+				})
+			}
 
-		if (!this.safeGetGeoJSONSource(this.SOURCE_SELECTION)) {
-			this.map.addSource(this.SOURCE_SELECTION, {
-				type: 'geojson',
-				data: { type: 'FeatureCollection', features: [] },
-			})
-		}
+			if (!this.safeGetGeoJSONSource(this.SOURCE_SELECTION_BOX)) {
+				this.map.addSource(this.SOURCE_SELECTION_BOX, {
+					type: 'geojson',
+					data: { type: 'FeatureCollection', features: [] },
+				})
+			}
 
-		if (!this.safeGetGeoJSONSource(this.SOURCE_SELECTION_BOX)) {
-			this.map.addSource(this.SOURCE_SELECTION_BOX, {
-				type: 'geojson',
-				data: { type: 'FeatureCollection', features: [] },
-			})
-		}
+			if (!this.safeGetGeoJSONSource(this.SOURCE_GIZMO)) {
+				this.map.addSource(this.SOURCE_GIZMO, {
+					type: 'geojson',
+					data: { type: 'FeatureCollection', features: [] },
+				})
+			}
 
-		if (!this.safeGetGeoJSONSource(this.SOURCE_GIZMO)) {
-			this.map.addSource(this.SOURCE_GIZMO, {
-				type: 'geojson',
-				data: { type: 'FeatureCollection', features: [] },
-			})
-		}
+			if (!this.safeGetGeoJSONSource(this.SOURCE_CURSOR)) {
+				this.map.addSource(this.SOURCE_CURSOR, {
+					type: 'geojson',
+					data: { type: 'FeatureCollection', features: [] },
+				})
+			}
 
-		if (!this.safeGetGeoJSONSource(this.SOURCE_CURSOR)) {
-			this.map.addSource(this.SOURCE_CURSOR, {
-				type: 'geojson',
-				data: { type: 'FeatureCollection', features: [] },
-			})
-		}
+			// === LAYERS (order is critical for z-index and events) ===
 
-		// === LAYERS (order is critical for z-index and events) ===
-
-		// 1. Polygon fill layer
-		if (!this.map.getLayer(this.LAYER_FILL)) {
-			this.map.addLayer({
-				id: this.LAYER_FILL,
-				type: 'fill',
-				source: this.SOURCE_ID,
-				filter: [
-					'all',
-					['any', ['==', ['geometry-type'], 'Polygon'], ['==', ['geometry-type'], 'MultiPolygon']],
-					['any', ['==', ['get', 'meta'], 'feature'], ['==', ['get', 'meta'], 'feature-temp']],
-				],
-				paint: {
-					'fill-color': [
-						'case',
-						['==', ['get', 'active'], true],
-						'#fbb03b',
-						['coalesce', ['get', 'color'], '#3bb2d0'],
+			// 1. Polygon fill layer
+			if (!this.map.getLayer(this.LAYER_FILL)) {
+				this.map.addLayer({
+					id: this.LAYER_FILL,
+					type: 'fill',
+					source: this.SOURCE_ID,
+					filter: [
+						'all',
+						[
+							'any',
+							['==', ['geometry-type'], 'Polygon'],
+							['==', ['geometry-type'], 'MultiPolygon'],
+						],
+						['any', ['==', ['get', 'meta'], 'feature'], ['==', ['get', 'meta'], 'feature-temp']],
 					],
-					'fill-opacity': ['case', ['==', ['get', 'meta'], 'feature-temp'], 0.2, 0.3],
-					'fill-outline-color': ['case', ['==', ['get', 'active'], true], '#1d4ed8', '#1f2937'],
-				},
-			})
-		}
+					paint: {
+						'fill-color': [
+							'case',
+							['==', ['get', 'active'], true],
+							'#fbb03b',
+							['coalesce', ['get', 'color'], '#3bb2d0'],
+						],
+						'fill-opacity': ['case', ['==', ['get', 'meta'], 'feature-temp'], 0.2, 0.3],
+						'fill-outline-color': ['case', ['==', ['get', 'active'], true], '#1d4ed8', '#1f2937'],
+					},
+				})
+			}
 
-		// 2. Selection fill layer
-		if (!this.map.getLayer(this.LAYER_SELECTION_FILL)) {
-			this.map.addLayer({
-				id: this.LAYER_SELECTION_FILL,
-				type: 'fill',
-				source: this.SOURCE_SELECTION,
-				filter: [
-					'any',
-					['==', ['geometry-type'], 'Polygon'],
-					['==', ['geometry-type'], 'MultiPolygon'],
-				],
-				paint: {
-					'fill-color': '#2563eb',
-					'fill-opacity': 0.2,
-				},
-			})
-		}
-
-		// 3. Main line layer
-		if (!this.map.getLayer(this.LAYER_LINE)) {
-			this.map.addLayer({
-				id: this.LAYER_LINE,
-				type: 'line',
-				source: this.SOURCE_ID,
-				filter: [
-					'all',
-					[
+			// 2. Selection fill layer
+			if (!this.map.getLayer(this.LAYER_SELECTION_FILL)) {
+				this.map.addLayer({
+					id: this.LAYER_SELECTION_FILL,
+					type: 'fill',
+					source: this.SOURCE_SELECTION,
+					filter: [
 						'any',
-						['==', ['geometry-type'], 'LineString'],
 						['==', ['geometry-type'], 'Polygon'],
-						['==', ['geometry-type'], 'MultiLineString'],
 						['==', ['geometry-type'], 'MultiPolygon'],
 					],
-					['any', ['==', ['get', 'meta'], 'feature'], ['==', ['get', 'meta'], 'feature-temp']],
-				],
-				paint: {
-					'line-color': [
-						'case',
-						['==', ['get', 'active'], true],
-						'#1d4ed8',
-						['coalesce', ['get', 'color'], '#3bb2d0'],
+					paint: {
+						'fill-color': '#2563eb',
+						'fill-opacity': 0.2,
+					},
+				})
+			}
+
+			// 3. Main line layer
+			if (!this.map.getLayer(this.LAYER_LINE)) {
+				this.map.addLayer({
+					id: this.LAYER_LINE,
+					type: 'line',
+					source: this.SOURCE_ID,
+					filter: [
+						'all',
+						[
+							'any',
+							['==', ['geometry-type'], 'LineString'],
+							['==', ['geometry-type'], 'Polygon'],
+							['==', ['geometry-type'], 'MultiLineString'],
+							['==', ['geometry-type'], 'MultiPolygon'],
+						],
+						['any', ['==', ['get', 'meta'], 'feature'], ['==', ['get', 'meta'], 'feature-temp']],
 					],
-					'line-width': ['case', ['==', ['get', 'active'], true], 4, 2],
-					'line-dasharray': ['literal', [2, 2]],
-				},
-			})
-		}
+					paint: {
+						'line-color': [
+							'case',
+							['==', ['get', 'active'], true],
+							'#1d4ed8',
+							['coalesce', ['get', 'color'], '#3bb2d0'],
+						],
+						'line-width': ['case', ['==', ['get', 'active'], true], 4, 2],
+						'line-dasharray': ['literal', [2, 2]],
+					},
+				})
+			}
 
-		// 4. Selection line layer
-		if (!this.map.getLayer(this.LAYER_SELECTION_LINE)) {
-			this.map.addLayer({
-				id: this.LAYER_SELECTION_LINE,
-				type: 'line',
-				source: this.SOURCE_SELECTION,
-				filter: [
-					'any',
-					['==', ['geometry-type'], 'LineString'],
-					['==', ['geometry-type'], 'MultiLineString'],
-					['==', ['geometry-type'], 'Polygon'],
-					['==', ['geometry-type'], 'MultiPolygon'],
-				],
-				paint: {
-					'line-color': '#2563eb',
-					'line-width': 3,
-					'line-dasharray': ['literal', [2, 2]],
-				},
-			})
-		}
-
-		// 5. Main point layer (excludes annotations)
-		if (!this.map.getLayer(this.LAYER_POINT)) {
-			this.map.addLayer({
-				id: this.LAYER_POINT,
-				type: 'circle',
-				source: this.SOURCE_ID,
-				filter: [
-					'all',
-					['any', ['==', ['geometry-type'], 'Point'], ['==', ['geometry-type'], 'MultiPoint']],
-					['==', ['get', 'meta'], 'feature'],
-					['!=', ['get', 'featureType'], 'annotation'],
-				],
-				paint: {
-					'circle-radius': ['case', ['==', ['get', 'active'], true], 8, 6],
-					'circle-color': [
-						'case',
-						['==', ['get', 'active'], true],
-						'#1d4ed8',
-						['coalesce', ['get', 'color'], '#3bb2d0'],
+			// 4. Selection line layer
+			if (!this.map.getLayer(this.LAYER_SELECTION_LINE)) {
+				this.map.addLayer({
+					id: this.LAYER_SELECTION_LINE,
+					type: 'line',
+					source: this.SOURCE_SELECTION,
+					filter: [
+						'any',
+						['==', ['geometry-type'], 'LineString'],
+						['==', ['geometry-type'], 'MultiLineString'],
+						['==', ['geometry-type'], 'Polygon'],
+						['==', ['geometry-type'], 'MultiPolygon'],
 					],
-					'circle-stroke-width': ['case', ['==', ['get', 'active'], true], 3, 2],
-					'circle-stroke-color': ['case', ['==', ['get', 'active'], true], '#93c5fd', '#fff'],
-				},
-			})
-		}
+					paint: {
+						'line-color': '#2563eb',
+						'line-width': 3,
+						'line-dasharray': ['literal', [2, 2]],
+					},
+				})
+			}
 
-		// 5b. Annotation anchor layer (small circle for click/drag interaction)
-		if (!this.map.getLayer(this.LAYER_ANNOTATION_ANCHOR)) {
-			this.map.addLayer({
-				id: this.LAYER_ANNOTATION_ANCHOR,
-				type: 'circle',
-				source: this.SOURCE_ID,
-				filter: [
-					'all',
-					['==', ['geometry-type'], 'Point'],
-					['==', ['get', 'meta'], 'feature'],
-					['==', ['get', 'featureType'], 'annotation'],
-				],
-				paint: {
-					'circle-radius': ['case', ['==', ['get', 'active'], true], 6, 4],
-					'circle-color': [
-						'case',
-						['==', ['get', 'active'], true],
-						'#1d4ed8',
-						'#f59e0b', // Amber color for annotations
+			// 5. Main point layer (excludes annotations)
+			if (!this.map.getLayer(this.LAYER_POINT)) {
+				this.map.addLayer({
+					id: this.LAYER_POINT,
+					type: 'circle',
+					source: this.SOURCE_ID,
+					filter: [
+						'all',
+						['any', ['==', ['geometry-type'], 'Point'], ['==', ['geometry-type'], 'MultiPoint']],
+						['==', ['get', 'meta'], 'feature'],
+						['!=', ['get', 'featureType'], 'annotation'],
 					],
-					'circle-stroke-width': 2,
-					'circle-stroke-color': '#fff',
-				},
-			})
-		}
+					paint: {
+						'circle-radius': ['case', ['==', ['get', 'active'], true], 8, 6],
+						'circle-color': [
+							'case',
+							['==', ['get', 'active'], true],
+							'#1d4ed8',
+							['coalesce', ['get', 'color'], '#3bb2d0'],
+						],
+						'circle-stroke-width': ['case', ['==', ['get', 'active'], true], 3, 2],
+						'circle-stroke-color': ['case', ['==', ['get', 'active'], true], '#93c5fd', '#fff'],
+					},
+				})
+			}
 
-		// 5c. Annotation text layer (symbol layer for text annotations)
-		if (!this.map.getLayer(this.LAYER_ANNOTATION)) {
-			this.map.addLayer({
-				id: this.LAYER_ANNOTATION,
-				type: 'symbol',
-				source: this.SOURCE_ID,
-				filter: [
-					'all',
-					['==', ['geometry-type'], 'Point'],
-					['==', ['get', 'meta'], 'feature'],
-					['==', ['get', 'featureType'], 'annotation'],
-				],
-				layout: {
-					'text-field': ['coalesce', ['get', 'text'], 'Annotation'],
-					'text-size': ['coalesce', ['get', 'textFontSize'], 14],
-					'text-anchor': 'top',
-					'text-offset': [0, 0.8],
-					'text-allow-overlap': true,
-					'text-ignore-placement': true,
-				},
-				paint: {
-					'text-color': [
-						'case',
-						['==', ['get', 'active'], true],
-						'#1d4ed8',
-						['coalesce', ['get', 'textColor'], '#1f2937'],
+			// 5b. Annotation anchor layer (small circle for click/drag interaction)
+			if (!this.map.getLayer(this.LAYER_ANNOTATION_ANCHOR)) {
+				this.map.addLayer({
+					id: this.LAYER_ANNOTATION_ANCHOR,
+					type: 'circle',
+					source: this.SOURCE_ID,
+					filter: [
+						'all',
+						['==', ['geometry-type'], 'Point'],
+						['==', ['get', 'meta'], 'feature'],
+						['==', ['get', 'featureType'], 'annotation'],
 					],
-					'text-halo-color': [
-						'case',
-						['==', ['get', 'active'], true],
-						'#93c5fd',
-						['coalesce', ['get', 'textHaloColor'], '#ffffff'],
+					paint: {
+						'circle-radius': ['case', ['==', ['get', 'active'], true], 6, 4],
+						'circle-color': [
+							'case',
+							['==', ['get', 'active'], true],
+							'#1d4ed8',
+							'#f59e0b', // Amber color for annotations
+						],
+						'circle-stroke-width': 2,
+						'circle-stroke-color': '#fff',
+					},
+				})
+			}
+
+			// 5c. Annotation text layer (symbol layer for text annotations)
+			const annotationTextFont = this.getDefaultTextFontStack()
+			if (
+				annotationTextFont &&
+				(this.map.isStyleLoaded() ?? false) &&
+				!this.map.getLayer(this.LAYER_ANNOTATION)
+			) {
+				this.map.addLayer({
+					id: this.LAYER_ANNOTATION,
+					type: 'symbol',
+					source: this.SOURCE_ID,
+					filter: [
+						'all',
+						['==', ['geometry-type'], 'Point'],
+						['==', ['get', 'meta'], 'feature'],
+						['==', ['get', 'featureType'], 'annotation'],
 					],
-					'text-halo-width': ['coalesce', ['get', 'textHaloWidth'], 1.5],
-				},
-			})
-		}
+					layout: {
+						'text-field': ['coalesce', ['get', 'text'], 'Annotation'],
+						'text-font': annotationTextFont,
+						'text-size': ['coalesce', ['get', 'textFontSize'], 14],
+						'text-anchor': 'top',
+						'text-offset': [0, 0.8],
+						'text-allow-overlap': true,
+						'text-ignore-placement': true,
+					},
+					paint: {
+						'text-color': [
+							'case',
+							['==', ['get', 'active'], true],
+							'#1d4ed8',
+							['coalesce', ['get', 'textColor'], '#1f2937'],
+						],
+						'text-halo-color': [
+							'case',
+							['==', ['get', 'active'], true],
+							'#93c5fd',
+							['coalesce', ['get', 'textHaloColor'], '#ffffff'],
+						],
+						'text-halo-width': ['coalesce', ['get', 'textHaloWidth'], 1.5],
+					},
+				})
+			}
 
-		// 6. Selection point layer
-		if (!this.map.getLayer(this.LAYER_SELECTION_POINT)) {
-			this.map.addLayer({
-				id: this.LAYER_SELECTION_POINT,
-				type: 'circle',
-				source: this.SOURCE_SELECTION,
-				filter: [
-					'any',
-					['==', ['geometry-type'], 'Point'],
-					['==', ['geometry-type'], 'MultiPoint'],
-				],
-				paint: {
-					'circle-radius': 8,
-					'circle-color': '#2563eb',
-					'circle-opacity': 0.15,
-					'circle-stroke-width': 2,
-					'circle-stroke-color': '#2563eb',
-				},
-			})
-		}
+			// 6. Selection point layer
+			if (!this.map.getLayer(this.LAYER_SELECTION_POINT)) {
+				this.map.addLayer({
+					id: this.LAYER_SELECTION_POINT,
+					type: 'circle',
+					source: this.SOURCE_SELECTION,
+					filter: [
+						'any',
+						['==', ['geometry-type'], 'Point'],
+						['==', ['geometry-type'], 'MultiPoint'],
+					],
+					paint: {
+						'circle-radius': 8,
+						'circle-color': '#2563eb',
+						'circle-opacity': 0.15,
+						'circle-stroke-width': 2,
+						'circle-stroke-color': '#2563eb',
+					},
+				})
+			}
 
-		// 7. Gizmo line layer
-		if (!this.map.getLayer(this.LAYER_GIZMO_LINE)) {
-			this.map.addLayer({
-				id: this.LAYER_GIZMO_LINE,
-				type: 'line',
-				source: this.SOURCE_GIZMO,
-				filter: ['==', ['get', 'meta'], 'gizmo-line'],
-				paint: {
-					'line-color': '#1d4ed8',
-					'line-width': 2,
-					'line-dasharray': ['literal', [1, 1]],
-				},
-			})
-		}
+			// 7. Gizmo line layer
+			if (!this.map.getLayer(this.LAYER_GIZMO_LINE)) {
+				this.map.addLayer({
+					id: this.LAYER_GIZMO_LINE,
+					type: 'line',
+					source: this.SOURCE_GIZMO,
+					filter: ['==', ['get', 'meta'], 'gizmo-line'],
+					paint: {
+						'line-color': '#1d4ed8',
+						'line-width': 2,
+						'line-dasharray': ['literal', [1, 1]],
+					},
+				})
+			}
 
-		// 8. Gizmo center layer
-		if (!this.map.getLayer(this.LAYER_GIZMO_CENTER)) {
-			this.map.addLayer({
-				id: this.LAYER_GIZMO_CENTER,
-				type: 'circle',
-				source: this.SOURCE_GIZMO,
-				filter: ['==', ['get', 'meta'], 'gizmo-center'],
-				paint: {
-					'circle-radius': 6,
-					'circle-color': '#1d4ed8',
-					'circle-stroke-width': 2,
-					'circle-stroke-color': '#93c5fd',
-				},
-			})
-		}
+			// 8. Gizmo center layer
+			if (!this.map.getLayer(this.LAYER_GIZMO_CENTER)) {
+				this.map.addLayer({
+					id: this.LAYER_GIZMO_CENTER,
+					type: 'circle',
+					source: this.SOURCE_GIZMO,
+					filter: ['==', ['get', 'meta'], 'gizmo-center'],
+					paint: {
+						'circle-radius': 6,
+						'circle-color': '#1d4ed8',
+						'circle-stroke-width': 2,
+						'circle-stroke-color': '#93c5fd',
+					},
+				})
+			}
 
-		// 9. Gizmo rotate handle layer
-		if (!this.map.getLayer(this.LAYER_GIZMO_ROTATE)) {
-			this.map.addLayer({
-				id: this.LAYER_GIZMO_ROTATE,
-				type: 'circle',
-				source: this.SOURCE_GIZMO,
-				filter: ['==', ['get', 'meta'], 'gizmo-rotate'],
-				paint: {
-					'circle-radius': 8,
-					'circle-color': '#f97316',
-					'circle-stroke-width': 2,
-					'circle-stroke-color': '#1d4ed8',
-				},
-			})
-		}
+			// 9. Gizmo rotate handle layer
+			if (!this.map.getLayer(this.LAYER_GIZMO_ROTATE)) {
+				this.map.addLayer({
+					id: this.LAYER_GIZMO_ROTATE,
+					type: 'circle',
+					source: this.SOURCE_GIZMO,
+					filter: ['==', ['get', 'meta'], 'gizmo-rotate'],
+					paint: {
+						'circle-radius': 8,
+						'circle-color': '#f97316',
+						'circle-stroke-width': 2,
+						'circle-stroke-color': '#1d4ed8',
+					},
+				})
+			}
 
-		// 10. Gizmo move handle layer
-		if (!this.map.getLayer(this.LAYER_GIZMO_MOVE)) {
-			this.map.addLayer({
-				id: this.LAYER_GIZMO_MOVE,
-				type: 'circle',
-				source: this.SOURCE_GIZMO,
-				filter: ['==', ['get', 'meta'], 'gizmo-move'],
-				paint: {
-					'circle-radius': 7,
-					'circle-color': '#22c55e',
-					'circle-stroke-width': 2,
-					'circle-stroke-color': '#166534',
-				},
-			})
-		}
+			// 10. Gizmo move handle layer
+			if (!this.map.getLayer(this.LAYER_GIZMO_MOVE)) {
+				this.map.addLayer({
+					id: this.LAYER_GIZMO_MOVE,
+					type: 'circle',
+					source: this.SOURCE_GIZMO,
+					filter: ['==', ['get', 'meta'], 'gizmo-move'],
+					paint: {
+						'circle-radius': 7,
+						'circle-color': '#22c55e',
+						'circle-stroke-width': 2,
+						'circle-stroke-color': '#166534',
+					},
+				})
+			}
 
-		// 11. Cursor indicator layer
-		if (!this.map.getLayer(this.LAYER_CURSOR)) {
-			this.map.addLayer({
-				id: this.LAYER_CURSOR,
-				type: 'circle',
-				source: this.SOURCE_CURSOR,
-				paint: {
-					'circle-radius': 6,
-					'circle-color': '#3b82f6',
-					'circle-stroke-width': 2,
-					'circle-stroke-color': '#fff',
-				},
-			})
-		}
+			// 11. Cursor indicator layer
+			if (!this.map.getLayer(this.LAYER_CURSOR)) {
+				this.map.addLayer({
+					id: this.LAYER_CURSOR,
+					type: 'circle',
+					source: this.SOURCE_CURSOR,
+					paint: {
+						'circle-radius': 6,
+						'circle-color': '#3b82f6',
+						'circle-stroke-width': 2,
+						'circle-stroke-color': '#fff',
+					},
+				})
+			}
 
-		// 12. Vertex layer (for edit mode)
-		if (!this.map.getLayer(this.LAYER_VERTEX)) {
-			this.map.addLayer({
-				id: this.LAYER_VERTEX,
-				type: 'circle',
-				source: this.SOURCE_VERTICES,
-				filter: ['==', ['get', 'meta'], 'vertex'],
-				paint: {
-					'circle-radius': 5,
-					'circle-color': '#fbb03b',
-					'circle-stroke-width': 2,
-					'circle-stroke-color': '#fff',
-				},
-			})
-		}
+			// 12. Vertex layer (for edit mode)
+			if (!this.map.getLayer(this.LAYER_VERTEX)) {
+				this.map.addLayer({
+					id: this.LAYER_VERTEX,
+					type: 'circle',
+					source: this.SOURCE_VERTICES,
+					filter: ['==', ['get', 'meta'], 'vertex'],
+					paint: {
+						'circle-radius': 5,
+						'circle-color': '#fbb03b',
+						'circle-stroke-width': 2,
+						'circle-stroke-color': '#fff',
+					},
+				})
+			}
 
-		// 13. Midpoint layer (for edit mode)
-		if (!this.map.getLayer(this.LAYER_MIDPOINT)) {
-			this.map.addLayer({
-				id: this.LAYER_MIDPOINT,
-				type: 'circle',
-				source: this.SOURCE_VERTICES,
-				filter: ['==', ['get', 'meta'], 'midpoint'],
-				paint: {
-					'circle-radius': 4,
-					'circle-color': '#fff',
-					'circle-stroke-width': 2,
-					'circle-stroke-color': '#fbb03b',
-				},
-			})
-		}
+			// 13. Midpoint layer (for edit mode)
+			if (!this.map.getLayer(this.LAYER_MIDPOINT)) {
+				this.map.addLayer({
+					id: this.LAYER_MIDPOINT,
+					type: 'circle',
+					source: this.SOURCE_VERTICES,
+					filter: ['==', ['get', 'meta'], 'midpoint'],
+					paint: {
+						'circle-radius': 4,
+						'circle-color': '#fff',
+						'circle-stroke-width': 2,
+						'circle-stroke-color': '#fbb03b',
+					},
+				})
+			}
 
-		// 14. Selection box layer (last so it renders on top during box selection)
-		if (!this.map.getLayer(this.LAYER_SELECTION_BOX)) {
-			this.map.addLayer({
-				id: this.LAYER_SELECTION_BOX,
-				type: 'fill',
-				source: this.SOURCE_SELECTION_BOX,
-				paint: {
-					'fill-color': '#93c5fd',
-					'fill-opacity': 0.15,
-					'fill-outline-color': '#2563eb',
-				},
-			})
+			// 14. Selection box layer (last so it renders on top during box selection)
+			if (!this.map.getLayer(this.LAYER_SELECTION_BOX)) {
+				this.map.addLayer({
+					id: this.LAYER_SELECTION_BOX,
+					type: 'fill',
+					source: this.SOURCE_SELECTION_BOX,
+					paint: {
+						'fill-color': '#93c5fd',
+						'fill-opacity': 0.15,
+						'fill-outline-color': '#2563eb',
+					},
+				})
+			}
+		} catch (error) {
+			console.warn('Failed to setup geo editor layers:', error)
 		}
 	}
 

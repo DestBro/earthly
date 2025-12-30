@@ -6,6 +6,43 @@ import type { NDKGeoEvent } from '../../../lib/ndk/NDKGeoEvent'
 import { useEditorStore } from '../store'
 import { convertGeoEventsToFeatureCollection } from '../utils'
 
+function getDefaultTextFontStack(
+	style: maplibregl.StyleSpecification | undefined,
+): string[] | null {
+	const isStringArray = (value: unknown): value is string[] =>
+		Array.isArray(value) && value.every((v) => typeof v === 'string')
+
+	const extract = (value: unknown): string[] | null => {
+		if (typeof value === 'string') return [value]
+		if (isStringArray(value)) return value
+		if (!Array.isArray(value) || value.length === 0) return null
+
+		const [op, ...rest] = value
+		if (op === 'literal' && rest.length > 0 && isStringArray(rest[0])) return rest[0]
+		if (op === 'case') {
+			for (const part of rest) {
+				const extracted = extract(part)
+				if (extracted) return extracted
+			}
+		}
+		return null
+	}
+
+	try {
+		const layers = style?.layers ?? []
+		for (const layer of layers) {
+			const layout = (layer as unknown as { layout?: Record<string, unknown> }).layout
+			const textFont = layout?.['text-font']
+			const extracted = extract(textFont)
+			if (extracted) return extracted
+		}
+	} catch {
+		// ignore
+	}
+
+	return null
+}
+
 // Layer/Source IDs
 const REMOTE_SOURCE_ID = 'geo-editor-remote-datasets'
 const REMOTE_FILL_LAYER = 'geo-editor-remote-fill'
@@ -44,6 +81,7 @@ export function useMapLayers({
 	// Use version to detect when resolved data changes (resolver uses a ref internally)
 	void resolvedCollectionsVersion
 	const [remoteLayersReady, setRemoteLayersReady] = useState(false)
+	const [layersVersion, setLayersVersion] = useState(0)
 	const blobPreviewCollection = useEditorStore((state) => state.blobPreviewCollection)
 
 	// Initialize extra layers when map is ready
@@ -52,10 +90,13 @@ export function useMapLayers({
 		const mapInstance = mapRef.current
 
 		const initLayers = () => {
+			let didAdd = false
+			let textFont: string[] | null = null
 			try {
 				// Check if we can safely access the style
 				const style = mapInstance.getStyle()
 				if (!style) return
+				textFont = getDefaultTextFontStack(style)
 			} catch {
 				return
 			}
@@ -67,6 +108,7 @@ export function useMapLayers({
 						type: 'geojson',
 						data: { type: 'FeatureCollection', features: [] },
 					})
+					didAdd = true
 				}
 				// Add layers only if they don't exist
 				if (!mapInstance.getLayer(REMOTE_FILL_LAYER)) {
@@ -84,6 +126,7 @@ export function useMapLayers({
 							'fill-opacity': 0.15,
 						},
 					})
+					didAdd = true
 				}
 				if (!mapInstance.getLayer(REMOTE_LINE_LAYER)) {
 					mapInstance.addLayer({
@@ -95,6 +138,7 @@ export function useMapLayers({
 							'line-width': 2,
 						},
 					})
+					didAdd = true
 				}
 				// Point layer (excludes annotations)
 				if (!mapInstance.getLayer(REMOTE_POINT_LAYER)) {
@@ -114,6 +158,7 @@ export function useMapLayers({
 							'circle-stroke-color': '#fff',
 						},
 					})
+					didAdd = true
 				}
 
 				// Annotation anchor layer (small circle marker)
@@ -134,10 +179,15 @@ export function useMapLayers({
 							'circle-stroke-color': '#fff',
 						},
 					})
+					didAdd = true
 				}
 
 				// Annotation text layer
-				if (!mapInstance.getLayer(REMOTE_ANNOTATION_LAYER)) {
+				if (
+					textFont &&
+					(mapInstance.isStyleLoaded() ?? false) &&
+					!mapInstance.getLayer(REMOTE_ANNOTATION_LAYER)
+				) {
 					mapInstance.addLayer({
 						id: REMOTE_ANNOTATION_LAYER,
 						type: 'symbol',
@@ -149,6 +199,7 @@ export function useMapLayers({
 						],
 						layout: {
 							'text-field': ['coalesce', ['get', 'text'], 'Annotation'],
+							'text-font': textFont,
 							'text-size': ['coalesce', ['get', 'textFontSize'], 14],
 							'text-anchor': 'top',
 							'text-offset': [0, 0.8],
@@ -161,6 +212,7 @@ export function useMapLayers({
 							'text-halo-width': ['coalesce', ['get', 'textHaloWidth'], 1.5],
 						},
 					})
+					didAdd = true
 				}
 
 				// Blob preview source/layers
@@ -169,6 +221,7 @@ export function useMapLayers({
 						type: 'geojson',
 						data: { type: 'FeatureCollection', features: [] },
 					})
+					didAdd = true
 				}
 				if (!mapInstance.getLayer(BLOB_PREVIEW_FILL_LAYER)) {
 					mapInstance.addLayer({
@@ -185,6 +238,7 @@ export function useMapLayers({
 							'fill-opacity': 0.2,
 						},
 					})
+					didAdd = true
 				}
 				if (!mapInstance.getLayer(BLOB_PREVIEW_LINE_LAYER)) {
 					mapInstance.addLayer({
@@ -196,8 +250,12 @@ export function useMapLayers({
 							'line-width': 2,
 						},
 					})
+					didAdd = true
 				}
 				setRemoteLayersReady(true)
+				if (didAdd) {
+					setLayersVersion((prev) => prev + 1)
+				}
 			} catch (error) {
 				console.warn('Failed to initialize remote map layers:', error)
 			}
@@ -213,7 +271,6 @@ export function useMapLayers({
 		mapInstance.on('styledata', initLayers)
 		mapInstance.on('style.load', initLayers)
 		mapInstance.on('load', initLayers)
-		mapInstance.on('idle', initLayers)
 
 		return () => {
 			clearTimeout(timeoutId)
@@ -221,7 +278,6 @@ export function useMapLayers({
 				mapInstance.off('styledata', initLayers)
 				mapInstance.off('style.load', initLayers)
 				mapInstance.off('load', initLayers)
-				mapInstance.off('idle', initLayers)
 			} catch {
 				// Map may have been removed
 			}
@@ -232,6 +288,7 @@ export function useMapLayers({
 	useEffect(() => {
 		if (!mapRef.current) return
 		if (!remoteLayersReady) return
+		void layersVersion
 
 		try {
 			const source = mapRef.current.getSource(REMOTE_SOURCE_ID) as GeoJSONSource | undefined
@@ -245,12 +302,13 @@ export function useMapLayers({
 		} catch {
 			// Map may have been removed during source switch
 		}
-	}, [visibleGeoEvents, resolvedCollectionResolver, remoteLayersReady, mapRef])
+	}, [visibleGeoEvents, resolvedCollectionResolver, remoteLayersReady, mapRef, layersVersion])
 
 	// Update blob preview layer
 	useEffect(() => {
 		if (!mapRef.current) return
 		if (!remoteLayersReady) return
+		void layersVersion
 
 		try {
 			// Don't check isStyleLoaded() - remoteLayersReady guarantees layers exist
@@ -264,7 +322,7 @@ export function useMapLayers({
 		} catch {
 			// Map may have been removed during source switch
 		}
-	}, [blobPreviewCollection, remoteLayersReady, mapRef])
+	}, [blobPreviewCollection, remoteLayersReady, mapRef, layersVersion])
 
 	return {
 		remoteLayersReady,

@@ -91,6 +91,7 @@ export function GeoEditorView() {
 	// Store state
 	const editor = useEditorStore((state) => state.editor)
 	const features = useEditorStore((state) => state.features)
+	const featuresRef = useRef<EditorFeature[]>([])
 	const stats = useEditorStore((state) => state.stats)
 	const selectedFeatureIds = useEditorStore((state) => state.selectedFeatureIds)
 	const selectionCount = selectedFeatureIds.length
@@ -121,6 +122,22 @@ export function GeoEditorView() {
 	const mapSource = useEditorStore((state) => state.mapSource)
 	const inspectorActive = useEditorStore((state) => state.inspectorActive)
 	const setInspectorActive = useEditorStore((state) => state.setInspectorActive)
+	const mapSourceKey = useMemo(() => {
+		const file = mapSource.file
+		return [
+			mapSource.type,
+			mapSource.location,
+			mapSource.url ?? '',
+			mapSource.blossomServer ?? '',
+			file ? `${file.name}:${file.size}:${file.lastModified}` : '',
+		].join('|')
+	}, [
+		mapSource.type,
+		mapSource.location,
+		mapSource.url,
+		mapSource.blossomServer,
+		mapSource.file,
+	])
 
 	// Collection Editor state
 	const [collectionEditorMode, setCollectionEditorMode] = useState<'none' | 'create' | 'edit'>(
@@ -195,6 +212,10 @@ export function GeoEditorView() {
 		[geoEvents, datasetVisibility, getDatasetKey],
 	)
 
+	useEffect(() => {
+		featuresRef.current = features
+	}, [features])
+
 	// Available features for $ mentions in comments
 	const availableFeatures = useAvailableGeoFeatures(visibleGeoEvents, resolvedCollectionResolver)
 
@@ -206,6 +227,68 @@ export function GeoEditorView() {
 		resolvedCollectionResolver,
 		resolvedCollectionsVersion,
 	})
+
+	// Keep the viewport focused on the most recently loaded geometry after map source swaps.
+	// We wait for the style to load because setStyle clears sources/layers and they are re-added on events.
+	useEffect(() => {
+		if (!map.current) return
+		const mapInstance = map.current
+		void mapSourceKey
+
+		let cancelled = false
+
+		const zoomToCurrentGeometry = async () => {
+			if (cancelled) return
+			const currentFeatures = (featuresRef.current ?? []).filter(
+				(feature): feature is EditorFeature & { geometry: NonNullable<EditorFeature['geometry']> } =>
+					feature.geometry !== null,
+			)
+			if (currentFeatures.length === 0) {
+				if (activeDataset) zoomToDataset(activeDataset)
+				return
+			}
+
+			try {
+				const turf = await import('@turf/turf')
+				const bbox = turf.bbox({
+					type: 'FeatureCollection',
+					features: currentFeatures,
+				})
+				if (!Array.isArray(bbox) || bbox.length !== 4) return
+				const [west, south, east, north] = bbox
+				if (![west, south, east, north].every((v) => Number.isFinite(v))) return
+				mapInstance.fitBounds(
+					[
+						[west, south],
+						[east, north],
+					],
+					{ padding: 60, duration: 450 },
+				)
+			} catch {
+				// If bbox calc fails, keep current camera.
+			}
+		}
+
+		const handleStyleLoad = () => {
+			zoomToCurrentGeometry().catch(() => undefined)
+		}
+
+		mapInstance.once('style.load', handleStyleLoad)
+		// Fallback: if style.load doesn't fire for a given change, still attempt once.
+		const timeoutId = window.setTimeout(() => {
+			zoomToCurrentGeometry().catch(() => undefined)
+		}, 0)
+
+		return () => {
+			cancelled = true
+			window.clearTimeout(timeoutId)
+			try {
+				mapInstance.off('style.load', handleStyleLoad)
+			} catch {
+				// Map may have been removed
+			}
+		}
+	}, [mapSourceKey, activeDataset, zoomToDataset])
 
 	// Pan lock sync with drawing mode
 	useEffect(() => {
@@ -1160,16 +1243,12 @@ export function GeoEditorView() {
 										ref={magnifierMenuRef}
 										className="pointer-events-auto absolute bottom-14 left-0 z-50 w-52 rounded-xl border border-gray-200 bg-white/95 px-4 py-3 text-sm shadow-lg backdrop-blur"
 									>
-										<div className="mb-3 text-xs font-medium text-gray-600">
-											Magnifier zoom
-										</div>
+										<div className="mb-3 text-xs font-medium text-gray-600">Magnifier zoom</div>
 										<div className="flex items-center gap-3">
 											<button
 												type="button"
 												className="h-8 w-8 rounded-md border border-gray-200 text-sm text-gray-700"
-												onClick={() =>
-													setMagnifierZoomOffset((value) => Math.max(1, value - 0.5))
-												}
+												onClick={() => setMagnifierZoomOffset((value) => Math.max(1, value - 0.5))}
 												aria-label="Decrease magnifier zoom"
 											>
 												-
@@ -1180,26 +1259,20 @@ export function GeoEditorView() {
 												max={6}
 												step={0.5}
 												value={magnifierZoomOffset}
-												onChange={(event) =>
-													setMagnifierZoomOffset(Number(event.target.value))
-												}
+												onChange={(event) => setMagnifierZoomOffset(Number(event.target.value))}
 												className="h-2 w-full"
 												aria-label="Magnifier zoom level"
 											/>
 											<button
 												type="button"
 												className="h-8 w-8 rounded-md border border-gray-200 text-sm text-gray-700"
-												onClick={() =>
-													setMagnifierZoomOffset((value) => Math.min(6, value + 0.5))
-												}
+												onClick={() => setMagnifierZoomOffset((value) => Math.min(6, value + 0.5))}
 												aria-label="Increase magnifier zoom"
 											>
 												+
 											</button>
 										</div>
-										<div className="mt-2 text-xs text-gray-500">
-											Zoom +{magnifierZoomOffset}
-										</div>
+										<div className="mt-2 text-xs text-gray-500">Zoom +{magnifierZoomOffset}</div>
 									</div>
 								)}
 							</div>

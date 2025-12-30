@@ -88,9 +88,25 @@ export class GeoEditor {
 	private readonly keyDownHandler = this.onKeyDown.bind(this)
 	private readonly keyUpHandler = this.onKeyUp.bind(this)
 	private readonly gizmoRenderHandler = () => this.renderGizmo()
+	private styleChangeRenderScheduled = false
+	private readonly scheduleRenderAfterStyleChange = () => {
+		if (this.styleChangeRenderScheduled) return
+		this.styleChangeRenderScheduled = true
+		queueMicrotask(() => {
+			this.styleChangeRenderScheduled = false
+			this.render()
+			if (this.mode === 'edit') this.renderVertices()
+		})
+	}
 	private readonly styleLoadHandler = () => {
 		this.layers.setupLayers(() => this.getFeatureCollection())
+		this.render()
+		if (this.mode === 'edit') this.renderVertices()
 		this.setInitialModeIfNeeded()
+	}
+	private readonly styleDataHandler = () => {
+		this.layers.setupLayers(() => this.getFeatureCollection())
+		this.scheduleRenderAfterStyleChange()
 	}
 	private readonly multiSelectModifier: 'ctrl' | 'shift'
 	private didSetInitialMode: boolean = false
@@ -160,9 +176,7 @@ export class GeoEditor {
 		}
 
 		// Re-add layers when style changes
-		this.map.on('styledata', () => {
-			this.layers.setupLayers(() => this.getFeatureCollection())
-		})
+		this.map.on('styledata', this.styleDataHandler)
 
 		this.setupEventListeners()
 	}
@@ -1086,6 +1100,7 @@ export class GeoEditor {
 		try {
 			this.map.off('move', this.gizmoRenderHandler)
 			this.map.off('style.load', this.styleLoadHandler)
+			this.map.off('styledata', this.styleDataHandler)
 		} catch {
 			// Map may have been removed
 		}
