@@ -53,12 +53,23 @@ type IconButtonRowProps = {
 	buttons: ToolbarButton[]
 	className?: string
 	wrap?: boolean
+	small?: boolean
 }
 
-function IconButtonRow({ buttons, className = '', wrap = false }: IconButtonRowProps) {
+function IconButtonRow({
+	buttons,
+	className = '',
+	wrap = false,
+	small = false,
+}: IconButtonRowProps) {
+	const iconSize = small ? 'h-3.5 w-3.5' : 'h-4 w-4'
+	const buttonSize = small ? 'h-8 w-8' : undefined
+
 	return (
 		<TooltipProvider delayDuration={500}>
-			<div className={`flex items-center gap-1 ${wrap ? 'flex-wrap' : ''} ${className}`}>
+			<div
+				className={`flex items-center gap-0.5 ${wrap ? 'flex-wrap justify-center' : ''} ${className}`}
+			>
 				{buttons.map(
 					({ key, icon: Icon, variant = 'outline', disabled, onClick, ariaLabel, description }) => (
 						<Tooltip key={key}>
@@ -69,8 +80,9 @@ function IconButtonRow({ buttons, className = '', wrap = false }: IconButtonRowP
 									disabled={disabled}
 									aria-label={ariaLabel}
 									onClick={onClick}
+									className={buttonSize}
 								>
-									<Icon className="h-4 w-4" />
+									<Icon className={iconSize} />
 								</Button>
 							</TooltipTrigger>
 							<TooltipContent side="bottom" sideOffset={8}>
@@ -82,6 +94,11 @@ function IconButtonRow({ buttons, className = '', wrap = false }: IconButtonRowP
 			</div>
 		</TooltipProvider>
 	)
+}
+
+/** Small vertical divider for button groups */
+function Divider({ className = '' }: { className?: string }) {
+	return <div className={`h-5 w-px bg-gray-300 mx-0.5 ${className}`} />
 }
 
 interface DatasetActionsProps {
@@ -154,7 +171,6 @@ export function Toolbar({
 	const isEditingDisabled = viewMode !== 'edit'
 
 	const handleModeChange = (newMode: EditorMode) => {
-		// Deactivate inspector when changing modes
 		if (inspectorActive) {
 			setInspectorActive(false)
 			onInspectorDeactivate?.()
@@ -198,7 +214,6 @@ export function Toolbar({
 			onInspectorDeactivate?.()
 		} else {
 			setInspectorActive(true)
-			// Switch to select mode when activating inspector
 			if (mode !== 'select') {
 				setMode('select')
 			}
@@ -242,9 +257,12 @@ export function Toolbar({
 	const datasetsOpen = isMobile ? mobileDatasetsOpen : showDatasetsPanel
 	const infoPanelOpen = isMobile ? mobileInfoOpen : showInfoPanel
 
-	// Desktop Toolbar Configuration
-	const desktopButtons: ToolbarButton[] = [
-		// 1. Select
+	// ============================================
+	// BUTTON SECTIONS - Organized by function
+	// ============================================
+
+	// Section 1: Select
+	const selectButtons: ToolbarButton[] = [
 		{
 			key: 'select',
 			icon: MousePointer2,
@@ -253,7 +271,10 @@ export function Toolbar({
 			ariaLabel: 'Select mode',
 			description: 'Select and move features',
 		},
-		// 2. Draw: point, line, polygon
+	]
+
+	// Section 2: Draw tools
+	const drawButtons: ToolbarButton[] = [
 		{
 			key: 'point',
 			icon: MapPin,
@@ -281,17 +302,19 @@ export function Toolbar({
 			ariaLabel: 'Draw polygon',
 			description: 'Draw a polygon area',
 		},
-		// 2b. Draw annotation
 		{
 			key: 'annotation',
 			icon: Type,
 			onClick: () => handleModeChange('draw_annotation'),
 			variant: mode === 'draw_annotation' ? 'default' : 'outline',
 			disabled: isEditingDisabled,
-			ariaLabel: 'Draw text annotation',
+			ariaLabel: 'Draw annotation',
 			description: 'Add a text annotation',
 		},
-		// 3. Undo/Redo
+	]
+
+	// Section 3: History (Undo/Redo)
+	const historyButtons: ToolbarButton[] = [
 		{
 			key: 'undo',
 			icon: Undo2,
@@ -308,7 +331,10 @@ export function Toolbar({
 			ariaLabel: 'Redo',
 			description: 'Redo last action',
 		},
-		// Snap Toggle
+	]
+
+	// Section 4: Edit tools
+	const editButtons: ToolbarButton[] = [
 		{
 			key: 'snapping',
 			icon: Magnet,
@@ -318,51 +344,60 @@ export function Toolbar({
 			ariaLabel: 'Toggle snapping',
 			description: 'Snap to nearby points',
 		},
-		// 4. Edit toggle (Vertex Editing)
 		{
 			key: 'edit',
 			icon: Edit3,
 			onClick: () => handleModeChange('edit'),
 			variant: mode === 'edit' ? 'default' : 'outline',
 			disabled: isEditingDisabled,
-			ariaLabel: 'Edit mode',
+			ariaLabel: 'Edit vertices',
 			description: 'Edit vertices of selected feature',
 		},
-		// 4. Delete
 		{
 			key: 'delete',
 			icon: Trash2,
 			onClick: handleDeleteSelected,
 			disabled: isEditingDisabled,
-			ariaLabel: 'Delete selected',
+			ariaLabel: 'Delete',
 			description: 'Delete selected features',
 		},
-		// 5. Merge
 		{
 			key: 'merge',
 			icon: Merge,
 			onClick: handleMergeSelected,
 			disabled: isEditingDisabled,
-			ariaLabel: 'Merge selected',
-			description: 'Merge selected features into one',
+			ariaLabel: 'Merge',
+			description: 'Merge selected features',
 		},
-		// 6. Split
 		{
 			key: 'split',
 			icon: SplitIcon,
 			onClick: handleSplitSelected,
 			disabled: isEditingDisabled,
-			ariaLabel: 'Split selected',
-			description: 'Split selected feature at vertex',
+			ariaLabel: 'Split',
+			description: 'Split feature at vertex',
 		},
 	]
 
-	const datasetButtons: ToolbarButton[] = [
+	// Section 5: Lookup/Inspector
+	const lookupButtons: ToolbarButton[] = [
+		{
+			key: 'reverse-lookup',
+			icon: Crosshair,
+			onClick: handleToggleInspector,
+			variant: inspectorActive ? 'default' : 'outline',
+			ariaLabel: 'Location lookup',
+			description: 'Click map to get location info',
+		},
+	]
+
+	// Section 6: File operations
+	const fileButtons: ToolbarButton[] = [
 		{
 			key: 'import',
 			icon: Upload,
 			onClick: () => fileInputRef.current?.click(),
-			ariaLabel: 'Import GeoJSON',
+			ariaLabel: 'Import',
 			description: 'Import GeoJSON file',
 		},
 		{
@@ -370,269 +405,114 @@ export function Toolbar({
 			icon: Download,
 			onClick: datasetActions?.onExport ?? (() => {}),
 			disabled: !datasetActions?.canExport,
-			ariaLabel: 'Export GeoJSON',
-			description: 'Export as GeoJSON file',
-		},
-		{
-			key: 'clear',
-			icon: Trash2,
-			onClick: datasetActions?.onClear ?? (() => {}),
-			disabled: !datasetActions?.canClear,
-			ariaLabel: 'Clear all features',
-			description: 'Clear all features from editor',
+			ariaLabel: 'Export',
+			description: 'Export as GeoJSON',
 		},
 	]
 
+	// Section 7: Publish actions
 	const publishButtons: ToolbarButton[] = [
 		{
 			key: 'publish-new',
 			icon: UploadCloud,
 			onClick: datasetActions?.onPublishNew ?? (() => {}),
 			disabled: !datasetActions?.canPublishNew || datasetActions?.isPublishing,
-			ariaLabel: 'Publish as new dataset',
-			description: 'Publish as a new dataset',
+			ariaLabel: 'Publish new',
+			description: 'Publish as new dataset',
 		},
 		{
 			key: 'publish-update',
 			icon: RefreshCw,
 			onClick: datasetActions?.onPublishUpdate ?? (() => {}),
 			disabled: !datasetActions?.canPublishUpdate || datasetActions?.isPublishing,
-			ariaLabel: 'Update existing dataset',
-			description: 'Update the existing dataset',
+			ariaLabel: 'Update',
+			description: 'Update existing dataset',
 		},
 		{
 			key: 'publish-copy',
 			icon: CopyPlus,
 			onClick: datasetActions?.onPublishCopy ?? (() => {}),
 			disabled: !datasetActions?.canPublishCopy || datasetActions?.isPublishing,
-			ariaLabel: 'Fork dataset',
-			description: 'Fork as a new dataset',
+			ariaLabel: 'Fork',
+			description: 'Fork as new dataset',
 		},
 	]
 
-	const reverseLookupButton: ToolbarButton = {
-		key: 'reverse-lookup',
-		icon: Crosshair,
-		onClick: handleToggleInspector,
-		variant: inspectorActive ? 'default' : 'outline',
-		ariaLabel: 'Reverse lookup',
-		description: 'Click map to get location info',
-	}
-
-	const actionButtons: ToolbarButton[] = [
-		// Import
-		{
-			key: 'import',
-			icon: Upload,
-			onClick: () => fileInputRef.current?.click(),
-			ariaLabel: 'Import GeoJSON',
-			description: 'Import GeoJSON file',
-		},
-		// Export
-		{
-			key: 'export',
-			icon: Download,
-			onClick: datasetActions?.onExport ?? (() => {}),
-			disabled: !datasetActions?.canExport,
-			ariaLabel: 'Export GeoJSON',
-			description: 'Export as GeoJSON file',
-		},
-		// Publish
-		{
-			key: 'publish-new',
-			icon: UploadCloud,
-			onClick: datasetActions?.onPublishNew ?? (() => {}),
-			disabled: !datasetActions?.canPublishNew || datasetActions?.isPublishing,
-			ariaLabel: 'Publish as new dataset',
-			description: 'Publish as a new dataset',
-		},
-		// Update
-		{
-			key: 'publish-update',
-			icon: RefreshCw,
-			onClick: datasetActions?.onPublishUpdate ?? (() => {}),
-			disabled: !datasetActions?.canPublishUpdate || datasetActions?.isPublishing,
-			ariaLabel: 'Update existing dataset',
-			description: 'Update the existing dataset',
-		},
-	]
-
-	const sidebarButtons: ToolbarButton[] = [
-		// Toggle Sidebar
+	// Section 8: Panel toggles
+	const panelButtons: ToolbarButton[] = [
 		{
 			key: 'datasets',
 			icon: Layers,
 			onClick: handleToggleDatasets,
 			variant: datasetsOpen ? 'default' : 'outline',
-			ariaLabel: 'Toggle datasets panel',
-			description: 'Show/hide datasets panel',
+			ariaLabel: 'Datasets',
+			description: 'Toggle datasets panel',
 		},
 		{
 			key: 'info',
 			icon: FilePenLine,
 			onClick: handleToggleInfo,
 			variant: infoPanelOpen ? 'default' : 'outline',
-			ariaLabel: 'Toggle info panel',
-			description: 'Show/hide editor panel',
+			ariaLabel: 'Editor',
+			description: 'Toggle editor panel',
 		},
 	]
 
-	// Mobile Toolbar Configuration
-	const mobileDrawButtons: ToolbarButton[] = [
-		{
-			key: 'select',
-			icon: MousePointer2,
-			onClick: () => handleModeChange('select'),
-			variant: mode === 'select' && !inspectorActive ? 'default' : 'outline',
-			ariaLabel: 'Select mode',
-			description: 'Select and move features',
-		},
-		{
-			key: 'point',
-			icon: MapPin,
-			onClick: () => handleModeChange('draw_point'),
-			variant: mode === 'draw_point' ? 'default' : 'outline',
-			disabled: isEditingDisabled,
-			ariaLabel: 'Draw point',
-			description: 'Draw a point marker',
-		},
-		{
-			key: 'line',
-			icon: Route,
-			onClick: () => handleModeChange('draw_linestring'),
-			variant: mode === 'draw_linestring' ? 'default' : 'outline',
-			disabled: isEditingDisabled,
-			ariaLabel: 'Draw line',
-			description: 'Draw a line or route',
-		},
-		{
-			key: 'polygon',
-			icon: Pentagon,
-			onClick: () => handleModeChange('draw_polygon'),
-			variant: mode === 'draw_polygon' ? 'default' : 'outline',
-			disabled: isEditingDisabled,
-			ariaLabel: 'Draw polygon',
-			description: 'Draw a polygon area',
-		},
-		{
-			key: 'annotation',
-			icon: Type,
-			onClick: () => handleModeChange('draw_annotation'),
-			variant: mode === 'draw_annotation' ? 'default' : 'outline',
-			disabled: isEditingDisabled,
-			ariaLabel: 'Draw text annotation',
-			description: 'Add a text annotation',
-		},
-	]
-
-	const mobileEditButtons: ToolbarButton[] = [
-		{
-			key: 'undo',
-			icon: Undo2,
-			onClick: handleUndo,
-			disabled: !history.canUndo || isEditingDisabled,
-			ariaLabel: 'Undo',
-			description: 'Undo last action',
-		},
-		{
-			key: 'redo',
-			icon: Redo2,
-			onClick: handleRedo,
-			disabled: !history.canRedo || isEditingDisabled,
-			ariaLabel: 'Redo',
-			description: 'Redo last action',
-		},
-		{
-			key: 'snapping',
-			icon: Magnet,
-			onClick: handleToggleSnapping,
-			variant: snappingEnabled ? 'default' : 'outline',
-			disabled: isEditingDisabled,
-			ariaLabel: 'Toggle snapping',
-			description: 'Snap to nearby points',
-		},
-		{
-			key: 'edit',
-			icon: Edit3,
-			onClick: () => handleModeChange('edit'),
-			variant: mode === 'edit' ? 'default' : 'outline',
-			disabled: isEditingDisabled,
-			ariaLabel: 'Edit mode',
-			description: 'Edit vertices of selected feature',
-		},
-		{
-			key: 'inspector',
-			icon: Crosshair,
-			onClick: handleToggleInspector,
-			variant: inspectorActive ? 'default' : 'outline',
-			ariaLabel: 'Toggle inspector',
-			description: 'Click map to get location info',
-		},
-		{
-			key: 'delete',
-			icon: Trash2,
-			onClick: handleDeleteSelected,
-			disabled: isEditingDisabled,
-			ariaLabel: 'Delete selected',
-			description: 'Delete selected features',
-		},
-		{
-			key: 'merge',
-			icon: Merge,
-			onClick: handleMergeSelected,
-			disabled: isEditingDisabled,
-			ariaLabel: 'Merge selected',
-			description: 'Merge selected features into one',
-		},
-		{
-			key: 'split',
-			icon: SplitIcon,
-			onClick: handleSplitSelected,
-			disabled: isEditingDisabled,
-			ariaLabel: 'Split selected',
-			description: 'Split selected feature at vertex',
-		},
-	]
-
+	// ============================================
+	// MOBILE TOOLBAR
+	// ============================================
 	if (isMobile) {
 		return (
 			<>
-				{/* Top Bar Content (Sub-bars) */}
-				<div className="pointer-events-auto w-full max-w-md mx-auto">
+				<div className="pointer-events-auto w-full max-w-sm mx-auto">
 					{mobileToolsOpen && (
-						<div className="flex items-center justify-center gap-2 rounded-lg bg-white/90 p-2 shadow-sm backdrop-blur flex-wrap">
-							<IconButtonRow buttons={mobileDrawButtons} />
-							<div className="h-6 w-px bg-gray-200" />
-							<IconButtonRow buttons={mobileEditButtons} />
-							<div className="h-6 w-px bg-gray-200" />
-							<TooltipProvider delayDuration={500}>
-								<Popover open={showMapSettings} onOpenChange={setShowMapSettings}>
-									<Tooltip>
-										<TooltipTrigger asChild>
-											<PopoverTrigger asChild>
-												<Button
-													variant={showMapSettings ? 'default' : 'outline'}
-													size="icon"
-													aria-label="Map Settings"
-												>
-													<Settings2 className="h-4 w-4" />
-												</Button>
-											</PopoverTrigger>
-										</TooltipTrigger>
-										<TooltipContent side="bottom" sideOffset={8}>
-											<p>Configure map source</p>
-										</TooltipContent>
-									</Tooltip>
-									<PopoverContent className="w-80" side="bottom" align="end">
-										<MapSettingsPanel />
-									</PopoverContent>
-								</Popover>
-							</TooltipProvider>
+						<div className="rounded-lg bg-white/95 p-2 shadow-md backdrop-blur">
+							{/* Row 1: Select + Draw */}
+							<div className="flex items-center justify-center gap-1 flex-wrap mb-1">
+								<IconButtonRow buttons={selectButtons} small />
+								<Divider />
+								<IconButtonRow buttons={drawButtons} small />
+							</div>
+							{/* Row 2: History + Edit tools */}
+							<div className="flex items-center justify-center gap-1 flex-wrap mb-1">
+								<IconButtonRow buttons={historyButtons} small />
+								<Divider />
+								<IconButtonRow buttons={editButtons} small />
+							</div>
+							{/* Row 3: Lookup + Settings */}
+							<div className="flex items-center justify-center gap-1">
+								<IconButtonRow buttons={lookupButtons} small />
+								<Divider />
+								<TooltipProvider delayDuration={500}>
+									<Popover open={showMapSettings} onOpenChange={setShowMapSettings}>
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<PopoverTrigger asChild>
+													<Button
+														variant={showMapSettings ? 'default' : 'outline'}
+														size="icon"
+														className="h-8 w-8"
+														aria-label="Settings"
+													>
+														<Settings2 className="h-3.5 w-3.5" />
+													</Button>
+												</PopoverTrigger>
+											</TooltipTrigger>
+											<TooltipContent side="bottom" sideOffset={8}>
+												<p>Map settings</p>
+											</TooltipContent>
+										</Tooltip>
+										<PopoverContent className="w-72" side="bottom" align="center">
+											<MapSettingsPanel />
+										</PopoverContent>
+									</Popover>
+								</TooltipProvider>
+							</div>
 						</div>
 					)}
 
 					{mobileSearchOpen && (
-						<div className="flex flex-col gap-2 rounded-lg bg-white/90 p-2 shadow-sm backdrop-blur">
+						<div className="flex flex-col gap-2 rounded-lg bg-white/95 p-2 shadow-md backdrop-blur">
 							<SearchBar
 								query={searchQuery}
 								loading={searchLoading}
@@ -645,7 +525,7 @@ export function Toolbar({
 								onClear={clearSearch}
 							/>
 							{searchResults && searchResults.length > 0 && (
-								<div className="max-h-60 overflow-y-auto space-y-1 bg-white rounded-lg border border-gray-100">
+								<div className="max-h-48 overflow-y-auto space-y-1 bg-white rounded-lg border border-gray-100">
 									{searchResults.map((result) => (
 										<button
 											type="button"
@@ -663,10 +543,17 @@ export function Toolbar({
 					)}
 
 					{mobileActionsOpen && datasetActions && (
-						<div className="flex items-center justify-center gap-2 rounded-lg bg-white/90 p-2 shadow-sm backdrop-blur flex-wrap">
-							<IconButtonRow buttons={datasetButtons} />
-							<div className="h-6 w-px bg-gray-200" />
-							<IconButtonRow buttons={publishButtons} />
+						<div className="rounded-lg bg-white/95 p-2 shadow-md backdrop-blur">
+							<div className="flex items-center justify-center gap-1 flex-wrap">
+								<IconButtonRow buttons={fileButtons} small />
+								<Divider />
+								<IconButtonRow buttons={publishButtons} small />
+								<Divider />
+								<HelpPopover
+									multiSelectModifier={editor?.getMultiSelectModifierLabel() ?? 'Shift'}
+								/>
+								{showLogin && <LoginSessionButtons />}
+							</div>
 							<input
 								type="file"
 								ref={fileInputRef}
@@ -674,12 +561,6 @@ export function Toolbar({
 								accept=".geojson,.json"
 								onChange={handleFileImport}
 							/>
-							<HelpPopover multiSelectModifier={editor?.getMultiSelectModifierLabel() ?? 'Shift'} />
-							{showLogin && (
-								<div className="ml-2">
-									<LoginSessionButtons />
-								</div>
-							)}
 						</div>
 					)}
 				</div>
@@ -687,100 +568,118 @@ export function Toolbar({
 		)
 	}
 
+	// ============================================
+	// DESKTOP TOOLBAR
+	// ============================================
 	return (
 		<div className="flex flex-col gap-2 pointer-events-auto">
-			<div className="flex items-center justify-between gap-2 rounded-lg bg-white/90 p-2 shadow-sm backdrop-blur">
-				<div className="flex items-center gap-2 w-full">
-					<IconButtonRow buttons={desktopButtons} />
+			<div className="flex items-center gap-1 rounded-lg bg-white/90 p-1.5 shadow-sm backdrop-blur">
+				{/* Select */}
+				<IconButtonRow buttons={selectButtons} />
+				<Divider />
 
-					<div className="h-6 w-px bg-gray-200 mx-1" />
+				{/* Draw */}
+				<IconButtonRow buttons={drawButtons} />
+				<Divider />
 
-					<div className="relative">
-						<SearchBar
-							query={searchQuery}
-							loading={searchLoading}
-							placeholder="Search location..."
-							onSubmit={handleSearchSubmit}
-							onQueryChange={setSearchQuery}
-							onClear={clearSearch}
-							className="w-64"
-						/>
-						{searchResults && searchResults.length > 0 && (
-							<div className="absolute top-full left-0 mt-2 w-64 rounded-lg bg-white p-2 shadow-lg z-50 border border-gray-100">
-								<div className="flex items-center justify-between border-b border-gray-100 pb-2 mb-2">
-									<span className="text-xs font-medium text-gray-500">Results</span>
-									<Button
-										variant="ghost"
-										size="sm"
-										className="h-auto p-0 text-xs"
-										onClick={clearSearch}
-									>
-										Close
-									</Button>
-								</div>
-								<div className="max-h-60 overflow-y-auto space-y-1">
-									{searchResults.map((result) => (
-										<button
-											type="button"
-											key={result.placeId}
-											className="w-full text-left text-sm p-1.5 hover:bg-gray-50 rounded truncate"
-											onClick={() => onSearchResultSelect?.(result)}
-										>
-											{result.displayName}
-										</button>
-									))}
-								</div>
-							</div>
-						)}
-					</div>
+				{/* History */}
+				<IconButtonRow buttons={historyButtons} />
+				<Divider />
 
-					<IconButtonRow buttons={[reverseLookupButton]} />
+				{/* Edit */}
+				<IconButtonRow buttons={editButtons} />
+				<Divider />
 
-					<div className="h-6 w-px bg-gray-200 mx-1" />
-
-					<IconButtonRow buttons={actionButtons} />
-
-					<input
-						type="file"
-						ref={fileInputRef}
-						className="hidden"
-						accept=".geojson,.json"
-						onChange={handleFileImport}
+				{/* Search */}
+				<div className="relative">
+					<SearchBar
+						query={searchQuery}
+						loading={searchLoading}
+						placeholder="Search location..."
+						onSubmit={handleSearchSubmit}
+						onQueryChange={setSearchQuery}
+						onClear={clearSearch}
+						className="w-48"
 					/>
-
-					<IconButtonRow buttons={sidebarButtons} />
-
-					<div className="flex-1" />
-
-					{/* Settings Popover - placed next to Help button */}
-					<TooltipProvider delayDuration={500}>
-						<Popover open={showMapSettings} onOpenChange={setShowMapSettings}>
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<PopoverTrigger asChild>
-										<Button
-											variant={showMapSettings ? 'default' : 'outline'}
-											size="icon"
-											aria-label="Map Settings"
-										>
-											<Settings2 className="h-4 w-4" />
-										</Button>
-									</PopoverTrigger>
-								</TooltipTrigger>
-								<TooltipContent side="bottom" sideOffset={8}>
-									<p>Configure map source</p>
-								</TooltipContent>
-							</Tooltip>
-							<PopoverContent className="w-80" side="bottom" align="end">
-								<MapSettingsPanel />
-							</PopoverContent>
-						</Popover>
-					</TooltipProvider>
-
-					<HelpPopover multiSelectModifier={editor?.getMultiSelectModifierLabel() ?? 'Shift'} />
-
-					{showLogin && <LoginSessionButtons />}
+					{searchResults && searchResults.length > 0 && (
+						<div className="absolute top-full left-0 mt-2 w-64 rounded-lg bg-white p-2 shadow-lg z-50 border border-gray-100">
+							<div className="flex items-center justify-between border-b border-gray-100 pb-2 mb-2">
+								<span className="text-xs font-medium text-gray-500">Results</span>
+								<Button
+									variant="ghost"
+									size="sm"
+									className="h-auto p-0 text-xs"
+									onClick={clearSearch}
+								>
+									Close
+								</Button>
+							</div>
+							<div className="max-h-60 overflow-y-auto space-y-1">
+								{searchResults.map((result) => (
+									<button
+										type="button"
+										key={result.placeId}
+										className="w-full text-left text-sm p-1.5 hover:bg-gray-50 rounded truncate"
+										onClick={() => onSearchResultSelect?.(result)}
+									>
+										{result.displayName}
+									</button>
+								))}
+							</div>
+						</div>
+					)}
 				</div>
+
+				{/* Lookup */}
+				<IconButtonRow buttons={lookupButtons} />
+				<Divider />
+
+				{/* File & Publish */}
+				<IconButtonRow buttons={fileButtons} />
+				<IconButtonRow buttons={publishButtons} />
+
+				<input
+					type="file"
+					ref={fileInputRef}
+					className="hidden"
+					accept=".geojson,.json"
+					onChange={handleFileImport}
+				/>
+				<Divider />
+
+				{/* Panels */}
+				<IconButtonRow buttons={panelButtons} />
+
+				<div className="flex-1" />
+
+				{/* Settings Popover */}
+				<TooltipProvider delayDuration={500}>
+					<Popover open={showMapSettings} onOpenChange={setShowMapSettings}>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<PopoverTrigger asChild>
+									<Button
+										variant={showMapSettings ? 'default' : 'outline'}
+										size="icon"
+										aria-label="Settings"
+									>
+										<Settings2 className="h-4 w-4" />
+									</Button>
+								</PopoverTrigger>
+							</TooltipTrigger>
+							<TooltipContent side="bottom" sideOffset={8}>
+								<p>Map settings</p>
+							</TooltipContent>
+						</Tooltip>
+						<PopoverContent className="w-80" side="bottom" align="end">
+							<MapSettingsPanel />
+						</PopoverContent>
+					</Popover>
+				</TooltipProvider>
+
+				<HelpPopover multiSelectModifier={editor?.getMultiSelectModifierLabel() ?? 'Shift'} />
+
+				{showLogin && <LoginSessionButtons />}
 			</div>
 
 			{searchError && (
