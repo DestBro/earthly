@@ -2,40 +2,74 @@ import {
 	NDKNip07Signer,
 	type NDKNip46Signer,
 	type NDKPrivateKeySigner,
+	type NDKUser,
 	useNDKCurrentUser,
 	useNDKSessionLogin,
 	useNDKSessionLogout,
+	useProfileValue,
+	type Hexpubkey,
 } from '@nostr-dev-kit/react'
-import {
-	AppWindowIcon,
-	KeyRoundIcon,
-	Link,
-	LogOutIcon,
-	QrCodeIcon,
-	SettingsIcon,
-} from 'lucide-react'
+import { AppWindowIcon, KeyRoundIcon, LogOutIcon, QrCodeIcon, User2Icon } from 'lucide-react'
 import { useState } from 'react'
 import { Nip46LoginDialog } from './Nip46LoginDialog'
 import { SignupDialog } from './SignupDialog'
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import { Button } from './ui/button'
 import { ButtonGroup } from './ui/button-group'
-// import { AppWindowIcon } from "./ui/icons/lucide-app-window";
-// import { KeyRoundIcon } from "./ui/icons/lucide-key-round";
-// import { QrCodeIcon } from "./ui/icons/lucide-qr-code";
-// import { WalletButton } from "./WalletButton";
-// import { LogOutIcon } from "./ui/icons/lucide-log-out";
-// import { SettingsIcon } from "./ui/icons/lucide-settings";
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
-// import { useUIStore } from "../stores/uiStore";
-// import { usePlatform } from "../lib/hooks/usePlatform";
-// import { Link } from "@tanstack/react-router";
+
+/**
+ * Display a mini profile with avatar and optional name
+ */
+function MiniProfile({ userOrPubkey }: { userOrPubkey?: Hexpubkey | NDKUser | null | undefined }) {
+	const profile = useProfileValue(userOrPubkey)
+	const pubkey =
+		userOrPubkey instanceof Object && 'pubkey' in userOrPubkey ? userOrPubkey.pubkey : userOrPubkey
+
+	// Get first 2 characters of name or pubkey for fallback
+	const getFallbackText = () => {
+		if (profile?.name) {
+			return profile.name.substring(0, 2).toUpperCase()
+		}
+		if (profile?.displayName) {
+			return profile.displayName.substring(0, 2).toUpperCase()
+		}
+		if (pubkey) {
+			return pubkey.substring(0, 2).toUpperCase()
+		}
+		return '?'
+	}
+
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button variant="outline" className="p-1 h-auto">
+					<Avatar className="w-7 h-7">
+						<AvatarImage
+							src={profile?.image || profile?.picture}
+							alt={profile?.name || 'Profile'}
+						/>
+						<AvatarFallback className="text-xs">
+							{profile ? getFallbackText() : <User2Icon className="w-4 h-4" />}
+						</AvatarFallback>
+					</Avatar>
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent>
+				<p>
+					{profile?.name ||
+						profile?.displayName ||
+						(pubkey ? `${pubkey.substring(0, 8)}...` : 'Profile')}
+				</p>
+			</TooltipContent>
+		</Tooltip>
+	)
+}
 
 export function LoginSessionButtons() {
 	const login = useNDKSessionLogin()
 	const logout = useNDKSessionLogout()
 	const currentUser = useNDKCurrentUser()
-	// const shouldPulseLogin = useUIStore((state) => state.shouldPulseLogin);
-	// const { isTauri } = usePlatform();
 
 	const [loading, setLoading] = useState(false)
 	const [showSignupDialog, setShowSignupDialog] = useState(false)
@@ -67,26 +101,27 @@ export function LoginSessionButtons() {
 			await login(signer)
 		} catch (error) {
 			console.error('NIP-46 login failed:', error)
-			throw error // Re-throw so the dialog can handle it
+			throw error
 		} finally {
 			setLoading(false)
 		}
 	}
 
 	return (
-		<div className="flex items-center gap-4">
+		<div className="flex items-center gap-2">
 			{currentUser ? (
 				<ButtonGroup>
-					{/* <WalletButton /> */}
-					{/* <MiniProfile userOrPubkey={currentUser} /> */}
-					<Link to="/settings">
-						<Button>
-							<SettingsIcon className="w-5 h-5" />
-						</Button>
-					</Link>
-					<Button onClick={() => logout()}>
-						<LogOutIcon className="w-5 h-5" />
-					</Button>
+					<MiniProfile userOrPubkey={currentUser} />
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button variant="outline" size="icon" onClick={() => logout()}>
+								<LogOutIcon className="w-4 h-4" />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>
+							<p>Log out</p>
+						</TooltipContent>
+					</Tooltip>
 				</ButtonGroup>
 			) : (
 				<ButtonGroup>
@@ -101,7 +136,6 @@ export function LoginSessionButtons() {
 							<p>Create a new nsec.</p>
 						</TooltipContent>
 					</Tooltip>
-					{/* {!isTauri && ( */}
 					<Tooltip>
 						<TooltipTrigger asChild>
 							<Button variant={'secondary'} onClick={handleNip07Login} disabled={loading}>
@@ -113,7 +147,6 @@ export function LoginSessionButtons() {
 							<p>Use your nostr extension.</p>
 						</TooltipContent>
 					</Tooltip>
-					{/* )} */}
 					<Tooltip>
 						<Nip46LoginDialog
 							onLogin={handleNip46Login}

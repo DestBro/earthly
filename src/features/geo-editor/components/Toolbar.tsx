@@ -6,7 +6,6 @@ import {
 	FilePenLine,
 	Layers,
 	Magnet,
-	Map as MapIcon,
 	MapPin,
 	Merge,
 	MousePointer2,
@@ -14,6 +13,7 @@ import {
 	Redo2,
 	RefreshCw,
 	Route,
+	Settings2,
 	Split as SplitIcon,
 	Trash2,
 	Type,
@@ -28,6 +28,12 @@ import { LoginSessionButtons } from '../../../components/LoginSessionButtom'
 import { Button } from '../../../components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '../../../components/ui/popover'
 import { SearchBar } from '../../../components/ui/search-bar'
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from '../../../components/ui/tooltip'
 import type { EditorMode } from '../core'
 import { useEditorStore } from '../store'
 import type { GeoSearchResult } from '../types'
@@ -40,6 +46,7 @@ type ToolbarButton = {
 	disabled?: boolean
 	variant?: 'default' | 'outline'
 	ariaLabel: string
+	description: string
 }
 
 type IconButtonRowProps = {
@@ -50,20 +57,30 @@ type IconButtonRowProps = {
 
 function IconButtonRow({ buttons, className = '', wrap = false }: IconButtonRowProps) {
 	return (
-		<div className={`flex items-center gap-1 ${wrap ? 'flex-wrap' : ''} ${className}`}>
-			{buttons.map(({ key, icon: Icon, variant = 'outline', disabled, onClick, ariaLabel }) => (
-				<Button
-					key={key}
-					size="icon"
-					variant={variant}
-					disabled={disabled}
-					aria-label={ariaLabel}
-					onClick={onClick}
-				>
-					<Icon className="h-4 w-4" />
-				</Button>
-			))}
-		</div>
+		<TooltipProvider delayDuration={500}>
+			<div className={`flex items-center gap-1 ${wrap ? 'flex-wrap' : ''} ${className}`}>
+				{buttons.map(
+					({ key, icon: Icon, variant = 'outline', disabled, onClick, ariaLabel, description }) => (
+						<Tooltip key={key}>
+							<TooltipTrigger asChild>
+								<Button
+									size="icon"
+									variant={variant}
+									disabled={disabled}
+									aria-label={ariaLabel}
+									onClick={onClick}
+								>
+									<Icon className="h-4 w-4" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent side="bottom" sideOffset={8}>
+								<p>{description}</p>
+							</TooltipContent>
+						</Tooltip>
+					),
+				)}
+			</div>
+		</TooltipProvider>
 	)
 }
 
@@ -104,6 +121,7 @@ export function Toolbar({
 	const setSnappingEnabled = useEditorStore((state) => state.setSnappingEnabled)
 	const history = useEditorStore((state) => state.history)
 	const setHistoryState = useEditorStore((state) => state.setHistoryState)
+	const viewMode = useEditorStore((state) => state.viewMode)
 
 	// UI State
 	const showDatasetsPanel = useEditorStore((state) => state.showDatasetsPanel)
@@ -132,12 +150,16 @@ export function Toolbar({
 
 	const fileInputRef = useRef<HTMLInputElement>(null)
 
+	// Computed: Is editing disabled (view mode active)?
+	const isEditingDisabled = viewMode !== 'edit'
+
 	const handleModeChange = (newMode: EditorMode) => {
-		setMode(newMode)
+		// Deactivate inspector when changing modes
 		if (inspectorActive) {
 			setInspectorActive(false)
 			onInspectorDeactivate?.()
 		}
+		setMode(newMode)
 	}
 
 	const handleUndo = () => {
@@ -176,6 +198,7 @@ export function Toolbar({
 			onInspectorDeactivate?.()
 		} else {
 			setInspectorActive(true)
+			// Switch to select mode when activating inspector
 			if (mode !== 'select') {
 				setMode('select')
 			}
@@ -226,8 +249,9 @@ export function Toolbar({
 			key: 'select',
 			icon: MousePointer2,
 			onClick: () => handleModeChange('select'),
-			variant: mode === 'select' ? 'default' : 'outline',
+			variant: mode === 'select' && !inspectorActive ? 'default' : 'outline',
 			ariaLabel: 'Select mode',
+			description: 'Select and move features',
 		},
 		// 2. Draw: point, line, polygon
 		{
@@ -235,21 +259,27 @@ export function Toolbar({
 			icon: MapPin,
 			onClick: () => handleModeChange('draw_point'),
 			variant: mode === 'draw_point' ? 'default' : 'outline',
+			disabled: isEditingDisabled,
 			ariaLabel: 'Draw point',
+			description: 'Draw a point marker',
 		},
 		{
 			key: 'line',
 			icon: Route,
 			onClick: () => handleModeChange('draw_linestring'),
 			variant: mode === 'draw_linestring' ? 'default' : 'outline',
+			disabled: isEditingDisabled,
 			ariaLabel: 'Draw line',
+			description: 'Draw a line or route',
 		},
 		{
 			key: 'polygon',
 			icon: Pentagon,
 			onClick: () => handleModeChange('draw_polygon'),
 			variant: mode === 'draw_polygon' ? 'default' : 'outline',
+			disabled: isEditingDisabled,
 			ariaLabel: 'Draw polygon',
+			description: 'Draw a polygon area',
 		},
 		// 2b. Draw annotation
 		{
@@ -257,22 +287,26 @@ export function Toolbar({
 			icon: Type,
 			onClick: () => handleModeChange('draw_annotation'),
 			variant: mode === 'draw_annotation' ? 'default' : 'outline',
+			disabled: isEditingDisabled,
 			ariaLabel: 'Draw text annotation',
+			description: 'Add a text annotation',
 		},
 		// 3. Undo/Redo
 		{
 			key: 'undo',
 			icon: Undo2,
 			onClick: handleUndo,
-			disabled: !history.canUndo,
+			disabled: !history.canUndo || isEditingDisabled,
 			ariaLabel: 'Undo',
+			description: 'Undo last action',
 		},
 		{
 			key: 'redo',
 			icon: Redo2,
 			onClick: handleRedo,
-			disabled: !history.canRedo,
+			disabled: !history.canRedo || isEditingDisabled,
 			ariaLabel: 'Redo',
+			description: 'Redo last action',
 		},
 		// Snap Toggle
 		{
@@ -280,7 +314,9 @@ export function Toolbar({
 			icon: Magnet,
 			onClick: handleToggleSnapping,
 			variant: snappingEnabled ? 'default' : 'outline',
+			disabled: isEditingDisabled,
 			ariaLabel: 'Toggle snapping',
+			description: 'Snap to nearby points',
 		},
 		// 4. Edit toggle (Vertex Editing)
 		{
@@ -288,28 +324,36 @@ export function Toolbar({
 			icon: Edit3,
 			onClick: () => handleModeChange('edit'),
 			variant: mode === 'edit' ? 'default' : 'outline',
+			disabled: isEditingDisabled,
 			ariaLabel: 'Edit mode',
+			description: 'Edit vertices of selected feature',
 		},
 		// 4. Delete
 		{
 			key: 'delete',
 			icon: Trash2,
 			onClick: handleDeleteSelected,
+			disabled: isEditingDisabled,
 			ariaLabel: 'Delete selected',
+			description: 'Delete selected features',
 		},
 		// 5. Merge
 		{
 			key: 'merge',
 			icon: Merge,
 			onClick: handleMergeSelected,
+			disabled: isEditingDisabled,
 			ariaLabel: 'Merge selected',
+			description: 'Merge selected features into one',
 		},
 		// 6. Split
 		{
 			key: 'split',
 			icon: SplitIcon,
 			onClick: handleSplitSelected,
+			disabled: isEditingDisabled,
 			ariaLabel: 'Split selected',
+			description: 'Split selected feature at vertex',
 		},
 	]
 
@@ -319,6 +363,7 @@ export function Toolbar({
 			icon: Upload,
 			onClick: () => fileInputRef.current?.click(),
 			ariaLabel: 'Import GeoJSON',
+			description: 'Import GeoJSON file',
 		},
 		{
 			key: 'export',
@@ -326,6 +371,7 @@ export function Toolbar({
 			onClick: datasetActions?.onExport ?? (() => {}),
 			disabled: !datasetActions?.canExport,
 			ariaLabel: 'Export GeoJSON',
+			description: 'Export as GeoJSON file',
 		},
 		{
 			key: 'clear',
@@ -333,6 +379,7 @@ export function Toolbar({
 			onClick: datasetActions?.onClear ?? (() => {}),
 			disabled: !datasetActions?.canClear,
 			ariaLabel: 'Clear all features',
+			description: 'Clear all features from editor',
 		},
 	]
 
@@ -343,6 +390,7 @@ export function Toolbar({
 			onClick: datasetActions?.onPublishNew ?? (() => {}),
 			disabled: !datasetActions?.canPublishNew || datasetActions?.isPublishing,
 			ariaLabel: 'Publish as new dataset',
+			description: 'Publish as a new dataset',
 		},
 		{
 			key: 'publish-update',
@@ -350,6 +398,7 @@ export function Toolbar({
 			onClick: datasetActions?.onPublishUpdate ?? (() => {}),
 			disabled: !datasetActions?.canPublishUpdate || datasetActions?.isPublishing,
 			ariaLabel: 'Update existing dataset',
+			description: 'Update the existing dataset',
 		},
 		{
 			key: 'publish-copy',
@@ -357,15 +406,17 @@ export function Toolbar({
 			onClick: datasetActions?.onPublishCopy ?? (() => {}),
 			disabled: !datasetActions?.canPublishCopy || datasetActions?.isPublishing,
 			ariaLabel: 'Fork dataset',
+			description: 'Fork as a new dataset',
 		},
 	]
 
 	const reverseLookupButton: ToolbarButton = {
 		key: 'reverse-lookup',
 		icon: Crosshair,
-		onClick: handleToggleInspector, // Reusing inspector for now as it handles reverse lookup
+		onClick: handleToggleInspector,
 		variant: inspectorActive ? 'default' : 'outline',
 		ariaLabel: 'Reverse lookup',
+		description: 'Click map to get location info',
 	}
 
 	const actionButtons: ToolbarButton[] = [
@@ -375,6 +426,7 @@ export function Toolbar({
 			icon: Upload,
 			onClick: () => fileInputRef.current?.click(),
 			ariaLabel: 'Import GeoJSON',
+			description: 'Import GeoJSON file',
 		},
 		// Export
 		{
@@ -383,6 +435,7 @@ export function Toolbar({
 			onClick: datasetActions?.onExport ?? (() => {}),
 			disabled: !datasetActions?.canExport,
 			ariaLabel: 'Export GeoJSON',
+			description: 'Export as GeoJSON file',
 		},
 		// Publish
 		{
@@ -391,6 +444,7 @@ export function Toolbar({
 			onClick: datasetActions?.onPublishNew ?? (() => {}),
 			disabled: !datasetActions?.canPublishNew || datasetActions?.isPublishing,
 			ariaLabel: 'Publish as new dataset',
+			description: 'Publish as a new dataset',
 		},
 		// Update
 		{
@@ -399,6 +453,7 @@ export function Toolbar({
 			onClick: datasetActions?.onPublishUpdate ?? (() => {}),
 			disabled: !datasetActions?.canPublishUpdate || datasetActions?.isPublishing,
 			ariaLabel: 'Update existing dataset',
+			description: 'Update the existing dataset',
 		},
 	]
 
@@ -410,6 +465,7 @@ export function Toolbar({
 			onClick: handleToggleDatasets,
 			variant: datasetsOpen ? 'default' : 'outline',
 			ariaLabel: 'Toggle datasets panel',
+			description: 'Show/hide datasets panel',
 		},
 		{
 			key: 'info',
@@ -417,44 +473,55 @@ export function Toolbar({
 			onClick: handleToggleInfo,
 			variant: infoPanelOpen ? 'default' : 'outline',
 			ariaLabel: 'Toggle info panel',
+			description: 'Show/hide editor panel',
 		},
 	]
+
 	// Mobile Toolbar Configuration
 	const mobileDrawButtons: ToolbarButton[] = [
 		{
 			key: 'select',
 			icon: MousePointer2,
 			onClick: () => handleModeChange('select'),
-			variant: mode === 'select' ? 'default' : 'outline',
+			variant: mode === 'select' && !inspectorActive ? 'default' : 'outline',
 			ariaLabel: 'Select mode',
+			description: 'Select and move features',
 		},
 		{
 			key: 'point',
 			icon: MapPin,
 			onClick: () => handleModeChange('draw_point'),
 			variant: mode === 'draw_point' ? 'default' : 'outline',
+			disabled: isEditingDisabled,
 			ariaLabel: 'Draw point',
+			description: 'Draw a point marker',
 		},
 		{
 			key: 'line',
 			icon: Route,
 			onClick: () => handleModeChange('draw_linestring'),
 			variant: mode === 'draw_linestring' ? 'default' : 'outline',
+			disabled: isEditingDisabled,
 			ariaLabel: 'Draw line',
+			description: 'Draw a line or route',
 		},
 		{
 			key: 'polygon',
 			icon: Pentagon,
 			onClick: () => handleModeChange('draw_polygon'),
 			variant: mode === 'draw_polygon' ? 'default' : 'outline',
+			disabled: isEditingDisabled,
 			ariaLabel: 'Draw polygon',
+			description: 'Draw a polygon area',
 		},
 		{
 			key: 'annotation',
 			icon: Type,
 			onClick: () => handleModeChange('draw_annotation'),
 			variant: mode === 'draw_annotation' ? 'default' : 'outline',
+			disabled: isEditingDisabled,
 			ariaLabel: 'Draw text annotation',
+			description: 'Add a text annotation',
 		},
 	]
 
@@ -463,29 +530,35 @@ export function Toolbar({
 			key: 'undo',
 			icon: Undo2,
 			onClick: handleUndo,
-			disabled: !history.canUndo,
+			disabled: !history.canUndo || isEditingDisabled,
 			ariaLabel: 'Undo',
+			description: 'Undo last action',
 		},
 		{
 			key: 'redo',
 			icon: Redo2,
 			onClick: handleRedo,
-			disabled: !history.canRedo,
+			disabled: !history.canRedo || isEditingDisabled,
 			ariaLabel: 'Redo',
+			description: 'Redo last action',
 		},
 		{
 			key: 'snapping',
 			icon: Magnet,
 			onClick: handleToggleSnapping,
 			variant: snappingEnabled ? 'default' : 'outline',
+			disabled: isEditingDisabled,
 			ariaLabel: 'Toggle snapping',
+			description: 'Snap to nearby points',
 		},
 		{
 			key: 'edit',
 			icon: Edit3,
 			onClick: () => handleModeChange('edit'),
 			variant: mode === 'edit' ? 'default' : 'outline',
+			disabled: isEditingDisabled,
 			ariaLabel: 'Edit mode',
+			description: 'Edit vertices of selected feature',
 		},
 		{
 			key: 'inspector',
@@ -493,31 +566,31 @@ export function Toolbar({
 			onClick: handleToggleInspector,
 			variant: inspectorActive ? 'default' : 'outline',
 			ariaLabel: 'Toggle inspector',
+			description: 'Click map to get location info',
 		},
 		{
 			key: 'delete',
 			icon: Trash2,
 			onClick: handleDeleteSelected,
+			disabled: isEditingDisabled,
 			ariaLabel: 'Delete selected',
+			description: 'Delete selected features',
 		},
 		{
 			key: 'merge',
 			icon: Merge,
 			onClick: handleMergeSelected,
+			disabled: isEditingDisabled,
 			ariaLabel: 'Merge selected',
+			description: 'Merge selected features into one',
 		},
 		{
 			key: 'split',
 			icon: SplitIcon,
 			onClick: handleSplitSelected,
+			disabled: isEditingDisabled,
 			ariaLabel: 'Split selected',
-		},
-		{
-			key: 'map-settings',
-			icon: MapIcon,
-			onClick: handleToggleMapSettings,
-			variant: showMapSettings ? 'default' : 'outline',
-			ariaLabel: 'Map Settings',
+			description: 'Split selected feature at vertex',
 		},
 	]
 
@@ -531,6 +604,30 @@ export function Toolbar({
 							<IconButtonRow buttons={mobileDrawButtons} />
 							<div className="h-6 w-px bg-gray-200" />
 							<IconButtonRow buttons={mobileEditButtons} />
+							<div className="h-6 w-px bg-gray-200" />
+							<TooltipProvider delayDuration={500}>
+								<Popover open={showMapSettings} onOpenChange={setShowMapSettings}>
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<PopoverTrigger asChild>
+												<Button
+													variant={showMapSettings ? 'default' : 'outline'}
+													size="icon"
+													aria-label="Map Settings"
+												>
+													<Settings2 className="h-4 w-4" />
+												</Button>
+											</PopoverTrigger>
+										</TooltipTrigger>
+										<TooltipContent side="bottom" sideOffset={8}>
+											<p>Configure map source</p>
+										</TooltipContent>
+									</Tooltip>
+									<PopoverContent className="w-80" side="bottom" align="end">
+										<MapSettingsPanel />
+									</PopoverContent>
+								</Popover>
+							</TooltipProvider>
 						</div>
 					)}
 
@@ -643,24 +740,42 @@ export function Toolbar({
 
 					<IconButtonRow buttons={actionButtons} />
 
-					<Popover open={showMapSettings} onOpenChange={setShowMapSettings}>
-						<PopoverTrigger asChild>
-							<Button
-								variant={showMapSettings ? 'default' : 'outline'}
-								size="icon"
-								aria-label="Map Settings"
-							>
-								<MapIcon className="h-4 w-4" />
-							</Button>
-						</PopoverTrigger>
-						<PopoverContent className="w-80" side="bottom" align="end">
-							<MapSettingsPanel />
-						</PopoverContent>
-					</Popover>
+					<input
+						type="file"
+						ref={fileInputRef}
+						className="hidden"
+						accept=".geojson,.json"
+						onChange={handleFileImport}
+					/>
 
 					<IconButtonRow buttons={sidebarButtons} />
 
 					<div className="flex-1" />
+
+					{/* Settings Popover - placed next to Help button */}
+					<TooltipProvider delayDuration={500}>
+						<Popover open={showMapSettings} onOpenChange={setShowMapSettings}>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<PopoverTrigger asChild>
+										<Button
+											variant={showMapSettings ? 'default' : 'outline'}
+											size="icon"
+											aria-label="Map Settings"
+										>
+											<Settings2 className="h-4 w-4" />
+										</Button>
+									</PopoverTrigger>
+								</TooltipTrigger>
+								<TooltipContent side="bottom" sideOffset={8}>
+									<p>Configure map source</p>
+								</TooltipContent>
+							</Tooltip>
+							<PopoverContent className="w-80" side="bottom" align="end">
+								<MapSettingsPanel />
+							</PopoverContent>
+						</Popover>
+					</TooltipProvider>
 
 					<HelpPopover multiSelectModifier={editor?.getMultiSelectModifierLabel() ?? 'Shift'} />
 
