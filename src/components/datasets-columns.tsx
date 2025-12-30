@@ -1,5 +1,5 @@
 import type { ColumnDef } from '@tanstack/react-table'
-import { Bug, Download, Eye, EyeOff, Maximize2, Pencil, Search, Trash2 } from 'lucide-react'
+import { Bug, Download, Maximize2, Pencil, Search, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
 import { Button } from './ui/button'
@@ -30,6 +30,24 @@ export interface DatasetColumnsContext {
 export const createDatasetColumns = (
 	context: DatasetColumnsContext,
 ): ColumnDef<DatasetRowData>[] => [
+	{
+		id: 'visibility',
+		header: '',
+		size: 32,
+		cell: ({ row }) => {
+			const { event, isVisible } = row.original
+			return (
+				<input
+					type="checkbox"
+					checked={isVisible}
+					onChange={() => context.onToggleVisibility(event)}
+					className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+					aria-label={isVisible ? 'Hide dataset' : 'Show dataset'}
+					title={isVisible ? 'Hide dataset' : 'Show dataset'}
+				/>
+			)
+		},
+	},
 	{
 		accessorKey: 'datasetName',
 		header: 'Dataset',
@@ -65,20 +83,20 @@ export const createDatasetColumns = (
 
 			return (
 				<div
-					className="space-y-1 min-w-[200px] cursor-grab active:cursor-grabbing"
+					className="space-y-0.5 max-w-[160px] cursor-grab active:cursor-grabbing"
 					draggable
 					onDragStart={handleDragStart}
 				>
-					<div className="font-semibold text-gray-900 truncate">{datasetName}</div>
-					<div className="text-[11px] text-gray-500 truncate">
-						Owner: {event.pubkey.slice(0, 8)}…{event.pubkey.slice(-4)}
+					<div className="text-xs font-semibold text-gray-900 truncate" title={datasetName}>{datasetName}</div>
+					<div className="text-[10px] text-gray-500 truncate">
+						{event.pubkey.slice(0, 8)}…{event.pubkey.slice(-4)}
 					</div>
 					{event.hashtags.length > 0 && (
-						<div className="flex flex-wrap gap-1">
-							{event.hashtags.slice(0, 3).map((tag) => (
+						<div className="flex flex-wrap gap-0.5">
+							{event.hashtags.slice(0, 2).map((tag) => (
 								<span
 									key={tag}
-									className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] text-blue-700"
+									className="rounded bg-blue-100 px-1 py-0.5 text-[9px] text-blue-700"
 								>
 									#{tag}
 								</span>
@@ -91,13 +109,13 @@ export const createDatasetColumns = (
 	},
 	{
 		id: 'actions',
-		header: 'Actions',
+		header: '',
 		cell: ({ row }) => {
-			const { event, isActive, isOwned, isVisible, datasetKey } = row.original
+			const { event, isActive, isOwned, datasetKey } = row.original
 			return (
-				<div className="flex items-center gap-1">
+				<div className="flex items-center gap-0.5">
 					<Button
-						size="icon-sm"
+						size="icon-xs"
 						className={cn(
 							isActive
 								? 'bg-green-600 text-white hover:bg-green-700'
@@ -108,56 +126,47 @@ export const createDatasetColumns = (
 						aria-label={isActive ? 'Loaded in editor' : isOwned ? 'Edit dataset' : 'Load copy'}
 						title={isActive ? 'Loaded in editor' : isOwned ? 'Edit dataset' : 'Load copy'}
 					>
-						{isOwned ? <Pencil className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+						{isOwned ? <Pencil className="h-3 w-3" /> : <Download className="h-3 w-3" />}
 					</Button>
 					{isOwned && (
 						<Button
-							size="icon-sm"
+							size="icon-xs"
 							variant="destructive"
 							onClick={() => context.onDeleteDataset(event)}
 							disabled={context.deletingKey === datasetKey}
 							aria-label="Delete dataset"
 							title={context.deletingKey === datasetKey ? 'Deleting…' : 'Delete dataset'}
 						>
-							<Trash2 className="h-4 w-4" />
+							<Trash2 className="h-3 w-3" />
 						</Button>
 					)}
 					<Button
-						size="icon-sm"
+						size="icon-xs"
 						variant="outline"
 						onClick={() => context.onInspectDataset?.(event)}
 						aria-label="Inspect dataset"
 						title="Inspect dataset"
 					>
-						<Search className="h-4 w-4" />
+						<Search className="h-3 w-3" />
 					</Button>
 					<Button
-						size="icon-sm"
-						variant="outline"
-						onClick={() => context.onToggleVisibility(event)}
-						aria-label={isVisible ? 'Hide dataset' : 'Show dataset'}
-						title={isVisible ? 'Hide dataset' : 'Show dataset'}
-					>
-						{isVisible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-					</Button>
-					<Button
-						size="icon-sm"
+						size="icon-xs"
 						variant="outline"
 						onClick={() => context.onZoomToDataset(event)}
 						aria-label="Zoom to dataset"
 						title="Zoom to dataset"
 					>
-						<Maximize2 className="h-4 w-4" />
+						<Maximize2 className="h-3 w-3" />
 					</Button>
 					{context.onOpenDebug && (
 						<Button
-							size="icon-sm"
+							size="icon-xs"
 							variant="ghost"
 							aria-label="Open debug"
 							title="Open debug"
 							onClick={() => context.onOpenDebug?.(event)}
 						>
-							<Bug className="h-4 w-4" />
+							<Bug className="h-3 w-3" />
 						</Button>
 					)}
 				</div>

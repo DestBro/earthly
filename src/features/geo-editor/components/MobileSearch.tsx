@@ -34,7 +34,7 @@ export function MobileSearch({
 	}
 
 	return (
-		<div className="pointer-events-auto fixed left-1/2 top-3 z-50 w-[calc(100%-24px)] -translate-x-1/2 rounded-2xl border border-gray-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+		<div className="pointer-events-auto fixed left-1/2 top-3 z-50 w-[calc(100%-24px)] -translate-x-1/2 rounded-lg border border-gray-200 bg-white/95 p-3 shadow-lg backdrop-blur">
 			<div className="flex w-full flex-col gap-2">
 				<div className="flex items-center gap-2">
 					<SearchBar
