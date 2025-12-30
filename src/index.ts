@@ -175,23 +175,27 @@ if (!isProduction) {
 		console.log(`🚀 Server running at ${server.url} (production)`)
 	} else {
 		// Development: Use Bun's bundler with HMR
-		const index = (await import('./index.html')).default
+		const index = (await import('./index.html')).default 
+
+		const servePublicFile = async (req: Request) => {
+			const url = new URL(req.url)
+			const filePath = join(process.cwd(), 'public', url.pathname)
+			const staticFile = file(filePath)
+
+			if (await staticFile.exists()) {
+				return new Response(staticFile)
+			}
+
+			return new Response('Not found', { status: 404 })
+		}
 
 		const server = serve({
 			routes: {
 				...apiRoutes,
-				// Serve static files from public/ directory
-				'/images/*': async (req) => {
-					const url = new URL(req.url)
-					const filePath = join(process.cwd(), 'public', url.pathname)
-					const staticFile = file(filePath)
-
-					if (await staticFile.exists()) {
-						return new Response(staticFile)
-					}
-
-					return new Response('Not found', { status: 404 })
-				},
+				// Serve static files from public/ directory (e.g. /assets/*, /favicon.ico)
+				'/assets/*': servePublicFile,
+				'/images/*': servePublicFile,
+				'/favicon.ico': servePublicFile,
 				// Catch-all for SPA routing
 				'/*': index,
 			},

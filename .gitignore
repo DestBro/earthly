@@ -3,6 +3,10 @@ node_modules
 
 # map-chunks
 map-chunks
+
+# base files
+base-assets
+
 # output
 out
 dist
