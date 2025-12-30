@@ -9,7 +9,7 @@ import { Button } from '../ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { DatasetActionCard } from './DatasetActionCard'
 import { CommentsPanel } from '../comments'
-import type { GeoFeatureItem } from '../editor/GeoRichTextEditor'
+import { GeoRichTextEditor, type GeoFeatureItem } from '../editor/GeoRichTextEditor'
 
 export interface ViewModePanelProps {
 	currentUserPubkey?: string
@@ -37,6 +37,7 @@ export interface ViewModePanelProps {
 	) => void
 	/** Callback to zoom to a mentioned geometry */
 	onMentionZoomTo?: (address: string, featureId: string | undefined) => void
+	onEditCollection?: (collection: NDKGeoCollectionEvent) => void
 }
 
 type ViewTab = 'details' | 'comments'
@@ -73,6 +74,7 @@ export function ViewModePanel({
 	availableFeatures = [],
 	onMentionVisibilityToggle,
 	onMentionZoomTo,
+	onEditCollection,
 }: ViewModePanelProps) {
 	const [activeTab, setActiveTab] = useState<ViewTab>('details')
 	const [visibleGeojsonCommentIds, setVisibleGeojsonCommentIds] = useState<Set<string>>(new Set())
@@ -96,10 +98,14 @@ export function ViewModePanel({
 
 	// Switch to edit mode
 	const handleSwitchToEdit = useCallback(() => {
-		setViewMode('edit')
-		setViewDataset(null)
-		setViewCollection(null)
-	}, [setViewMode, setViewDataset, setViewCollection])
+		if (viewCollection && onEditCollection) {
+			onEditCollection(viewCollection)
+		} else {
+			setViewMode('edit')
+			setViewDataset(null)
+			setViewCollection(null)
+		}
+	}, [setViewMode, setViewDataset, setViewCollection, viewCollection, onEditCollection])
 
 	// Reset comment-related state when target changes
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentional reset on target change
@@ -206,16 +212,18 @@ export function ViewModePanel({
 			<div className="flex-shrink-0 flex items-center justify-between gap-2 mb-3">
 				<div className="flex items-center gap-2">
 					<h2 className="text-lg font-bold text-gray-900">{headerTitle}</h2>
-					<Button
-						size="xs"
-						variant="ghost"
-						onClick={handleSwitchToEdit}
-						title="Switch to edit mode"
-						className="h-6 px-2 text-xs text-gray-500 hover:text-gray-700"
-					>
-						<Pencil className="h-3 w-3 mr-1" />
-						Edit
-					</Button>
+					{(!viewCollection || (viewCollection.pubkey === currentUserPubkey)) && (
+						<Button
+							size="xs"
+							variant="ghost"
+							onClick={handleSwitchToEdit}
+							title={viewCollection ? "Edit collection" : "Switch to edit mode"}
+							className="h-6 px-2 text-xs text-gray-500 hover:text-gray-700"
+						>
+							<Pencil className="h-3 w-3 mr-1" />
+							Edit
+						</Button>
+					)}
 				</div>
 				<div className="flex gap-2">
 					{onClose && (
@@ -306,9 +314,13 @@ export function ViewModePanel({
 										)}
 									</div>
 									{viewCollection.metadata.description && (
-										<p className="text-sm text-gray-600 whitespace-pre-line">
-											{viewCollection.metadata.description}
-										</p>
+										<div className="text-sm text-gray-600">
+											<GeoRichTextEditor
+												initialValue={viewCollection.metadata.description}
+												readOnly
+												availableFeatures={availableFeatures}
+											/>
+										</div>
 									)}
 									<div className="text-[11px] text-gray-500">
 										Maintainer: {viewCollection.pubkey.slice(0, 8)}…

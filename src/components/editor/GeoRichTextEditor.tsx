@@ -37,7 +37,10 @@ export interface GeoRichTextEditorProps {
 	/** Minimum height in rows */
 	rows?: number
 	/** Additional class names */
+	/** Additional class names */
 	className?: string
+	/** Whether the editor is strictly read-only (no editing UI) */
+	readOnly?: boolean
 }
 
 export interface GeoRichTextEditorRef {
@@ -76,6 +79,7 @@ export const GeoRichTextEditor = forwardRef<GeoRichTextEditorRef, GeoRichTextEdi
 			disabled = false,
 			rows = 3,
 			className = '',
+			readOnly = false,
 		},
 		ref,
 	) => {
@@ -194,7 +198,7 @@ export const GeoRichTextEditor = forwardRef<GeoRichTextEditorRef, GeoRichTextEdi
 				mentionExtension,
 			],
 			content: initialValue ? parseFromText(initialValue) : '',
-			editable: !disabled,
+			editable: !disabled && !readOnly,
 			onUpdate: ({ editor }) => {
 				const json = editor.getJSON()
 				const text = serializeToText(json)
@@ -333,20 +337,23 @@ export const GeoRichTextEditor = forwardRef<GeoRichTextEditorRef, GeoRichTextEdi
 					ref={editorContainerRef}
 					className={`
 						rounded-md border transition-colors
-						${isDragOver ? 'border-sky-400 bg-sky-50/50 ring-2 ring-sky-200' : 'border-gray-200'}
-						${disabled ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'}
+						${
+							readOnly
+								? 'border-transparent bg-transparent px-0'
+								: `${isDragOver ? 'border-sky-400 bg-sky-50/50 ring-2 ring-sky-200' : 'border-gray-200'} ${disabled ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'}`
+						}
 					`}
-					onDragOver={handleDragOver}
-					onDragLeave={handleDragLeave}
-					onDrop={handleDrop}
+					onDragOver={!readOnly ? handleDragOver : undefined}
+					onDragLeave={!readOnly ? handleDragLeave : undefined}
+					onDrop={!readOnly ? handleDrop : undefined}
 				>
 					<EditorContent
 						editor={editor}
 						className={`
 							prose prose-sm max-w-none
 							[&_.ProseMirror]:outline-none
-							[&_.ProseMirror]:px-3 [&_.ProseMirror]:py-2
-							[&_.ProseMirror]:min-h-[${rows * 1.5}rem]
+							${readOnly ? '[&_.ProseMirror]:p-0' : '[&_.ProseMirror]:px-3 [&_.ProseMirror]:py-2'}
+							${readOnly ? '' : `[&_.ProseMirror]:min-h-[${rows * 1.5}rem]`}
 							[&_.ProseMirror_p]:my-0
 							[&_.ProseMirror_.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]
 							[&_.ProseMirror_.is-editor-empty:first-child::before]:text-gray-400

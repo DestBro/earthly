@@ -40,6 +40,7 @@ export interface GeoEditorInfoPanelProps {
 	) => void
 	/** Callback to zoom to a mentioned geometry */
 	onMentionZoomTo?: (address: string, featureId: string | undefined) => void
+	onEditCollection?: (collection: NDKGeoCollectionEvent) => void
 }
 
 export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
@@ -60,6 +61,7 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 		availableFeatures = [],
 		onMentionVisibilityToggle,
 		onMentionZoomTo,
+		onEditCollection,
 	} = props
 
 	// Store state
@@ -107,6 +109,7 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 				availableFeatures={availableFeatures}
 				onMentionVisibilityToggle={onMentionVisibilityToggle}
 				onMentionZoomTo={onMentionZoomTo}
+				onEditCollection={onEditCollection}
 			/>
 		)
 	}

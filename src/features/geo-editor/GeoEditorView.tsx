@@ -14,6 +14,8 @@ import { useAvailableGeoFeatures } from '../../lib/hooks/useAvailableGeoFeatures
 import { useIsMobile } from '../../lib/hooks/useIsMobile'
 import { useGeoCollections, useStations } from '../../lib/hooks/useStations'
 import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
+import type { NDKGeoCollectionEvent } from '../../lib/ndk/NDKGeoCollectionEvent'
+import { GeoCollectionEditorPanel } from '../../components/GeoCollectionEditorPanel'
 import { Editor } from './components/Editor'
 import { LocationInspectorPopup } from './components/LocationInspectorPopup'
 import { Magnifier } from './components/Magnifier'
@@ -107,6 +109,10 @@ export function GeoEditorView() {
 	const mapSource = useEditorStore((state) => state.mapSource)
 	const inspectorActive = useEditorStore((state) => state.inspectorActive)
 	const setInspectorActive = useEditorStore((state) => state.setInspectorActive)
+
+	// Collection Editor state
+	const [collectionEditorMode, setCollectionEditorMode] = useState<'none' | 'create' | 'edit'>('none')
+	const [editingCollection, setEditingCollection] = useState<NDKGeoCollectionEvent | null>(null)
 
 	// External data
 	const { events: geoEvents } = useStations([{ limit: 50 }])
@@ -742,6 +748,32 @@ export function GeoEditorView() {
 		[resolveNaddrToDataset, toggleDatasetVisibility],
 	)
 
+	// Collection Editor Handlers
+	const handleCreateCollection = useCallback(() => {
+		setCollectionEditorMode('create')
+		setEditingCollection(null)
+		if (!isMobile) setShowInfoPanel(true)
+	}, [isMobile, setShowInfoPanel])
+
+	const handleEditCollection = useCallback(
+		(collection: NDKGeoCollectionEvent) => {
+			setCollectionEditorMode('edit')
+			setEditingCollection(collection)
+			if (!isMobile) setShowInfoPanel(true)
+		},
+		[isMobile, setShowInfoPanel],
+	)
+
+	const handleSaveCollection = useCallback((collection: NDKGeoCollectionEvent) => {
+		setCollectionEditorMode('none')
+		setEditingCollection(null)
+	}, [])
+
+	const handleCloseCollectionEditor = useCallback(() => {
+		setCollectionEditorMode('none')
+		setEditingCollection(null)
+	}, [])
+
 	const multiSelectModifierLabel = editor?.getMultiSelectModifierLabel() ?? 'Shift'
 
 	return (
@@ -842,10 +874,10 @@ export function GeoEditorView() {
 								getDatasetKey={getDatasetKey}
 								getDatasetName={getDatasetName}
 								onZoomToCollection={zoomToCollection}
-								onInspectDataset={handleInspectDataset}
-								onInspectCollection={handleInspectCollection}
 								onOpenDebug={handleOpenDebug}
 								onClose={() => setShowDatasetsPanel(false)}
+								onCreateCollection={handleCreateCollection}
+								onEditCollection={handleEditCollection}
 							/>
 						</div>
 					</div>
@@ -866,25 +898,35 @@ export function GeoEditorView() {
 								{editor.getMode() === 'edit' && 'Drag vertices to edit'}
 							</div>
 						)}
-						<div className="h-full overflow-y-auto p-4">
-							<GeoEditorInfoPanelContent
-								currentUserPubkey={currentUser?.pubkey}
-								onLoadDataset={loadDatasetForEditing}
-								onToggleVisibility={toggleDatasetVisibility}
-								onZoomToDataset={zoomToDataset}
-								onDeleteDataset={onDeleteDataset}
-								onZoomToCollection={zoomToCollection}
-								deletingKey={deletingKey}
-								onExitViewMode={exitViewMode}
-								onClose={() => setShowInfoPanel(false)}
-								getDatasetKey={getDatasetKey}
-								getDatasetName={getDatasetName}
-								onCommentGeometryVisibility={handleCommentGeometryVisibility}
-								onZoomToBounds={handleZoomToBounds}
-								availableFeatures={availableFeatures}
-								onMentionVisibilityToggle={handleMentionVisibilityToggle}
-								onMentionZoomTo={handleMentionZoomTo}
-							/>
+						<div className={`h-full overflow-y-auto ${collectionEditorMode === 'none' ? 'p-4' : ''}`}>
+							{collectionEditorMode !== 'none' ? (
+								<GeoCollectionEditorPanel
+									initialCollection={editingCollection}
+									onClose={handleCloseCollectionEditor}
+									onSave={handleSaveCollection}
+									availableFeatures={availableFeatures}
+								/>
+							) : (
+								<GeoEditorInfoPanelContent
+									currentUserPubkey={currentUser?.pubkey}
+									onLoadDataset={loadDatasetForEditing}
+									onToggleVisibility={toggleDatasetVisibility}
+									onZoomToDataset={zoomToDataset}
+									onDeleteDataset={onDeleteDataset}
+									onZoomToCollection={zoomToCollection}
+									deletingKey={deletingKey}
+									onExitViewMode={exitViewMode}
+									onClose={() => setShowInfoPanel(false)}
+									getDatasetKey={getDatasetKey}
+									getDatasetName={getDatasetName}
+									onCommentGeometryVisibility={handleCommentGeometryVisibility}
+									onZoomToBounds={handleZoomToBounds}
+									availableFeatures={availableFeatures}
+									onMentionVisibilityToggle={handleMentionVisibilityToggle}
+									onMentionZoomTo={handleMentionZoomTo}
+									onEditCollection={handleEditCollection}
+								/>
+							)}
 						</div>
 					</div>
 				</div>
@@ -918,6 +960,8 @@ export function GeoEditorView() {
 									onInspectCollection={handleInspectCollection}
 									onOpenDebug={handleOpenDebug}
 									onClose={() => setMobileDatasetsOpen(false)}
+									onCreateCollection={handleCreateCollection}
+									onEditCollection={handleEditCollection}
 								/>
 							</div>
 						</SheetContent>
@@ -943,6 +987,7 @@ export function GeoEditorView() {
 									availableFeatures={availableFeatures}
 									onMentionVisibilityToggle={handleMentionVisibilityToggle}
 									onMentionZoomTo={handleMentionZoomTo}
+									onEditCollection={handleEditCollection}
 								/>
 							</div>
 						</SheetContent>

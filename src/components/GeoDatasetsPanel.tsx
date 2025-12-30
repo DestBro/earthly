@@ -1,4 +1,4 @@
-import { X } from 'lucide-react'
+import { X, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
@@ -15,7 +15,8 @@ import {
 } from './datasets-columns'
 import { Button } from './ui/button'
 import { DataTable } from './ui/data-table'
-import { Input } from './ui/Input'
+import { Input } from './ui/input'
+import type { GeoFeatureItem } from './editor/GeoRichTextEditor'
 
 export interface GeoDatasetsPanelProps {
 	geoEvents: NDKGeoEvent[]
@@ -37,6 +38,9 @@ export interface GeoDatasetsPanelProps {
 	onInspectCollection?: (collection: NDKGeoCollectionEvent, events: NDKGeoEvent[]) => void
 	onOpenDebug?: (event: NDKGeoEvent | NDKGeoCollectionEvent) => void
 	onClose?: () => void
+	onCreateCollection?: () => void
+	onEditCollection?: (collection: NDKGeoCollectionEvent) => void
+	availableFeatures?: GeoFeatureItem[]
 }
 
 const getDatasetDescriptionText = (event: NDKGeoEvent): string | undefined => {
@@ -81,6 +85,9 @@ export function GeoDatasetsPanelContent({
 	onInspectCollection,
 	onOpenDebug,
 	onClose,
+	onCreateCollection,
+	onEditCollection,
+	availableFeatures = [],
 }: GeoDatasetsPanelProps) {
 	const [activeTab, setActiveTab] = useState<'datasets' | 'collections'>('datasets')
 	const [searchQuery, setSearchQuery] = useState('')
@@ -223,8 +230,19 @@ export function GeoDatasetsPanelContent({
 			onInspectCollection,
 			onOpenDebug,
 			getDatasetName,
+			onEditCollection,
+			currentUserPubkey,
+			availableFeatures,
 		}),
-		[onZoomToCollection, onInspectCollection, onOpenDebug, getDatasetName],
+		[
+			onZoomToCollection,
+			onInspectCollection,
+			onOpenDebug,
+			getDatasetName,
+			onEditCollection,
+			currentUserPubkey,
+			availableFeatures,
+		],
 	)
 
 	const datasetColumns = useMemo(
@@ -246,11 +264,24 @@ export function GeoDatasetsPanelContent({
 						Remote GeoJSON datasets and collections available to load.
 					</p>
 				</div>
-				{onClose && (
-					<Button size="icon" variant="ghost" aria-label="Close datasets panel" onClick={onClose}>
-						<X className="h-4 w-4" />
-					</Button>
-				)}
+				<div className="flex items-center gap-1">
+					{activeTab === 'collections' && onCreateCollection && (
+						<Button
+							size="icon"
+							variant="outline"
+							onClick={onCreateCollection}
+							aria-label="Create new collection"
+							title="Create new collection"
+						>
+							<Plus className="h-4 w-4" />
+						</Button>
+					)}
+					{onClose && (
+						<Button size="icon" variant="ghost" aria-label="Close datasets panel" onClick={onClose}>
+							<X className="h-4 w-4" />
+						</Button>
+					)}
+				</div>
 			</div>
 			<div className="flex gap-2">
 				<Button

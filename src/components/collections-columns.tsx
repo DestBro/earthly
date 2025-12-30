@@ -1,5 +1,6 @@
 import type { ColumnDef } from '@tanstack/react-table'
-import { Bug, Maximize2, Search } from 'lucide-react'
+import { Bug, Maximize2, Pencil, Eye } from 'lucide-react'
+import { GeoRichTextEditor, type GeoFeatureItem } from './editor/GeoRichTextEditor'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
 import { Button } from './ui/button'
@@ -17,6 +18,9 @@ export interface CollectionColumnsContext {
 	onInspectCollection?: (collection: NDKGeoCollectionEvent, events: NDKGeoEvent[]) => void
 	onOpenDebug?: (event: NDKGeoCollectionEvent) => void
 	getDatasetName: (event: NDKGeoEvent) => string
+	onEditCollection?: (collection: NDKGeoCollectionEvent) => void
+	currentUserPubkey?: string
+	availableFeatures?: GeoFeatureItem[]
 }
 
 export const createCollectionColumns = (
@@ -35,7 +39,16 @@ export const createCollectionColumns = (
 					<div className="text-[11px] text-gray-500 truncate">
 						Maintainer: {collection.pubkey.slice(0, 8)}…{collection.pubkey.slice(-4)}
 					</div>
-					{metadata.description && <p className="text-xs text-gray-600">{metadata.description}</p>}
+					{metadata.description && (
+						<div className="text-xs text-gray-600">
+							<GeoRichTextEditor
+								initialValue={metadata.description}
+								readOnly
+								availableFeatures={context.availableFeatures}
+								rows={1}
+							/>
+						</div>
+					)}
 					<div className="text-[11px] text-gray-500">
 						{datasetCount} dataset{datasetCount === 1 ? '' : 's'} referenced
 					</div>
@@ -54,6 +67,7 @@ export const createCollectionColumns = (
 				</div>
 			)
 		},
+		size: 250,
 	},
 	{
 		id: 'datasets',
@@ -67,21 +81,36 @@ export const createCollectionColumns = (
 					) : (
 						<ul className="list-disc space-y-1 pl-4 text-[11px] text-gray-700">
 							{referencedEvents.map((event) => (
-								<li key={event.id ?? event.datasetId}>{context.getDatasetName(event)}</li>
+								<li key={event.id ?? event.datasetId} className="truncate max-w-[180px]">
+									{context.getDatasetName(event)}
+								</li>
 							))}
 						</ul>
 					)}
 				</div>
 			)
 		},
+		size: 200,
 	},
 	{
 		id: 'actions',
 		header: 'Actions',
 		cell: ({ row }) => {
 			const { collection, referencedEvents, zoomDisabled } = row.original
+			const isOwner = context.currentUserPubkey === collection.pubkey
 			return (
 				<div className="flex items-center gap-1">
+					{isOwner && context.onEditCollection && (
+						<Button
+							size="icon-sm"
+							variant="outline"
+							onClick={() => context.onEditCollection?.(collection)}
+							aria-label="Edit collection"
+							title="Edit collection"
+						>
+							<Pencil className="h-4 w-4" />
+						</Button>
+					)}
 					<Button
 						size="icon-sm"
 						variant="outline"
@@ -99,7 +128,7 @@ export const createCollectionColumns = (
 						aria-label="Inspect collection"
 						title="Inspect collection"
 					>
-						<Search className="h-4 w-4" />
+						<Eye className="h-4 w-4" />
 					</Button>
 					{context.onOpenDebug && (
 						<Button

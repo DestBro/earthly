@@ -3,6 +3,8 @@ import { Bug, Download, Eye, EyeOff, Maximize2, Pencil, Search, Trash2 } from 'l
 import { cn } from '@/lib/utils'
 import type { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
 import { Button } from './ui/button'
+import { nip19 } from 'nostr-tools'
+import type { GeoFeatureItem } from './editor/GeoRichTextEditor'
 
 export interface DatasetRowData {
 	event: NDKGeoEvent
@@ -33,8 +35,40 @@ export const createDatasetColumns = (
 		header: 'Dataset',
 		cell: ({ row }) => {
 			const { event, datasetName } = row.original
+
+			const handleDragStart = (e: React.DragEvent) => {
+				const datasetId = event.datasetId ?? event.dTag
+				if (!datasetId || !event.pubkey || !event.kind) return
+
+				let naddr: string
+				try {
+					naddr = nip19.naddrEncode({
+						kind: event.kind,
+						pubkey: event.pubkey,
+						identifier: datasetId,
+					})
+				} catch {
+					naddr = `${event.kind}:${event.pubkey}:${datasetId}`
+				}
+
+				const item: GeoFeatureItem = {
+					id: `dataset:${event.id}`,
+					name: datasetName,
+					address: naddr,
+					datasetName,
+					geometryType: 'Dataset',
+				}
+
+				e.dataTransfer.setData('application/geo-feature', JSON.stringify(item))
+				e.dataTransfer.effectAllowed = 'copy'
+			}
+
 			return (
-				<div className="space-y-1 min-w-[200px]">
+				<div
+					className="space-y-1 min-w-[200px] cursor-grab active:cursor-grabbing"
+					draggable
+					onDragStart={handleDragStart}
+				>
 					<div className="font-semibold text-gray-900 truncate">{datasetName}</div>
 					<div className="text-[11px] text-gray-500 truncate">
 						Owner: {event.pubkey.slice(0, 8)}…{event.pubkey.slice(-4)}
