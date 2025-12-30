@@ -1158,15 +1158,15 @@ export function GeoEditorView() {
 								{magnifierMenuOpen && (
 									<div
 										ref={magnifierMenuRef}
-										className="pointer-events-auto absolute bottom-12 left-1/2 z-50 w-40 -translate-x-1/2 rounded-lg border border-gray-200 bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur"
+										className="pointer-events-auto absolute bottom-14 left-0 z-50 w-52 rounded-xl border border-gray-200 bg-white/95 px-4 py-3 text-sm shadow-lg backdrop-blur"
 									>
-										<div className="mb-2 text-[11px] font-medium text-gray-600">
+										<div className="mb-3 text-xs font-medium text-gray-600">
 											Magnifier zoom
 										</div>
-										<div className="flex items-center gap-2">
+										<div className="flex items-center gap-3">
 											<button
 												type="button"
-												className="h-6 w-6 rounded border border-gray-200 text-xs text-gray-700"
+												className="h-8 w-8 rounded-md border border-gray-200 text-sm text-gray-700"
 												onClick={() =>
 													setMagnifierZoomOffset((value) => Math.max(1, value - 0.5))
 												}
@@ -1183,12 +1183,12 @@ export function GeoEditorView() {
 												onChange={(event) =>
 													setMagnifierZoomOffset(Number(event.target.value))
 												}
-												className="h-1 w-full"
+												className="h-2 w-full"
 												aria-label="Magnifier zoom level"
 											/>
 											<button
 												type="button"
-												className="h-6 w-6 rounded border border-gray-200 text-xs text-gray-700"
+												className="h-8 w-8 rounded-md border border-gray-200 text-sm text-gray-700"
 												onClick={() =>
 													setMagnifierZoomOffset((value) => Math.min(6, value + 0.5))
 												}
@@ -1197,7 +1197,7 @@ export function GeoEditorView() {
 												+
 											</button>
 										</div>
-										<div className="mt-1 text-[11px] text-gray-500">
+										<div className="mt-2 text-xs text-gray-500">
 											Zoom +{magnifierZoomOffset}
 										</div>
 									</div>
