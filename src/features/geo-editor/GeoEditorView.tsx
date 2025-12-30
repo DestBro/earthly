@@ -2,7 +2,14 @@ import { useNDK, useNDKCurrentUser } from '@nostr-dev-kit/react'
 import type { FeatureCollection } from 'geojson'
 import { Edit3, FilePenLine, Layers, Lock, LockOpen, Search, UploadCloud } from 'lucide-react'
 import type maplibregl from 'maplibre-gl'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { DebugDialog } from '../../components/DebugDialog'
 import { GeoDatasetsPanelContent } from '../../components/GeoDatasetsPanel'
 import { GeoEditorInfoPanelContent } from '../../components/GeoEditorInfoPanel'
@@ -60,8 +67,14 @@ export function GeoEditorView() {
 	const [magnifierVisible, setMagnifierVisible] = useState(false)
 	const [magnifierPosition, setMagnifierPosition] = useState({ x: 0, y: 0 })
 	const [magnifierCenter, setMagnifierCenter] = useState<[number, number]>([0, 0])
+	const [magnifierZoomOffset, setMagnifierZoomOffset] = useState(1)
+	const [magnifierMenuOpen, setMagnifierMenuOpen] = useState(false)
 	const [previousMode, setPreviousMode] = useState<string | null>(null)
 	const [showToolbar, setShowToolbar] = useState(true)
+	const magnifierLongPressTimerRef = useRef<number | null>(null)
+	const magnifierLongPressTriggeredRef = useRef(false)
+	const magnifierButtonRef = useRef<HTMLButtonElement>(null)
+	const magnifierMenuRef = useRef<HTMLDivElement>(null)
 
 	// Inspector state
 	const [reverseLookupResult, setReverseLookupResult] = useState<ReverseLookupResult | null>(null)
@@ -410,6 +423,47 @@ export function GeoEditorView() {
 		setMagnifierEnabled(next)
 		if (!next) setMagnifierVisible(false)
 	}, [magnifierEnabled])
+
+	const clearMagnifierLongPress = useCallback(() => {
+		if (magnifierLongPressTimerRef.current) {
+			window.clearTimeout(magnifierLongPressTimerRef.current)
+			magnifierLongPressTimerRef.current = null
+		}
+	}, [])
+
+	const handleMagnifierPointerDown = useCallback(
+		(event: ReactPointerEvent<HTMLButtonElement>) => {
+			if (event.pointerType === 'mouse' && event.button !== 0) return
+			event.preventDefault()
+			magnifierLongPressTriggeredRef.current = false
+			clearMagnifierLongPress()
+			magnifierLongPressTimerRef.current = window.setTimeout(() => {
+				magnifierLongPressTriggeredRef.current = true
+				setMagnifierMenuOpen(true)
+			}, 550)
+		},
+		[clearMagnifierLongPress],
+	)
+
+	const handleMagnifierPointerUp = useCallback(() => {
+		const didLongPress = magnifierLongPressTriggeredRef.current
+		clearMagnifierLongPress()
+		if (!didLongPress) {
+			toggleMagnifier()
+		}
+	}, [clearMagnifierLongPress, toggleMagnifier])
+
+	useEffect(() => {
+		if (!magnifierMenuOpen) return
+		const handlePointerDown = (event: PointerEvent) => {
+			const target = event.target as Node
+			if (magnifierMenuRef.current?.contains(target)) return
+			if (magnifierButtonRef.current?.contains(target)) return
+			setMagnifierMenuOpen(false)
+		}
+		document.addEventListener('pointerdown', handlePointerDown)
+		return () => document.removeEventListener('pointerdown', handlePointerDown)
+	}, [magnifierMenuOpen])
 
 	// Magnifier update on touch
 	useEffect(() => {
@@ -861,6 +915,7 @@ export function GeoEditorView() {
 				center={magnifierCenter}
 				mainMap={map.current}
 				size={MAGNIFIER_SIZE}
+				zoomOffset={magnifierZoomOffset}
 			/>
 
 			{/* Inspector Popup - appears near cursor when inspector is active */}
@@ -1086,14 +1141,68 @@ export function GeoEditorView() {
 									Finish
 								</Button>
 							)}
-							<Button
-								variant={magnifierEnabled ? 'default' : 'outline'}
-								className="shadow-lg h-10 w-10 p-0 rounded-full"
-								onClick={toggleMagnifier}
-								aria-label="Toggle magnifier"
-							>
-								<Search className="h-5 w-5" />
-							</Button>
+							<div className="relative">
+								<Button
+									ref={magnifierButtonRef}
+									variant={magnifierEnabled ? 'default' : 'outline'}
+									className="shadow-lg h-10 w-10 p-0 rounded-full"
+									onPointerDown={handleMagnifierPointerDown}
+									onPointerUp={handleMagnifierPointerUp}
+									onPointerLeave={clearMagnifierLongPress}
+									onPointerCancel={clearMagnifierLongPress}
+									onContextMenu={(event) => event.preventDefault()}
+									aria-label="Toggle magnifier"
+								>
+									<Search className="h-5 w-5" />
+								</Button>
+								{magnifierMenuOpen && (
+									<div
+										ref={magnifierMenuRef}
+										className="pointer-events-auto absolute bottom-12 left-1/2 z-50 w-40 -translate-x-1/2 rounded-lg border border-gray-200 bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur"
+									>
+										<div className="mb-2 text-[11px] font-medium text-gray-600">
+											Magnifier zoom
+										</div>
+										<div className="flex items-center gap-2">
+											<button
+												type="button"
+												className="h-6 w-6 rounded border border-gray-200 text-xs text-gray-700"
+												onClick={() =>
+													setMagnifierZoomOffset((value) => Math.max(1, value - 0.5))
+												}
+												aria-label="Decrease magnifier zoom"
+											>
+												-
+											</button>
+											<input
+												type="range"
+												min={1}
+												max={6}
+												step={0.5}
+												value={magnifierZoomOffset}
+												onChange={(event) =>
+													setMagnifierZoomOffset(Number(event.target.value))
+												}
+												className="h-1 w-full"
+												aria-label="Magnifier zoom level"
+											/>
+											<button
+												type="button"
+												className="h-6 w-6 rounded border border-gray-200 text-xs text-gray-700"
+												onClick={() =>
+													setMagnifierZoomOffset((value) => Math.min(6, value + 0.5))
+												}
+												aria-label="Increase magnifier zoom"
+											>
+												+
+											</button>
+										</div>
+										<div className="mt-1 text-[11px] text-gray-500">
+											Zoom +{magnifierZoomOffset}
+										</div>
+									</div>
+								)}
+							</div>
 						</div>
 					</div>
 					<div className="fixed bottom-2 right-2 z-50 flex flex-col gap-2 md:hidden">

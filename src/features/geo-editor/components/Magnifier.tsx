@@ -8,9 +8,18 @@ interface MagnifierProps {
 	center: [number, number] | null
 	mainMap: maplibregl.Map | null
 	size: number
+	zoomOffset: number
 }
 
-export function Magnifier({ enabled, visible, position, center, mainMap, size }: MagnifierProps) {
+export function Magnifier({
+	enabled,
+	visible,
+	position,
+	center,
+	mainMap,
+	size,
+	zoomOffset,
+}: MagnifierProps) {
 	const containerRef = useRef<HTMLDivElement>(null)
 	const mapRef = useRef<maplibregl.Map | null>(null)
 
@@ -24,7 +33,7 @@ export function Magnifier({ enabled, visible, position, center, mainMap, size }:
 				container: containerRef.current,
 				style: mainMap.getStyle() as any,
 				center: mainMap.getCenter(),
-				zoom: mainMap.getZoom() + 1,
+				zoom: mainMap.getZoom() + zoomOffset,
 				interactive: false,
 				attributionControl: false,
 				preserveDrawingBuffer: true,
@@ -42,7 +51,7 @@ export function Magnifier({ enabled, visible, position, center, mainMap, size }:
 			mapRef.current?.remove()
 			mapRef.current = null
 		}
-	}, [enabled, visible, mainMap])
+	}, [enabled, visible, mainMap, zoomOffset])
 
 	useEffect(() => {
 		if (!enabled) return
@@ -50,12 +59,12 @@ export function Magnifier({ enabled, visible, position, center, mainMap, size }:
 		if (!center) return
 		mapRef.current.jumpTo({
 			center: center,
-			zoom: mainMap.getZoom() + 1,
+			zoom: mainMap.getZoom() + zoomOffset,
 			bearing: mainMap.getBearing(),
 			pitch: mainMap.getPitch(),
 		})
 		mapRef.current.resize()
-	}, [center, enabled, mainMap])
+	}, [center, enabled, mainMap, zoomOffset])
 
 	if (!enabled || !visible) return null
 
