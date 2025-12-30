@@ -7,10 +7,10 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
-import { 
-	GeoRichTextEditor, 
-	type GeoRichTextEditorRef, 
-	type GeoFeatureItem 
+import {
+	GeoRichTextEditor,
+	type GeoRichTextEditorRef,
+	type GeoFeatureItem,
 } from './editor/GeoRichTextEditor'
 import { CommentsPanel } from './comments'
 import { serializeToText, parseFromText } from './editor/GeoMentionExtension'
@@ -56,7 +56,7 @@ export function GeoCollectionEditorPanel({
 	const { ndk } = useNDK()
 	const currentUser = useNDKCurrentUser()
 	const editorRef = useRef<GeoRichTextEditorRef>(null)
-	
+
 	// Tabs
 	const [activeTab, setActiveTab] = useState<EditorTab>('details')
 	const [visibleGeojsonCommentIds, setVisibleGeojsonCommentIds] = useState<Set<string>>(new Set())
@@ -75,7 +75,7 @@ export function GeoCollectionEditorPanel({
 	const [name, setName] = useState('')
 	const [description, setDescription] = useState('')
 	const [isSaving, setIsSaving] = useState(false)
-	
+
 	// Initialize from collection
 	useEffect(() => {
 		if (initialCollection) {
@@ -108,10 +108,10 @@ export function GeoCollectionEditorPanel({
 		setIsSaving(true)
 
 		try {
-			const event = initialCollection 
+			const event = initialCollection
 				? NDKGeoCollectionEvent.from(initialCollection)
 				: new NDKGeoCollectionEvent(ndk)
-			
+
 			// Update metadata
 			event.metadata = {
 				...event.metadata,
@@ -125,7 +125,7 @@ export function GeoCollectionEditorPanel({
 			// as per the "textual way" requirement.
 			// Format for 'a' tag: "kind:pubkey:d-tag"
 			const aTags: string[] = []
-			
+
 			for (const addr of referencedAddresses) {
 				try {
 					const decoded = nip19.decode(addr)
@@ -137,9 +137,9 @@ export function GeoCollectionEditorPanel({
 					console.warn('Invalid naddr in description:', addr)
 				}
 			}
-			
+
 			event.datasetReferences = aTags
-			
+
 			await event.publishNew()
 			onSave(event)
 			onClose()
@@ -155,8 +155,8 @@ export function GeoCollectionEditorPanel({
 	}, [])
 
 	const resolvedReferences = useMemo(() => {
-		return referencedAddresses.map(addr => {
-			const feature = availableFeatures.find(f => f.address === addr)
+		return referencedAddresses.map((addr) => {
+			const feature = availableFeatures.find((f) => f.address === addr)
 			return {
 				address: addr,
 				name: feature?.datasetName || feature?.name || 'Unknown Dataset',
@@ -317,7 +317,10 @@ export function GeoCollectionEditorPanel({
 								<Label>Referenced Datasets ({referencedAddresses.length})</Label>
 								<div className="bg-gray-50 rounded-md p-2 space-y-1">
 									{resolvedReferences.map((ref) => (
-										<div key={ref.address} className="flex items-center gap-2 text-sm text-gray-700 bg-white border border-gray-200 rounded px-2 py-1">
+										<div
+											key={ref.address}
+											className="flex items-center gap-2 text-sm text-gray-700 bg-white border border-gray-200 rounded px-2 py-1"
+										>
 											<MapPin className="h-3 w-3 text-gray-400" />
 											<span className="truncate flex-1">{ref.name}</span>
 										</div>
@@ -348,8 +351,8 @@ export function GeoCollectionEditorPanel({
 					<Button variant="ghost" onClick={onClose} disabled={isSaving}>
 						Cancel
 					</Button>
-					<Button 
-						onClick={handleSave} 
+					<Button
+						onClick={handleSave}
 						disabled={isSaving || !name.trim()}
 						className="bg-emerald-600 hover:bg-emerald-700"
 					>

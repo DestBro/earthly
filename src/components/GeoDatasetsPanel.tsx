@@ -339,7 +339,6 @@ export function GeoDatasetsPanelContent({
 
 			{activeTab === 'datasets' ? (
 				<>
-
 					{geoEvents.length === 0 ? (
 						<p className="text-xs text-gray-500">Listening for GeoJSON datasets…</p>
 					) : filteredGeoEvents.length === 0 ? (

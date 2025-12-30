@@ -212,12 +212,12 @@ export function ViewModePanel({
 			<div className="flex-shrink-0 flex items-center justify-between gap-2 mb-3">
 				<div className="flex items-center gap-2">
 					<h2 className="text-lg font-bold text-gray-900">{headerTitle}</h2>
-					{(!viewCollection || (viewCollection.pubkey === currentUserPubkey)) && (
+					{(!viewCollection || viewCollection.pubkey === currentUserPubkey) && (
 						<Button
 							size="xs"
 							variant="ghost"
 							onClick={handleSwitchToEdit}
-							title={viewCollection ? "Edit collection" : "Switch to edit mode"}
+							title={viewCollection ? 'Edit collection' : 'Switch to edit mode'}
 							className="h-6 px-2 text-xs text-gray-500 hover:text-gray-700"
 						>
 							<Pencil className="h-3 w-3 mr-1" />

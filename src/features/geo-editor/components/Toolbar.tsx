@@ -464,9 +464,9 @@ export function Toolbar({
 	if (isMobile) {
 		return (
 			<>
-				<div className="pointer-events-auto w-full max-w-sm mx-auto">
+				<div className="pointer-events-auto w-full max-w-md px-2 mx-auto">
 					{mobileToolsOpen && (
-						<div className="glass-panel rounded-lg p-2">
+						<div className="glass-panel rounded-lg p-1.5">
 							{/* Row 1: Select + Draw */}
 							<div className="flex items-center justify-center gap-1 flex-wrap mb-1">
 								<IconButtonRow buttons={selectButtons} small />
@@ -474,15 +474,58 @@ export function Toolbar({
 								<IconButtonRow buttons={drawButtons} small />
 							</div>
 							{/* Row 2: History + Edit tools */}
-							<div className="flex items-center justify-center gap-1 flex-wrap mb-1">
+							<div className="flex items-center justify-center gap-1 flex-wrap">
 								<IconButtonRow buttons={historyButtons} small />
 								<Divider />
 								<IconButtonRow buttons={editButtons} small />
 							</div>
-							{/* Row 3: Lookup + Settings */}
-							<div className="flex items-center justify-center gap-1">
+						</div>
+					)}
+
+					{mobileSearchOpen && (
+						<div className="glass-panel flex flex-col gap-2 rounded-lg p-1.5">
+							<div className="flex items-center gap-2">
+								<SearchBar
+									query={searchQuery}
+									loading={searchLoading}
+									placeholder="Search..."
+									onSubmit={(e) => {
+										e.preventDefault()
+										handleSearchSubmit(e)
+									}}
+									onQueryChange={setSearchQuery}
+									onClear={clearSearch}
+								/>
 								<IconButtonRow buttons={lookupButtons} small />
+							</div>
+							{searchResults && searchResults.length > 0 && (
+								<div className="max-h-48 overflow-y-auto space-y-1 bg-white rounded-lg border border-gray-100">
+									{searchResults.map((result) => (
+										<button
+											type="button"
+											key={result.placeId}
+											className="w-full text-left text-sm p-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 truncate"
+											onClick={() => onSearchResultSelect?.(result)}
+										>
+											{result.displayName}
+										</button>
+									))}
+								</div>
+							)}
+							{searchError && <div className="text-xs text-red-600 px-1">{searchError}</div>}
+						</div>
+					)}
+
+					{mobileActionsOpen && datasetActions && (
+						<div className="glass-panel rounded-lg p-1.5">
+							<div className="flex items-center justify-center gap-1 flex-wrap">
+								<IconButtonRow buttons={fileButtons} small />
 								<Divider />
+								<IconButtonRow buttons={publishButtons} small />
+								<Divider />
+								<HelpPopover
+									multiSelectModifier={editor?.getMultiSelectModifierLabel() ?? 'Shift'}
+								/>
 								<TooltipProvider delayDuration={500}>
 									<Popover open={showMapSettings} onOpenChange={setShowMapSettings}>
 										<Tooltip>
@@ -507,51 +550,6 @@ export function Toolbar({
 										</PopoverContent>
 									</Popover>
 								</TooltipProvider>
-							</div>
-						</div>
-					)}
-
-					{mobileSearchOpen && (
-						<div className="glass-panel flex flex-col gap-2 rounded-lg p-2">
-							<SearchBar
-								query={searchQuery}
-								loading={searchLoading}
-								placeholder="Search location..."
-								onSubmit={(e) => {
-									e.preventDefault()
-									handleSearchSubmit(e)
-								}}
-								onQueryChange={setSearchQuery}
-								onClear={clearSearch}
-							/>
-							{searchResults && searchResults.length > 0 && (
-								<div className="max-h-48 overflow-y-auto space-y-1 bg-white rounded-lg border border-gray-100">
-									{searchResults.map((result) => (
-										<button
-											type="button"
-											key={result.placeId}
-											className="w-full text-left text-sm p-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 truncate"
-											onClick={() => onSearchResultSelect?.(result)}
-										>
-											{result.displayName}
-										</button>
-									))}
-								</div>
-							)}
-							{searchError && <div className="text-xs text-red-600 px-1">{searchError}</div>}
-						</div>
-					)}
-
-					{mobileActionsOpen && datasetActions && (
-						<div className="glass-panel rounded-lg p-2">
-							<div className="flex items-center justify-center gap-1 flex-wrap">
-								<IconButtonRow buttons={fileButtons} small />
-								<Divider />
-								<IconButtonRow buttons={publishButtons} small />
-								<Divider />
-								<HelpPopover
-									multiSelectModifier={editor?.getMultiSelectModifierLabel() ?? 'Shift'}
-								/>
 								{showLogin && <LoginSessionButtons />}
 							</div>
 							<input

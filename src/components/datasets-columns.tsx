@@ -105,7 +105,9 @@ export const createDatasetColumns = (
 					draggable
 					onDragStart={handleDragStart}
 				>
-					<div className="text-xs font-semibold text-gray-900 truncate" title={datasetName}>{datasetName}</div>
+					<div className="text-xs font-semibold text-gray-900 truncate" title={datasetName}>
+						{datasetName}
+					</div>
 					<div className="text-[10px] text-gray-500 truncate">
 						{event.pubkey.slice(0, 8)}…{event.pubkey.slice(-4)}
 					</div>

@@ -1,6 +1,6 @@
 import { useNDK, useNDKCurrentUser } from '@nostr-dev-kit/react'
 import type { FeatureCollection } from 'geojson'
-import { Edit3, FilePenLine, Layers, Search, UploadCloud } from 'lucide-react'
+import { Edit3, FilePenLine, Layers, Lock, LockOpen, Search, UploadCloud } from 'lucide-react'
 import type maplibregl from 'maplibre-gl'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DebugDialog } from '../../components/DebugDialog'
@@ -110,7 +110,9 @@ export function GeoEditorView() {
 	const setInspectorActive = useEditorStore((state) => state.setInspectorActive)
 
 	// Collection Editor state
-	const [collectionEditorMode, setCollectionEditorMode] = useState<'none' | 'create' | 'edit'>('none')
+	const [collectionEditorMode, setCollectionEditorMode] = useState<'none' | 'create' | 'edit'>(
+		'none',
+	)
 	const [editingCollection, setEditingCollection] = useState<NDKGeoCollectionEvent | null>(null)
 
 	// External data
@@ -863,7 +865,7 @@ export function GeoEditorView() {
 			)}
 
 			{mounted && editor && (
-				<div className="absolute top-4 left-4 right-4 z-10 pointer-events-none flex">
+				<div className="absolute top-2 left-2 right-2 z-10 pointer-events-none flex">
 					<div className="w-full">
 						<Toolbar
 							datasetActions={{
@@ -880,7 +882,7 @@ export function GeoEditorView() {
 								isPublishing,
 							}}
 							isMobile={isMobile}
-							showLogin={!isMobile}
+							showLogin={true}
 							onSearchResultSelect={(result) => handleSearchResultSelect(result as any)}
 							onInspectorDeactivate={disableInspector}
 						/>
@@ -966,11 +968,8 @@ export function GeoEditorView() {
 
 			{isMobile && (
 				<>
-					<div className="fixed top-4 right-4 z-50">
-						<LoginSessionButtons />
-					</div>
 					<Sheet open={mobileDatasetsOpen} onOpenChange={setMobileDatasetsOpen} modal={false}>
-						<SheetContent side="bottom" className="p-0 h-[35vh] sm:hidden" hideOverlay>
+						<SheetContent side="bottom" className="p-0 h-[35vh] sm:hidden">
 							<div className="h-full w-full overflow-y-auto px-4 pb-6 pt-3">
 								<GeoDatasetsPanelContent
 									geoEvents={geoEvents}
@@ -1001,7 +1000,7 @@ export function GeoEditorView() {
 					</Sheet>
 
 					<Sheet open={mobileInfoOpen} onOpenChange={setMobileInfoOpen} modal={false}>
-						<SheetContent side="bottom" className="p-0 h-[35vh] sm:hidden" hideOverlay>
+						<SheetContent side="bottom" className="p-0 h-[35vh] sm:hidden">
 							<div className="h-full w-full overflow-y-auto px-4 pb-6 pt-3">
 								<GeoEditorInfoPanelContent
 									currentUserPubkey={currentUser?.pubkey}
@@ -1034,22 +1033,22 @@ export function GeoEditorView() {
 
 			{isMobile && (
 				<>
-					<div className="fixed bottom-4 left-4 z-50 md:hidden">
+					<div className="fixed bottom-2 left-2 z-50 md:hidden">
 						<div className="flex gap-2">
 							<Button
 								variant={panLocked ? 'default' : 'outline'}
-								className="shadow-lg"
+								className="shadow-lg h-10 w-10 p-0 rounded-full"
 								onClick={togglePanLock}
 								aria-label="Toggle pan lock while drawing"
 								disabled={isDrawingMode}
 								title={isDrawingMode ? 'Pan is auto-locked while drawing' : 'Toggle pan lock'}
 							>
-								{panLocked ? 'Pan locked' : 'Pan unlocked'}
+								{panLocked ? <Lock className="h-5 w-5" /> : <LockOpen className="h-5 w-5" />}
 							</Button>
 							{(currentMode === 'draw_linestring' || currentMode === 'draw_polygon') && (
 								<Button
 									variant="default"
-									className="shadow-lg"
+									className="shadow-lg h-10 px-4 rounded-full"
 									onClick={() => editor?.finishDrawing()}
 									aria-label="Finish current drawing"
 									disabled={!canFinishDrawing}
@@ -1059,54 +1058,54 @@ export function GeoEditorView() {
 							)}
 							<Button
 								variant={magnifierEnabled ? 'default' : 'outline'}
-								className="shadow-lg"
+								className="shadow-lg h-10 w-10 p-0 rounded-full"
 								onClick={toggleMagnifier}
 								aria-label="Toggle magnifier"
 							>
-								<Search className="h-4 w-4" />
+								<Search className="h-5 w-5" />
 							</Button>
 						</div>
 					</div>
-					<div className="fixed bottom-4 right-4 z-50 flex flex-col gap-3 md:hidden">
+					<div className="fixed bottom-2 right-2 z-50 flex flex-col gap-2 md:hidden">
 						<Button
-							size="icon-lg"
-							className="shadow-lg"
+							size="icon"
+							className="shadow-lg h-10 w-10 rounded-full"
 							variant={mobileDatasetsOpen ? 'default' : 'outline'}
 							onClick={() => setMobileActiveState(mobileDatasetsOpen ? null : 'datasets')}
 						>
-							<Layers className="h-6 w-6" />
+							<Layers className="h-5 w-5" />
 						</Button>
 						<Button
-							size="icon-lg"
-							className="shadow-lg"
+							size="icon"
+							className="shadow-lg h-10 w-10 rounded-full"
 							variant={mobileInfoOpen ? 'default' : 'outline'}
 							onClick={() => setMobileActiveState(mobileInfoOpen ? null : 'info')}
 						>
-							<FilePenLine className="h-6 w-6" />
+							<FilePenLine className="h-5 w-5" />
 						</Button>
 						<Button
-							size="icon-lg"
-							className="shadow-lg"
+							size="icon"
+							className="shadow-lg h-10 w-10 rounded-full"
 							variant={mobileToolsOpen ? 'default' : 'outline'}
 							onClick={() => setMobileActiveState(mobileToolsOpen ? null : 'tools')}
 						>
-							<Edit3 className="h-6 w-6" />
+							<Edit3 className="h-5 w-5" />
 						</Button>
 						<Button
-							size="icon-lg"
-							className="shadow-lg"
+							size="icon"
+							className="shadow-lg h-10 w-10 rounded-full"
 							variant={mobileSearchOpen ? 'default' : 'outline'}
 							onClick={() => setMobileActiveState(mobileSearchOpen ? null : 'search')}
 						>
-							<Search className="h-6 w-6" />
+							<Search className="h-5 w-5" />
 						</Button>
 						<Button
-							size="icon-lg"
-							className="shadow-lg"
+							size="icon"
+							className="shadow-lg h-10 w-10 rounded-full"
 							variant={mobileActionsOpen ? 'default' : 'outline'}
 							onClick={() => setMobileActiveState(mobileActionsOpen ? null : 'actions')}
 						>
-							<UploadCloud className="h-6 w-6" />
+							<UploadCloud className="h-5 w-5" />
 						</Button>
 					</div>
 				</>
