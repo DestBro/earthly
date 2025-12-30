@@ -466,7 +466,7 @@ export function Toolbar({
 			<>
 				<div className="pointer-events-auto w-full max-w-sm mx-auto">
 					{mobileToolsOpen && (
-						<div className="rounded-lg bg-white/95 p-2 shadow-md backdrop-blur">
+						<div className="glass-panel rounded-lg p-2">
 							{/* Row 1: Select + Draw */}
 							<div className="flex items-center justify-center gap-1 flex-wrap mb-1">
 								<IconButtonRow buttons={selectButtons} small />
@@ -512,7 +512,7 @@ export function Toolbar({
 					)}
 
 					{mobileSearchOpen && (
-						<div className="flex flex-col gap-2 rounded-lg bg-white/95 p-2 shadow-md backdrop-blur">
+						<div className="glass-panel flex flex-col gap-2 rounded-lg p-2">
 							<SearchBar
 								query={searchQuery}
 								loading={searchLoading}
@@ -543,7 +543,7 @@ export function Toolbar({
 					)}
 
 					{mobileActionsOpen && datasetActions && (
-						<div className="rounded-lg bg-white/95 p-2 shadow-md backdrop-blur">
+						<div className="glass-panel rounded-lg p-2">
 							<div className="flex items-center justify-center gap-1 flex-wrap">
 								<IconButtonRow buttons={fileButtons} small />
 								<Divider />
@@ -573,7 +573,7 @@ export function Toolbar({
 	// ============================================
 	return (
 		<div className="flex flex-col gap-2 pointer-events-auto">
-			<div className="flex items-center gap-1 rounded-lg bg-white/90 p-1.5 shadow-sm backdrop-blur">
+			<div className="glass-panel flex items-center gap-1 rounded-lg p-1.5">
 				{/* Select */}
 				<IconButtonRow buttons={selectButtons} />
 				<Divider />

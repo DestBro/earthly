@@ -353,7 +353,7 @@ export function GeoDatasetsSidebar({
 	...props
 }: GeoDatasetsPanelProps & { className?: string }) {
 	return (
-		<div className={cn('w-80 rounded-lg bg-white/95 p-3 shadow-xl backdrop-blur', className)}>
+		<div className={cn('glass-panel w-80 rounded-lg p-3', className)}>
 			<GeoDatasetsPanelContent {...props} />
 		</div>
 	)

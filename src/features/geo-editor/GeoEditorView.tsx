@@ -889,7 +889,7 @@ export function GeoEditorView() {
 
 			{!isMobile && mounted && showDatasetsPanel && (
 				<div className="pointer-events-auto absolute left-4 top-[88px] bottom-4 z-40 hidden md:flex w-[25vw]">
-					<div className="flex-1 overflow-hidden rounded-lg bg-white/95 shadow-xl backdrop-blur">
+					<div className="glass-panel flex-1 overflow-hidden rounded-lg">
 						<div className="h-full overflow-y-auto p-4">
 							<GeoDatasetsPanelContent
 								geoEvents={geoEvents}
@@ -921,7 +921,7 @@ export function GeoEditorView() {
 
 			{!isMobile && mounted && showInfoPanel && (
 				<div className="pointer-events-auto absolute right-4 top-[88px] bottom-4 z-40 hidden md:flex w-[25vw]">
-					<div className="flex-1 overflow-hidden rounded-lg bg-white shadow-xl">
+					<div className="glass-panel flex-1 overflow-hidden rounded-lg">
 						{editor && (
 							<div className="pointer-events-none absolute bottom-8 left-1/2 -translate-x-1/2 rounded-full bg-black/75 px-4 py-1 text-xs text-white backdrop-blur">
 								{editor.getMode() === 'select' && 'Select features to edit'}
