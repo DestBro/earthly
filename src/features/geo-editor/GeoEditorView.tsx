@@ -243,6 +243,31 @@ export function GeoEditorView() {
 		setShowInfoPanel,
 	])
 
+	// Lock document scrolling on mobile to prevent address bar jitter during map gestures.
+	useEffect(() => {
+		if (!isMobile) return
+		const root = document.documentElement
+		const body = document.body
+		const previous = {
+			rootOverflow: root.style.overflow,
+			rootOverscroll: root.style.overscrollBehavior,
+			bodyOverflow: body.style.overflow,
+			bodyOverscroll: body.style.overscrollBehavior,
+		}
+
+		root.style.overflow = 'hidden'
+		root.style.overscrollBehavior = 'none'
+		body.style.overflow = 'hidden'
+		body.style.overscrollBehavior = 'none'
+
+		return () => {
+			root.style.overflow = previous.rootOverflow
+			root.style.overscrollBehavior = previous.rootOverscroll
+			body.style.overflow = previous.bodyOverflow
+			body.style.overscrollBehavior = previous.bodyOverscroll
+		}
+	}, [isMobile])
+
 	// Preload blob references for datasets
 	useEffect(() => {
 		let cancelled = false
@@ -813,8 +838,13 @@ export function GeoEditorView() {
 	const multiSelectModifierLabel = editor?.getMultiSelectModifierLabel() ?? 'Shift'
 
 	return (
-		<div ref={mapContainerRef} className="relative h-screen w-full">
+		<div
+			ref={mapContainerRef}
+			className="relative h-screen w-full"
+			style={{ height: '100dvh', minHeight: '100svh' }}
+		>
 			<MapComponent
+				className="w-full h-full touch-none"
 				onLoad={(m) => {
 					map.current = m
 					setMounted(true)
