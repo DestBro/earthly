@@ -1,7 +1,7 @@
 import type { FeatureCollection } from 'geojson'
 import type { GeoJSONSource } from 'maplibre-gl'
 import type maplibregl from 'maplibre-gl'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { NDKGeoEvent } from '../../../lib/ndk/NDKGeoEvent'
 import { useEditorStore } from '../store'
 import { convertGeoEventsToFeatureCollection } from '../utils'
@@ -78,13 +78,11 @@ export function useMapLayers({
 	resolvedCollectionResolver,
 	resolvedCollectionsVersion,
 }: UseMapLayersOptions) {
+	// Use version to detect when resolved data changes (resolver uses a ref internally)
+	void resolvedCollectionsVersion
 	const [remoteLayersReady, setRemoteLayersReady] = useState(false)
+	const [layersVersion, setLayersVersion] = useState(0)
 	const blobPreviewCollection = useEditorStore((state) => state.blobPreviewCollection)
-	const remoteCollection = useMemo(() => {
-		const compute = (_version: number) =>
-			convertGeoEventsToFeatureCollection(visibleGeoEvents, resolvedCollectionResolver)
-		return compute(resolvedCollectionsVersion)
-	}, [visibleGeoEvents, resolvedCollectionResolver, resolvedCollectionsVersion])
 
 	// Initialize extra layers when map is ready
 	useEffect(() => {
@@ -92,6 +90,7 @@ export function useMapLayers({
 		const mapInstance = mapRef.current
 
 		const initLayers = () => {
+			let didAdd = false
 			let textFont: string[] | null = null
 			try {
 				// Check if we can safely access the style
@@ -109,6 +108,7 @@ export function useMapLayers({
 						type: 'geojson',
 						data: { type: 'FeatureCollection', features: [] },
 					})
+					didAdd = true
 				}
 				// Add layers only if they don't exist
 				if (!mapInstance.getLayer(REMOTE_FILL_LAYER)) {
@@ -126,6 +126,7 @@ export function useMapLayers({
 							'fill-opacity': 0.15,
 						},
 					})
+					didAdd = true
 				}
 				if (!mapInstance.getLayer(REMOTE_LINE_LAYER)) {
 					mapInstance.addLayer({
@@ -137,6 +138,7 @@ export function useMapLayers({
 							'line-width': 2,
 						},
 					})
+					didAdd = true
 				}
 				// Point layer (excludes annotations)
 				if (!mapInstance.getLayer(REMOTE_POINT_LAYER)) {
@@ -156,6 +158,7 @@ export function useMapLayers({
 							'circle-stroke-color': '#fff',
 						},
 					})
+					didAdd = true
 				}
 
 				// Annotation anchor layer (small circle marker)
@@ -176,6 +179,7 @@ export function useMapLayers({
 							'circle-stroke-color': '#fff',
 						},
 					})
+					didAdd = true
 				}
 
 				// Annotation text layer
@@ -208,6 +212,7 @@ export function useMapLayers({
 							'text-halo-width': ['coalesce', ['get', 'textHaloWidth'], 1.5],
 						},
 					})
+					didAdd = true
 				}
 
 				// Blob preview source/layers
@@ -216,6 +221,7 @@ export function useMapLayers({
 						type: 'geojson',
 						data: { type: 'FeatureCollection', features: [] },
 					})
+					didAdd = true
 				}
 				if (!mapInstance.getLayer(BLOB_PREVIEW_FILL_LAYER)) {
 					mapInstance.addLayer({
@@ -232,6 +238,7 @@ export function useMapLayers({
 							'fill-opacity': 0.2,
 						},
 					})
+					didAdd = true
 				}
 				if (!mapInstance.getLayer(BLOB_PREVIEW_LINE_LAYER)) {
 					mapInstance.addLayer({
@@ -243,17 +250,15 @@ export function useMapLayers({
 							'line-width': 2,
 						},
 					})
+					didAdd = true
 				}
 				setRemoteLayersReady(true)
+				if (didAdd) {
+					setLayersVersion((prev) => prev + 1)
+				}
 			} catch (error) {
 				console.warn('Failed to initialize remote map layers:', error)
 			}
-		}
-
-		const handleStyleLoad = () => {
-			// style swap clears layers/sources; force re-sync once re-added
-			setRemoteLayersReady(false)
-			initLayers()
 		}
 
 		// Try to initialize immediately
@@ -264,14 +269,14 @@ export function useMapLayers({
 
 		// Listen for style events
 		mapInstance.on('styledata', initLayers)
-		mapInstance.on('style.load', handleStyleLoad)
+		mapInstance.on('style.load', initLayers)
 		mapInstance.on('load', initLayers)
 
 		return () => {
 			clearTimeout(timeoutId)
 			try {
 				mapInstance.off('styledata', initLayers)
-				mapInstance.off('style.load', handleStyleLoad)
+				mapInstance.off('style.load', initLayers)
 				mapInstance.off('load', initLayers)
 			} catch {
 				// Map may have been removed
@@ -283,21 +288,27 @@ export function useMapLayers({
 	useEffect(() => {
 		if (!mapRef.current) return
 		if (!remoteLayersReady) return
+		void layersVersion
 
 		try {
 			const source = mapRef.current.getSource(REMOTE_SOURCE_ID) as GeoJSONSource | undefined
 			if (!source) return
 
-			source.setData(remoteCollection)
+			const collection = convertGeoEventsToFeatureCollection(
+				visibleGeoEvents,
+				resolvedCollectionResolver,
+			)
+			source.setData(collection)
 		} catch {
 			// Map may have been removed during source switch
 		}
-	}, [remoteCollection, remoteLayersReady, mapRef])
+	}, [visibleGeoEvents, resolvedCollectionResolver, remoteLayersReady, mapRef, layersVersion])
 
 	// Update blob preview layer
 	useEffect(() => {
 		if (!mapRef.current) return
 		if (!remoteLayersReady) return
+		void layersVersion
 
 		try {
 			// Don't check isStyleLoaded() - remoteLayersReady guarantees layers exist
@@ -311,7 +322,7 @@ export function useMapLayers({
 		} catch {
 			// Map may have been removed during source switch
 		}
-	}, [blobPreviewCollection, remoteLayersReady, mapRef])
+	}, [blobPreviewCollection, remoteLayersReady, mapRef, layersVersion])
 
 	return {
 		remoteLayersReady,

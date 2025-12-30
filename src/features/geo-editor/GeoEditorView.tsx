@@ -233,7 +233,7 @@ export function GeoEditorView() {
 	useEffect(() => {
 		if (!map.current) return
 		const mapInstance = map.current
-		const sourceKey = mapSourceKey
+		void mapSourceKey
 
 		let cancelled = false
 
@@ -270,7 +270,6 @@ export function GeoEditorView() {
 		}
 
 		const handleStyleLoad = () => {
-			if (!sourceKey) return
 			zoomToCurrentGeometry().catch(() => undefined)
 		}
 
