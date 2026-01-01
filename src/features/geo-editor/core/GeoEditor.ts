@@ -88,25 +88,25 @@ export class GeoEditor {
 	private readonly keyDownHandler = this.onKeyDown.bind(this)
 	private readonly keyUpHandler = this.onKeyUp.bind(this)
 	private readonly gizmoRenderHandler = () => this.renderGizmo()
-	private styleChangeRenderScheduled = false
-	private readonly scheduleRenderAfterStyleChange = () => {
-		if (this.styleChangeRenderScheduled) return
-		this.styleChangeRenderScheduled = true
-		queueMicrotask(() => {
-			this.styleChangeRenderScheduled = false
+	private styleLoadTimeoutId: number | null = null
+	private readonly styleLoadHandler = () => {
+		// Defer layer mutations to avoid MapLibre placement crashes when style reloads.
+		if (this.styleLoadTimeoutId != null) {
+			try {
+				window.clearTimeout(this.styleLoadTimeoutId)
+			} catch {
+				// ignore
+			}
+			this.styleLoadTimeoutId = null
+		}
+
+		this.styleLoadTimeoutId = window.setTimeout(() => {
+			this.styleLoadTimeoutId = null
+			this.layers.setupLayers(() => this.getFeatureCollection())
 			this.render()
 			if (this.mode === 'edit') this.renderVertices()
-		})
-	}
-	private readonly styleLoadHandler = () => {
-		this.layers.setupLayers(() => this.getFeatureCollection())
-		this.render()
-		if (this.mode === 'edit') this.renderVertices()
-		this.setInitialModeIfNeeded()
-	}
-	private readonly styleDataHandler = () => {
-		this.layers.setupLayers(() => this.getFeatureCollection())
-		this.scheduleRenderAfterStyleChange()
+			this.setInitialModeIfNeeded()
+		}, 0)
 	}
 	private readonly multiSelectModifier: 'ctrl' | 'shift'
 	private didSetInitialMode: boolean = false
@@ -174,9 +174,6 @@ export class GeoEditor {
 		if (this.layers.isStyleReady()) {
 			this.styleLoadHandler()
 		}
-
-		// Re-add layers when style changes
-		this.map.on('styledata', this.styleDataHandler)
 
 		this.setupEventListeners()
 	}
@@ -1083,6 +1080,15 @@ export class GeoEditor {
 	}
 
 	destroy(): void {
+		if (this.styleLoadTimeoutId != null) {
+			try {
+				window.clearTimeout(this.styleLoadTimeoutId)
+			} catch {
+				// ignore
+			}
+			this.styleLoadTimeoutId = null
+		}
+
 		try {
 			if (this.doubleClickZoomDisabled && this.map.doubleClickZoom) {
 				this.map.doubleClickZoom.enable()
@@ -1100,7 +1106,6 @@ export class GeoEditor {
 		try {
 			this.map.off('move', this.gizmoRenderHandler)
 			this.map.off('style.load', this.styleLoadHandler)
-			this.map.off('styledata', this.styleDataHandler)
 		} catch {
 			// Map may have been removed
 		}

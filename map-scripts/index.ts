@@ -116,15 +116,45 @@ async function addLayer(argv: string[]) {
   const outputDir = join(PROJECT_ROOT, "map-chunks");
   await mkdir(outputDir, { recursive: true });
 
-  const absInput = isHttpUrl(pmtilesPath) ? pmtilesPath : join(PROJECT_ROOT, pmtilesPath);
-  if (isHttpUrl(absInput)) throw new Error(`add-layer does not support http inputs: ${absInput}`);
-  await mustExist(absInput);
+  let localPath: string;
+  let tempFile: string | null = null;
 
-  const sha = await sha256FileHex(absInput);
+  if (isHttpUrl(pmtilesPath)) {
+    // Download remote file to temp location
+    console.log({ action: "download", url: pmtilesPath });
+    const tmpDir = join(outputDir, `.tmp-${Date.now().toString(36)}`);
+    await mkdir(tmpDir, { recursive: true });
+    tempFile = join(tmpDir, `${id}.pmtiles`);
+    
+    const response = await fetch(pmtilesPath);
+    if (!response.ok) {
+      throw new Error(`Failed to download ${pmtilesPath}: ${response.status} ${response.statusText}`);
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    await Bun.write(tempFile, arrayBuffer);
+    localPath = tempFile;
+    console.log({ action: "downloaded", bytes: arrayBuffer.byteLength, path: tempFile });
+  } else {
+    localPath = join(PROJECT_ROOT, pmtilesPath);
+    await mustExist(localPath);
+  }
+
+  const sha = await sha256FileHex(localPath);
   const outFileName = `${sha}.pmtiles`;
   const outPath = join(outputDir, outFileName);
+  
   if (!(await fileExists(outPath))) {
-    await copyFile(absInput, outPath);
+    await copyFile(localPath, outPath);
+    console.log({ action: "stored", file: outFileName });
+  } else {
+    console.log({ action: "exists", file: outFileName });
+  }
+
+  // Cleanup temp file if we downloaded
+  if (tempFile) {
+    const tmpDir = join(tempFile, "..");
+    await rm(tmpDir, { recursive: true, force: true });
   }
 
   const announcement: LayerAnnouncement = {

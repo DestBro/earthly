@@ -19,6 +19,18 @@ interface EditorStats {
 	total: number
 }
 
+export interface MapLayerState {
+	id: string
+	title: string
+	kind: 'chunked-vector' | 'pmtiles'
+	enabled: boolean
+	opacity: number
+	// For pmtiles layers
+	blossomServer?: string
+	file?: string
+	pmtilesType?: 'raster' | 'vector'
+}
+
 interface EditorState {
 	editor: GeoEditor | null
 	features: EditorFeature[]
@@ -152,6 +164,12 @@ interface EditorState {
 		blossomServer?: string
 	}
 	showMapSettings: boolean
+
+	// Map Layers State (from Nostr announcements)
+	mapLayers: MapLayerState[]
+	setMapLayers: (layers: MapLayerState[]) => void
+	updateMapLayerState: (id: string, updates: Partial<Pick<MapLayerState, 'enabled' | 'opacity'>>) => void
+	reorderMapLayers: (fromIndex: number, toIndex: number) => void
 
 	// Computed/Helpers
 	updateStats: () => void
@@ -459,6 +477,23 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
 	setMapSource: (mapSource) => set({ mapSource }),
 	setShowMapSettings: (showMapSettings) => set({ showMapSettings }),
+
+	// Map Layers State
+	mapLayers: [],
+	setMapLayers: (mapLayers) => set({ mapLayers }),
+	updateMapLayerState: (id, updates) =>
+		set((state) => ({
+			mapLayers: state.mapLayers.map((layer) =>
+				layer.id === id ? { ...layer, ...updates } : layer,
+			),
+		})),
+	reorderMapLayers: (fromIndex, toIndex) =>
+		set((state) => {
+			const layers = [...state.mapLayers]
+			const [removed] = layers.splice(fromIndex, 1)
+			if (removed) layers.splice(toIndex, 0, removed)
+			return { mapLayers: layers }
+		}),
 
 	updateStats: () => {
 		const { features } = get()

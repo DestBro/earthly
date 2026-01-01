@@ -11,6 +11,7 @@ import {
 	NDKMapLayerSetEvent,
 	type MapLayerSetAnnouncementPayload,
 } from '@/lib/ndk/NDKMapLayerSetEvent'
+import { useEditorStore, type MapLayerState } from '../store'
 
 const DEFAULT_CENTER: [number, number] = [-74.006, 40.7128]
 const DEFAULT_ZOOM = 12
@@ -56,6 +57,7 @@ interface MapProps {
 // Protocol registration flags (module-level to prevent re-registration)
 let pmworldProtocolRegistered = false
 let pmtilesProtocolRegistered = false
+let pmtilesProtocolInstance: Protocol | null = null
 
 // Cache for PMTiles instances (using object to avoid shadowing native Map with component name)
 const pmtilesCache: Record<string, PMTiles> = {}
@@ -88,19 +90,120 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 	const [tileSourceMaxZoom, setTileSourceMaxZoom] = useState<number | null>(null)
 	const currentStyleUrlRef = useRef<string | null>(null)
 	const onLoadRef = useRef<MapProps['onLoad']>(onLoad)
+	const protomapsLayerIdsRef = useRef<string[]>([])
+	const styleLoadedAtRef = useRef<number>(0)
 
+	// Sync state shared with the MapSettingsPanel UI.
+	const mapLayers = useEditorStore((state) => state.mapLayers)
+	const mapLayersRef = useRef<MapLayerState[]>(mapLayers)
+	const scheduleLayerSyncRef = useRef<(() => void) | null>(null)
 	useEffect(() => {
-		onLoadRef.current = onLoad
-	}, [onLoad])
+		mapLayersRef.current = mapLayers
+		scheduleLayerSyncRef.current?.()
+	}, [mapLayers])
+
+		type OverlayStyleDescriptor = {
+			id: string
+			fullUrl: string
+			enabled: boolean
+			opacity: number
+		}
+
+		const blossomOverlayStyle = useMemo(() => {
+			if (mapSource.type !== 'blossom')
+				return { signature: '', overlays: [] as OverlayStyleDescriptor[] }
+
+			const overrideServer = mapSource.blossomServer?.trim()
+			const overlays = mapLayers
+				.filter((layer) => layer.kind === 'pmtiles')
+				.map<OverlayStyleDescriptor | null>((layer) => {
+					if (!layer.file) return null
+					if (layer.pmtilesType && layer.pmtilesType !== 'raster') return null
+
+					const server =
+						overrideServer && overrideServer.length > 0
+							? overrideServer
+							: layer.blossomServer?.trim() || pmworldState.blossomServer
+					if (!server) return null
+
+					const fullUrl = `${server.replace(/\/+$/, '')}/${layer.file.replace(/^\/+/, '')}`
+					return { id: layer.id, fullUrl, enabled: layer.enabled, opacity: layer.opacity }
+				})
+				.filter((v): v is OverlayStyleDescriptor => v !== null)
+
+			const signature = overlays.map((o) => `${o.id}:${o.fullUrl}`).join('|')
+			return { signature, overlays }
+		}, [mapLayers, mapSource.type, mapSource.blossomServer])
+
+		const buildBlossomStyle = (
+			maxZoom: number,
+			overlaysUiOrder: OverlayStyleDescriptor[],
+		): maplibregl.StyleSpecification => {
+			const baseLayers = protomapsLayers('protomaps', namedFlavor('light'), { lang: 'en' }) as any[]
+
+			const firstSymbolIndex = baseLayers.findIndex((l) => l?.type === 'symbol')
+			const insertAt = firstSymbolIndex >= 0 ? firstSymbolIndex : baseLayers.length
+
+			const sources: Record<string, any> = {
+				protomaps: {
+					type: 'vector',
+					tiles: ['pmworld://world/{z}/{x}/{y}'],
+					minzoom: 0,
+					maxzoom: maxZoom,
+					attribution:
+						'<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
+				},
+			}
+
+			const overlayLayers = overlaysUiOrder
+				.slice()
+				.reverse() // UI order is top-to-bottom; style order is bottom-to-top.
+				.map((layer) => {
+					const sourceId = `layer-${layer.id}-source`
+					const mapLayerId = `layer-${layer.id}`
+					sources[sourceId] = {
+						type: 'raster',
+						tiles: [`pmtiles://${layer.fullUrl}/{z}/{x}/{y}`],
+						tileSize: 256,
+					}
+					return {
+						id: mapLayerId,
+						type: 'raster',
+						source: sourceId,
+						metadata: { earthlyOverlayLayerId: layer.id },
+						layout: { visibility: layer.enabled ? 'visible' : 'none' },
+						paint: { 'raster-opacity': layer.opacity },
+					}
+				})
+
+			const layers = baseLayers.slice()
+			layers.splice(insertAt, 0, ...overlayLayers)
+
+			return {
+				version: 8,
+				glyphs: 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
+				sprite: 'https://protomaps.github.io/basemaps-assets/sprites/v4/light',
+				sources,
+				layers: layers as any,
+			}
+		}
+
+		useEffect(() => {
+			onLoadRef.current = onLoad
+		}, [onLoad])
 
 	// Register protocols once
 	useEffect(() => {
+		// Keep a single global Protocol instance. MapLibre's protocol registration is global,
+		// and we need the Protocol instance later (e.g. to add PMTiles) even across remounts.
+		if (!pmtilesProtocolInstance) {
+			pmtilesProtocolInstance = new Protocol()
+		}
 		if (!pmtilesProtocolRegistered) {
-			const protocol = new Protocol()
-			maplibregl.addProtocol('pmtiles', protocol.tile)
-			protocolRef.current = protocol
+			maplibregl.addProtocol('pmtiles', pmtilesProtocolInstance.tile)
 			pmtilesProtocolRegistered = true
 		}
+		protocolRef.current = pmtilesProtocolInstance
 
 		if (!pmworldProtocolRegistered) {
 			maplibregl.addProtocol('pmworld', async (params, abortController) => {
@@ -153,11 +256,11 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 	// Subscribe to map layer set announcement (Nostr).
 	// IMPORTANT: NDK requires at least one filter; passing [] will throw.
 	// We always subscribe and only *use* the result when mapSource.type === 'blossom'.
+	// No authors filter - discover announcements from any source on the relay.
 	const { events: mapLayerSetEvents } = useSubscribe([
 		{
 			kinds: NDKMapLayerSetEvent.kinds,
-			authors: [config.serverPubkey],
-			limit: 10,
+			limit: 50,
 		},
 	])
 
@@ -184,9 +287,12 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 	}, [mapLayerSetEvents])
 
 	useEffect(() => {
+		const setMapLayers = useEditorStore.getState().setMapLayers
+
 		if (mapSource.type !== 'blossom') {
 			setAnnouncement(null)
 			setTileSourceMaxZoom(null)
+			setMapLayers([])
 			return
 		}
 
@@ -217,6 +323,24 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 					: 'https://blossom.earthly.city') || 'https://blossom.earthly.city'
 
 		pmworldState.blossomServer = blossomServer
+
+		// Populate layer state for UI
+		if (payload?.layers) {
+			const layerStates: MapLayerState[] = payload.layers.map((layer) => ({
+				id: layer.id,
+				title: layer.title,
+				kind: layer.kind,
+				enabled: layer.defaultEnabled ?? true,
+				opacity: layer.defaultOpacity ?? 1,
+				// Include pmtiles-specific fields
+				blossomServer: 'blossomServer' in layer ? layer.blossomServer : undefined,
+				file: 'file' in layer ? layer.file : undefined,
+				pmtilesType: 'pmtilesType' in layer ? layer.pmtilesType : undefined,
+			}))
+			setMapLayers(layerStates)
+		} else {
+			setMapLayers([])
+		}
 
 		let cancelled = false
 		;(async () => {
@@ -292,25 +416,8 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 		let initialStyleKey: string | null = null
 
 		if (mapSource.type === 'blossom' && tileSourceMaxZoom !== null) {
-			initialStyleKey = `pmworld:${tileSourceMaxZoom}`
-			mapStyle = {
-				version: 8,
-				glyphs: 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
-				sprite: 'https://protomaps.github.io/basemaps-assets/sprites/v4/light',
-				sources: {
-					protomaps: {
-						type: 'vector',
-						tiles: ['pmworld://world/{z}/{x}/{y}'],
-						minzoom: 0,
-						maxzoom: tileSourceMaxZoom,
-						attribution:
-							'<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
-					},
-				},
-				layers: protomapsLayers('protomaps', namedFlavor('light'), {
-					lang: 'en',
-				}),
-			}
+			initialStyleKey = `pmworld:${tileSourceMaxZoom}:overlays:${blossomOverlayStyle.signature}`
+			mapStyle = buildBlossomStyle(tileSourceMaxZoom, blossomOverlayStyle.overlays)
 		} else if (mapSource.type === 'pmtiles') {
 			let url = mapSource.url
 			if (mapSource.location === 'local' && mapSource.file) {
@@ -355,8 +462,31 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 		mapRef.current = map
 		currentStyleUrlRef.current = initialStyleKey
 
+		// Prevent runtime crashes when styles reference missing sprite icons.
+		// MapLibre emits "styleimagemissing"; we supply a transparent 1x1 placeholder.
+		const onStyleImageMissing = (e: { id: string }) => {
+			try {
+				const id = e.id
+				if (!id) return
+				if (map.hasImage(id)) return
+				// MapLibre accepts ImageData in browsers.
+				const imageData =
+					typeof ImageData !== 'undefined'
+						? new ImageData(new Uint8ClampedArray([0, 0, 0, 0]), 1, 1)
+						: { width: 1, height: 1, data: new Uint8Array([0, 0, 0, 0]) }
+				map.addImage(id, imageData as any)
+			} catch {
+				// ignore
+			}
+		}
+		map.on('styleimagemissing', onStyleImageMissing as any)
+
 		map.on('load', () => {
 			setIsLoaded(true)
+			styleLoadedAtRef.current = Date.now()
+			if (config.isDevelopment && typeof window !== 'undefined') {
+				;(window as any).__earthlyGeoEditorMap = map
+			}
 			onLoadRef.current?.(map)
 		})
 
@@ -412,22 +542,23 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 		const map = mapRef.current
 		if (!map) return
 
-		const updateStyle = async () => {
+		const updateStyle = () => {
 			if (mapSource.type === 'default') {
-				if (currentStyleUrlRef.current === initialStyle) return
+				const styleKey = typeof initialStyle === 'string' ? initialStyle : '__inline_style__'
+				if (currentStyleUrlRef.current === styleKey) return
 				map.setStyle(initialStyle, { diff: false })
-				currentStyleUrlRef.current = initialStyle as string
-			} else if (mapSource.type === 'pmtiles') {
-				let url = mapSource.url
+				currentStyleUrlRef.current = styleKey
+				return
+			}
 
+			if (mapSource.type === 'pmtiles') {
+				let url = mapSource.url
 				if (mapSource.location === 'local' && mapSource.file) {
 					url = URL.createObjectURL(mapSource.file)
 				}
-
 				if (!url) return
 
 				const pmtilesUrl = url.startsWith('pmtiles://') ? url : `pmtiles://${url}`
-
 				if (currentStyleUrlRef.current === pmtilesUrl) return
 
 				const style: maplibregl.StyleSpecification = {
@@ -442,43 +573,155 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 								'<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
 						},
 					},
-					layers: protomapsLayers('protomaps', namedFlavor('light'), {
-						lang: 'en',
-					}),
+					layers: protomapsLayers('protomaps', namedFlavor('light'), { lang: 'en' }),
 				}
 
 				map.setStyle(style, { diff: false })
 				currentStyleUrlRef.current = pmtilesUrl
-			} else if (mapSource.type === 'blossom' && tileSourceMaxZoom !== null) {
-				const styleKey = `pmworld:${tileSourceMaxZoom}`
+				return
+			}
+
+			if (mapSource.type === 'blossom' && tileSourceMaxZoom !== null) {
+				const styleKey = `pmworld:${tileSourceMaxZoom}:overlays:${blossomOverlayStyle.signature}`
 				if (currentStyleUrlRef.current === styleKey) return
 
-				const style: maplibregl.StyleSpecification = {
-					version: 8,
-					glyphs: 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
-					sprite: 'https://protomaps.github.io/basemaps-assets/sprites/v4/light',
-					sources: {
-						protomaps: {
-							type: 'vector',
-							tiles: ['pmworld://world/{z}/{x}/{y}'],
-							minzoom: 0,
-							maxzoom: tileSourceMaxZoom,
-							attribution:
-								'<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
-						},
-					},
-					layers: protomapsLayers('protomaps', namedFlavor('light'), {
-						lang: 'en',
-					}),
-				}
-
+				const style = buildBlossomStyle(tileSourceMaxZoom, blossomOverlayStyle.overlays)
 				map.setStyle(style, { diff: false })
 				currentStyleUrlRef.current = styleKey
 			}
 		}
 
 		updateStyle()
-	}, [mapSource, initialStyle, tileSourceMaxZoom])
+	}, [mapSource, initialStyle, tileSourceMaxZoom, blossomOverlayStyle.signature])
+
+	// Sync mapLayers store state to MapLibre layers.
+	// Avoid structural style mutations here (add/remove/move layers) to prevent MapLibre placement crashes.
+	useEffect(() => {
+		const map = mapRef.current
+		if (!map) return
+		if (!isLoaded) return
+
+		let disposed = false
+		let rafId: number | null = null
+
+		const getProtomapsLayerIds = (): string[] => {
+			try {
+				const style = map.getStyle()
+				const layers = style?.layers ?? []
+				return layers
+					.filter((l) => (l as unknown as { source?: string }).source === 'protomaps')
+					.map((l) => l.id)
+			} catch {
+				return []
+			}
+		}
+
+		const applyLayerChanges = () => {
+			if (disposed) return
+			try {
+				if (!map.getStyle?.()) return
+			} catch {
+				return
+			}
+
+			const allLayers = mapLayersRef.current
+
+			// Sync chunked-vector basemap visibility/opacity by mutating protomaps style layers.
+			const vectors = allLayers.find((l) => l.kind === 'chunked-vector') ?? null
+			if (vectors) {
+				if (protomapsLayerIdsRef.current.length === 0) {
+					protomapsLayerIdsRef.current = getProtomapsLayerIds()
+				}
+
+				for (const layerId of protomapsLayerIdsRef.current) {
+					try {
+						if (!map.getLayer(layerId)) continue
+						map.setLayoutProperty(layerId, 'visibility', vectors.enabled ? 'visible' : 'none')
+					} catch {
+						// ignore
+					}
+				}
+
+				const opacity = vectors.opacity
+				for (const layerId of protomapsLayerIdsRef.current) {
+					const styleLayer = (() => {
+						try {
+							return map.getLayer(layerId)
+						} catch {
+							return undefined
+						}
+					})()
+					if (!styleLayer) continue
+
+					try {
+						if (styleLayer.type === 'fill') map.setPaintProperty(layerId, 'fill-opacity', opacity)
+						if (styleLayer.type === 'line') map.setPaintProperty(layerId, 'line-opacity', opacity)
+						if (styleLayer.type === 'circle') map.setPaintProperty(layerId, 'circle-opacity', opacity)
+						if (styleLayer.type === 'symbol') {
+							map.setPaintProperty(layerId, 'icon-opacity', opacity)
+							map.setPaintProperty(layerId, 'text-opacity', opacity)
+						}
+						if (styleLayer.type === 'background')
+							map.setPaintProperty(layerId, 'background-opacity', opacity)
+					} catch {
+						// ignore
+					}
+				}
+			}
+
+			// Sync PMTiles overlays (layers already exist in the Blossom style).
+			for (const layer of allLayers) {
+				if (layer.kind !== 'pmtiles') continue
+				const mapLayerId = `layer-${layer.id}`
+				try {
+					if (!map.getLayer(mapLayerId)) continue
+					map.setLayoutProperty(mapLayerId, 'visibility', layer.enabled ? 'visible' : 'none')
+					map.setPaintProperty(mapLayerId, 'raster-opacity', layer.opacity)
+				} catch {
+					// ignore
+				}
+			}
+		}
+
+		const scheduleApply = () => {
+			if (disposed) return
+			if (rafId != null) return
+			rafId = window.requestAnimationFrame(() => {
+				rafId = null
+				applyLayerChanges()
+			})
+		}
+
+		scheduleLayerSyncRef.current = scheduleApply
+		scheduleApply()
+
+		const onStyleLoad = () => {
+			styleLoadedAtRef.current = Date.now()
+			protomapsLayerIdsRef.current = []
+			scheduleApply()
+		}
+		map.on('style.load', onStyleLoad)
+
+		return () => {
+			disposed = true
+			if (scheduleLayerSyncRef.current === scheduleApply) {
+				scheduleLayerSyncRef.current = null
+			}
+			if (rafId != null) {
+				try {
+					window.cancelAnimationFrame(rafId)
+				} catch {
+					// ignore
+				}
+				rafId = null
+			}
+			try {
+				map.off('style.load', onStyleLoad)
+			} catch {
+				// ignore
+			}
+		}
+	}, [isLoaded])
 
 	return (
 		<MapContext.Provider value={{ map: mapRef.current, isLoaded }}>

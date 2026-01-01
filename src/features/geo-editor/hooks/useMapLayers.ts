@@ -89,7 +89,12 @@ export function useMapLayers({
 		if (!mapRef.current || !mounted) return
 		const mapInstance = mapRef.current
 
+		let disposed = false
+		let initScheduled = false
+		let initTimeoutId: number | null = null
+
 		const initLayers = () => {
+			if (disposed) return
 			let didAdd = false
 			let textFont: string[] | null = null
 			try {
@@ -251,33 +256,45 @@ export function useMapLayers({
 						},
 					})
 					didAdd = true
+					}
+					setRemoteLayersReady(true)
+					if (didAdd) {
+						setLayersVersion((prev) => prev + 1)
+					}
+				} catch (error) {
+					console.warn('Failed to initialize remote map layers:', error)
 				}
-				setRemoteLayersReady(true)
-				if (didAdd) {
-					setLayersVersion((prev) => prev + 1)
-				}
-			} catch (error) {
-				console.warn('Failed to initialize remote map layers:', error)
 			}
+
+		const scheduleInitLayers = () => {
+			if (disposed) return
+			if (initScheduled) return
+			initScheduled = true
+			setRemoteLayersReady(false)
+
+			// Defer to avoid mutating style during MapLibre's placement/render stack.
+			initTimeoutId = window.setTimeout(() => {
+				initScheduled = false
+				initLayers()
+			}, 0)
 		}
 
-		// Try to initialize immediately
-		initLayers()
-
-		// Also try after a short delay in case style is still loading
-		const timeoutId = setTimeout(initLayers, 100)
-
-		// Listen for style events
-		mapInstance.on('styledata', initLayers)
-		mapInstance.on('style.load', initLayers)
-		mapInstance.on('load', initLayers)
+		// Try to initialize once on mount and on subsequent style reloads (setStyle clears custom layers/sources).
+		scheduleInitLayers()
+		mapInstance.on('style.load', scheduleInitLayers)
 
 		return () => {
-			clearTimeout(timeoutId)
+			disposed = true
+			if (initTimeoutId != null) {
+				try {
+					window.clearTimeout(initTimeoutId)
+				} catch {
+					// ignore
+				}
+				initTimeoutId = null
+			}
 			try {
-				mapInstance.off('styledata', initLayers)
-				mapInstance.off('style.load', initLayers)
-				mapInstance.off('load', initLayers)
+				mapInstance.off('style.load', scheduleInitLayers)
 			} catch {
 				// Map may have been removed
 			}

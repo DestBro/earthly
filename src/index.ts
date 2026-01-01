@@ -30,6 +30,16 @@ type AnnouncementRecord = Record<
 	{ bbox: [number, number, number, number]; file: string; maxZoom: number }
 >
 
+type LayerAnnouncement = {
+	id: string
+	title: string
+	kind: 'pmtiles'
+	pmtilesType: 'raster' | 'vector'
+	file: string
+	defaultEnabled?: boolean
+	defaultOpacity?: number
+}
+
 async function readAnnouncementRecord(): Promise<AnnouncementRecord | null> {
 	const jsonPath = new URL('../map-chunks/announcement.json', import.meta.url)
 	const jsonFile = Bun.file(jsonPath)
@@ -41,6 +51,36 @@ async function readAnnouncementRecord(): Promise<AnnouncementRecord | null> {
 	}
 }
 
+async function readLayerAnnouncements(): Promise<LayerAnnouncement[]> {
+	const mapChunksDir = new URL('../map-chunks/', import.meta.url)
+	const layers: LayerAnnouncement[] = []
+
+	try {
+		const { readdir } = await import('node:fs/promises')
+		const entries = await readdir(mapChunksDir, { withFileTypes: true })
+
+		for (const entry of entries) {
+			if (!entry.isFile()) continue
+			if (!entry.name.endsWith('.announcement.json')) continue
+			if (entry.name === 'announcement.json') continue // Skip the main chunked-vector announcement
+
+			try {
+				const filePath = new URL(entry.name, mapChunksDir)
+				const content = await Bun.file(filePath).json()
+				if (content && content.id && content.kind === 'pmtiles') {
+					layers.push(content as LayerAnnouncement)
+				}
+			} catch (err) {
+				console.warn(`[map-announcement] Failed to read ${entry.name}:`, err)
+			}
+		}
+	} catch {
+		// Directory doesn't exist or can't be read
+	}
+
+	return layers
+}
+
 async function publishMapLayerSetAnnouncement(): Promise<void> {
 	// We sign announcements using SERVER_KEY so clients can trust SERVER_PUBKEY.
 	if (!serverConfig.serverKey) {
@@ -49,10 +89,7 @@ async function publishMapLayerSetAnnouncement(): Promise<void> {
 	}
 
 	const announcement = await readAnnouncementRecord()
-	if (!announcement || Object.keys(announcement).length === 0) {
-		console.log('[map-announcement] No map-chunks/announcement.json; skipping announcement publish')
-		return
-	}
+	const layerAnnouncements = await readLayerAnnouncements()
 
 	try {
 		const signer = new NDKPrivateKeySigner(serverConfig.serverKey)
@@ -68,18 +105,36 @@ async function publishMapLayerSetAnnouncement(): Promise<void> {
 		event.tags.push(['d', 'earthly-map-layers'])
 		event.tags.push(['alt', 'Earthly map layer set announcement'])
 
-		// Option A: content carries the announcement record (embedded), plus blossom server base URL and layers.
+		// Build layers array: chunked-vector basemap + any additional PMTiles layers
+		const layers: any[] = []
+
+		// Add chunked-vector basemap layer if announcement exists
+		if (announcement && Object.keys(announcement).length > 0) {
+			layers.push({
+				id: 'chunked-vector',
+				title: 'Chunked Vector Basemap',
+				kind: 'chunked-vector',
+				blossomServer: serverConfig.blossomServer,
+				announcement,
+			})
+		}
+
+		// Add additional PMTiles layers from *.announcement.json files
+		for (const layer of layerAnnouncements) {
+			layers.push({
+				...layer,
+				blossomServer: serverConfig.blossomServer,
+			})
+		}
+
+		if (layers.length === 0) {
+			console.log('[map-announcement] No layers to announce; skipping')
+			return
+		}
+
 		event.content = JSON.stringify({
 			version: 1,
-			layers: [
-				{
-					id: 'chunked-vector',
-					title: 'Chunked Vector Basemap',
-					kind: 'chunked-vector',
-					blossomServer: serverConfig.blossomServer,
-					announcement,
-				},
-			],
+			layers,
 		})
 
 		await event.publish()

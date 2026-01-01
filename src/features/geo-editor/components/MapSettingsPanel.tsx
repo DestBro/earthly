@@ -1,6 +1,8 @@
+import { Eye, EyeOff, GripVertical, Layers, Map } from 'lucide-react'
 import type React from 'react'
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { Button } from '../../../components/ui/button'
+import { Checkbox } from '../../../components/ui/checkbox'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import {
@@ -10,6 +12,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '../../../components/ui/select'
+import { Slider } from '../../../components/ui/slider'
 import { useEditorStore } from '../store'
 
 type MapSourceType = 'default' | 'pmtiles' | 'blossom'
@@ -17,8 +20,15 @@ type MapSourceType = 'default' | 'pmtiles' | 'blossom'
 export function MapSettingsPanel() {
 	const mapSource = useEditorStore((state) => state.mapSource)
 	const setMapSource = useEditorStore((state) => state.setMapSource)
+	const mapLayers = useEditorStore((state) => state.mapLayers)
+	const updateMapLayerState = useEditorStore((state) => state.updateMapLayerState)
+	const reorderMapLayers = useEditorStore((state) => state.reorderMapLayers)
 
 	const fileInputRef = useRef<HTMLInputElement>(null)
+
+	// Drag-and-drop state
+	const [dragIndex, setDragIndex] = useState<number | null>(null)
+	const [dropIndex, setDropIndex] = useState<number | null>(null)
 
 	const handleSourceTypeChange = (value: MapSourceType) => {
 		if (value === 'default') {
@@ -71,6 +81,47 @@ export function MapSettingsPanel() {
 			...mapSource,
 			blossomServer: e.target.value,
 		})
+	}
+
+	const handleLayerToggle = (layerId: string, enabled: boolean) => {
+		updateMapLayerState(layerId, { enabled })
+	}
+
+	const handleLayerOpacity = (layerId: string, opacity: number) => {
+		updateMapLayerState(layerId, { opacity })
+	}
+
+	const handleDragStart = (index: number) => (e: React.DragEvent) => {
+		setDragIndex(index)
+		e.dataTransfer.effectAllowed = 'move'
+		e.dataTransfer.setData('text/plain', String(index))
+	}
+
+	const handleDragOver = (index: number) => (e: React.DragEvent) => {
+		e.preventDefault()
+		e.dataTransfer.dropEffect = 'move'
+		if (dragIndex !== null && dragIndex !== index) {
+			setDropIndex(index)
+		}
+	}
+
+	const handleDragLeave = () => {
+		setDropIndex(null)
+	}
+
+	const handleDrop = (toIndex: number) => (e: React.DragEvent) => {
+		e.preventDefault()
+		const fromIndex = dragIndex
+		if (fromIndex !== null && fromIndex !== toIndex) {
+			reorderMapLayers(fromIndex, toIndex)
+		}
+		setDragIndex(null)
+		setDropIndex(null)
+	}
+
+	const handleDragEnd = () => {
+		setDragIndex(null)
+		setDropIndex(null)
 	}
 
 	return (
@@ -154,6 +205,93 @@ export function MapSettingsPanel() {
 							Optional override. Normally discovered from the Nostr announcement event.
 						</p>
 					</div>
+
+					{/* Layers Section */}
+					{mapLayers.length > 0 && (
+						<div className="space-y-3 pt-2 border-t">
+							<div className="flex items-center gap-2">
+								<Layers className="h-4 w-4 text-muted-foreground" />
+								<Label className="text-sm font-medium">Layers</Label>
+								<span className="text-xs text-muted-foreground">(drag to reorder)</span>
+							</div>
+							<div className="space-y-1">
+								{mapLayers.map((layer, index) => (
+									<div key={layer.id}>
+										{/* Drop indicator line */}
+										{dropIndex === index && dragIndex !== null && dragIndex > index && (
+											<div className="h-0.5 bg-primary rounded-full mx-2 mb-1" />
+										)}
+										<div
+											draggable
+											onDragStart={handleDragStart(index)}
+											onDragOver={handleDragOver(index)}
+											onDragLeave={handleDragLeave}
+											onDrop={handleDrop(index)}
+											onDragEnd={handleDragEnd}
+											className={`rounded-lg border bg-card p-3 space-y-2 transition-opacity ${
+												dragIndex === index ? 'opacity-50' : ''
+											}`}
+										>
+											<div className="flex items-center justify-between">
+												<div className="flex items-center gap-2">
+													<GripVertical className="h-4 w-4 text-muted-foreground cursor-grab active:cursor-grabbing" />
+													<Checkbox
+														id={`layer-${layer.id}`}
+														checked={layer.enabled}
+														onCheckedChange={(checked: boolean | 'indeterminate') =>
+															handleLayerToggle(layer.id, checked === true)
+														}
+													/>
+													<label
+														htmlFor={`layer-${layer.id}`}
+														className="text-sm font-medium cursor-pointer"
+													>
+														{layer.title}
+													</label>
+												</div>
+												<div className="flex items-center gap-1">
+													{layer.enabled ? (
+														<Eye className="h-3.5 w-3.5 text-muted-foreground" />
+													) : (
+														<EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+													)}
+													<span className="text-xs text-muted-foreground capitalize px-1.5 py-0.5 rounded bg-muted">
+														{layer.kind === 'chunked-vector' ? 'vector' : 'raster'}
+													</span>
+												</div>
+											</div>
+											<div className="flex items-center gap-3 pl-6">
+												<span className="text-xs text-muted-foreground w-14">Opacity</span>
+												<Slider
+													value={[layer.opacity]}
+													onValueChange={(values: number[]) => handleLayerOpacity(layer.id, values[0] ?? layer.opacity)}
+													min={0}
+													max={1}
+													step={0.05}
+													disabled={!layer.enabled}
+													className="flex-1"
+												/>
+												<span className="text-xs text-muted-foreground w-10 text-right">
+													{Math.round(layer.opacity * 100)}%
+												</span>
+											</div>
+										</div>
+										{/* Drop indicator line for after last item */}
+										{dropIndex === index && dragIndex !== null && dragIndex < index && (
+											<div className="h-0.5 bg-primary rounded-full mx-2 mt-1" />
+										)}
+									</div>
+								))}
+							</div>
+						</div>
+					)}
+
+					{mapLayers.length === 0 && (
+						<div className="text-xs text-muted-foreground italic flex items-center gap-2 pt-2 border-t">
+							<Map className="h-4 w-4" />
+							<span>Waiting for layer announcements...</span>
+						</div>
+					)}
 				</>
 			)}
 		</div>
