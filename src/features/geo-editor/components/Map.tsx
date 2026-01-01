@@ -5,7 +5,6 @@ import { PMTiles, Protocol, TileType } from 'pmtiles'
 import type React from 'react'
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useSubscribe } from '@nostr-dev-kit/react'
-import { config } from '@/config'
 import { type BBox, lonLatToWorldGeohash, tileCenterLonLat } from '@/lib/worldGeohash'
 import {
 	NDKMapLayerSetEvent,
@@ -54,6 +53,67 @@ interface MapProps {
 	mapSource?: MapSource
 }
 
+type OverlayStyleDescriptor = {
+	id: string
+	fullUrl: string
+	enabled: boolean
+	opacity: number
+}
+
+function buildBlossomStyle(
+	maxZoom: number,
+	overlaysUiOrder: OverlayStyleDescriptor[],
+): maplibregl.StyleSpecification {
+	const baseLayers = protomapsLayers('protomaps', namedFlavor('light'), {
+		lang: 'en',
+	}) as maplibregl.LayerSpecification[]
+
+	const firstSymbolIndex = baseLayers.findIndex((l) => l?.type === 'symbol')
+	const insertAt = firstSymbolIndex >= 0 ? firstSymbolIndex : baseLayers.length
+
+	const sources: maplibregl.StyleSpecification['sources'] = {
+		protomaps: {
+			type: 'vector',
+			tiles: ['pmworld://world/{z}/{x}/{y}'],
+			minzoom: 0,
+			maxzoom: maxZoom,
+			attribution:
+				'<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
+		},
+	}
+
+	const overlayLayers = overlaysUiOrder
+		.slice()
+		.reverse() // UI order is top-to-bottom; style order is bottom-to-top.
+		.map((layer): maplibregl.LayerSpecification => {
+			const sourceId = `layer-${layer.id}-source`
+			const mapLayerId = `layer-${layer.id}`
+			sources[sourceId] = {
+				type: 'raster',
+				tiles: [`pmtiles://${layer.fullUrl}/{z}/{x}/{y}`],
+				tileSize: 256,
+			}
+			return {
+				id: mapLayerId,
+				type: 'raster',
+				source: sourceId,
+				layout: { visibility: layer.enabled ? 'visible' : 'none' },
+				paint: { 'raster-opacity': layer.opacity },
+			}
+		})
+
+	const layers = baseLayers.slice()
+	layers.splice(insertAt, 0, ...overlayLayers)
+
+	return {
+		version: 8,
+		glyphs: 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
+		sprite: 'https://protomaps.github.io/basemaps-assets/sprites/v4/light',
+		sources,
+		layers,
+	}
+}
+
 // Protocol registration flags (module-level to prevent re-registration)
 let pmworldProtocolRegistered = false
 let pmtilesProtocolRegistered = false
@@ -83,15 +143,12 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 	const zoom = zoomProp ?? DEFAULT_ZOOM
 	const mapContainer = useRef<HTMLDivElement>(null)
 	const mapRef = useRef<maplibregl.Map | null>(null)
-	const protocolRef = useRef<Protocol | null>(null)
 	const resizeObserverRef = useRef<ResizeObserver | null>(null)
 	const [isLoaded, setIsLoaded] = useState(false)
-	const [_announcement, setAnnouncement] = useState<AnnouncementRecord | null>(null)
 	const [tileSourceMaxZoom, setTileSourceMaxZoom] = useState<number | null>(null)
 	const currentStyleUrlRef = useRef<string | null>(null)
 	const onLoadRef = useRef<MapProps['onLoad']>(onLoad)
 	const protomapsLayerIdsRef = useRef<string[]>([])
-	const styleLoadedAtRef = useRef<number>(0)
 
 	// Sync state shared with the MapSettingsPanel UI.
 	const mapLayers = useEditorStore((state) => state.mapLayers)
@@ -102,95 +159,37 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 		scheduleLayerSyncRef.current?.()
 	}, [mapLayers])
 
-		type OverlayStyleDescriptor = {
-			id: string
-			fullUrl: string
-			enabled: boolean
-			opacity: number
+	const blossomOverlayStyle = useMemo(() => {
+		if (mapSource.type !== 'blossom') {
+			return { signature: '', overlays: [] as OverlayStyleDescriptor[] }
 		}
 
-		const blossomOverlayStyle = useMemo(() => {
-			if (mapSource.type !== 'blossom')
-				return { signature: '', overlays: [] as OverlayStyleDescriptor[] }
+		const overrideServer = mapSource.blossomServer?.trim()
+		const overlays = mapLayers
+			.filter((layer) => layer.kind === 'pmtiles')
+			.map<OverlayStyleDescriptor | null>((layer) => {
+				if (!layer.file) return null
+				if (layer.pmtilesType && layer.pmtilesType !== 'raster') return null
 
-			const overrideServer = mapSource.blossomServer?.trim()
-			const overlays = mapLayers
-				.filter((layer) => layer.kind === 'pmtiles')
-				.map<OverlayStyleDescriptor | null>((layer) => {
-					if (!layer.file) return null
-					if (layer.pmtilesType && layer.pmtilesType !== 'raster') return null
+				const server =
+					overrideServer && overrideServer.length > 0
+						? overrideServer
+						: layer.blossomServer?.trim() || pmworldState.blossomServer
+				if (!server) return null
 
-					const server =
-						overrideServer && overrideServer.length > 0
-							? overrideServer
-							: layer.blossomServer?.trim() || pmworldState.blossomServer
-					if (!server) return null
+				const fullUrl = `${server.replace(/\/+$/, '')}/${layer.file.replace(/^\/+/, '')}`
+				return { id: layer.id, fullUrl, enabled: layer.enabled, opacity: layer.opacity }
+			})
+			.filter((v): v is OverlayStyleDescriptor => v !== null)
 
-					const fullUrl = `${server.replace(/\/+$/, '')}/${layer.file.replace(/^\/+/, '')}`
-					return { id: layer.id, fullUrl, enabled: layer.enabled, opacity: layer.opacity }
-				})
-				.filter((v): v is OverlayStyleDescriptor => v !== null)
+		// Signature intentionally excludes enabled/opacity so toggling/slider changes don't force a style reload.
+		const signature = overlays.map((o) => `${o.id}:${o.fullUrl}`).join('|')
+		return { signature, overlays }
+	}, [mapLayers, mapSource.type, mapSource.blossomServer])
 
-			const signature = overlays.map((o) => `${o.id}:${o.fullUrl}`).join('|')
-			return { signature, overlays }
-		}, [mapLayers, mapSource.type, mapSource.blossomServer])
-
-		const buildBlossomStyle = (
-			maxZoom: number,
-			overlaysUiOrder: OverlayStyleDescriptor[],
-		): maplibregl.StyleSpecification => {
-			const baseLayers = protomapsLayers('protomaps', namedFlavor('light'), { lang: 'en' }) as any[]
-
-			const firstSymbolIndex = baseLayers.findIndex((l) => l?.type === 'symbol')
-			const insertAt = firstSymbolIndex >= 0 ? firstSymbolIndex : baseLayers.length
-
-			const sources: Record<string, any> = {
-				protomaps: {
-					type: 'vector',
-					tiles: ['pmworld://world/{z}/{x}/{y}'],
-					minzoom: 0,
-					maxzoom: maxZoom,
-					attribution:
-						'<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
-				},
-			}
-
-			const overlayLayers = overlaysUiOrder
-				.slice()
-				.reverse() // UI order is top-to-bottom; style order is bottom-to-top.
-				.map((layer) => {
-					const sourceId = `layer-${layer.id}-source`
-					const mapLayerId = `layer-${layer.id}`
-					sources[sourceId] = {
-						type: 'raster',
-						tiles: [`pmtiles://${layer.fullUrl}/{z}/{x}/{y}`],
-						tileSize: 256,
-					}
-					return {
-						id: mapLayerId,
-						type: 'raster',
-						source: sourceId,
-						metadata: { earthlyOverlayLayerId: layer.id },
-						layout: { visibility: layer.enabled ? 'visible' : 'none' },
-						paint: { 'raster-opacity': layer.opacity },
-					}
-				})
-
-			const layers = baseLayers.slice()
-			layers.splice(insertAt, 0, ...overlayLayers)
-
-			return {
-				version: 8,
-				glyphs: 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
-				sprite: 'https://protomaps.github.io/basemaps-assets/sprites/v4/light',
-				sources,
-				layers: layers as any,
-			}
-		}
-
-		useEffect(() => {
-			onLoadRef.current = onLoad
-		}, [onLoad])
+	useEffect(() => {
+		onLoadRef.current = onLoad
+	}, [onLoad])
 
 	// Register protocols once
 	useEffect(() => {
@@ -199,11 +198,12 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 		if (!pmtilesProtocolInstance) {
 			pmtilesProtocolInstance = new Protocol()
 		}
+		const protocol = pmtilesProtocolInstance
+
 		if (!pmtilesProtocolRegistered) {
-			maplibregl.addProtocol('pmtiles', pmtilesProtocolInstance.tile)
+			maplibregl.addProtocol('pmtiles', protocol.tile)
 			pmtilesProtocolRegistered = true
 		}
-		protocolRef.current = pmtilesProtocolInstance
 
 		if (!pmworldProtocolRegistered) {
 			maplibregl.addProtocol('pmworld', async (params, abortController) => {
@@ -290,7 +290,7 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 		const setMapLayers = useEditorStore.getState().setMapLayers
 
 		if (mapSource.type !== 'blossom') {
-			setAnnouncement(null)
+			pmworldState.announcement = null
 			setTileSourceMaxZoom(null)
 			setMapLayers([])
 			return
@@ -315,12 +315,17 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 				: null
 		) as AnnouncementRecord | null
 
+		const mapSourceServer = mapSource.blossomServer?.trim()
+		const announcedServer =
+			chunkedVectorLayer &&
+			'blossomServer' in chunkedVectorLayer &&
+			typeof chunkedVectorLayer.blossomServer === 'string'
+				? chunkedVectorLayer.blossomServer.trim()
+				: undefined
+
 		const blossomServer =
-			(mapSource.blossomServer && mapSource.blossomServer.trim().length > 0
-				? mapSource.blossomServer.trim()
-				: chunkedVectorLayer && 'blossomServer' in chunkedVectorLayer
-					? chunkedVectorLayer.blossomServer
-					: 'https://blossom.earthly.city') || 'https://blossom.earthly.city'
+			(mapSourceServer && mapSourceServer.length > 0 ? mapSourceServer : announcedServer) ||
+			'https://blossom.earthly.city'
 
 		pmworldState.blossomServer = blossomServer
 
@@ -342,15 +347,18 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 			setMapLayers([])
 		}
 
+		pmworldState.announcement =
+			announcement && Object.keys(announcement).length > 0 ? announcement : null
+
 		let cancelled = false
 		;(async () => {
 			try {
 				const data = announcement
-				if (!data || Object.keys(data).length === 0) return
+				if (!data || Object.keys(data).length === 0) {
+					setTileSourceMaxZoom(null)
+					return
+				}
 				if (cancelled) return
-
-				setAnnouncement(data)
-				pmworldState.announcement = data
 
 				const firstKey = Object.keys(data)[0]
 				if (firstKey && firstKey.length > 0) {
@@ -379,6 +387,8 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 						pmtilesCache[pmtilesUrl] = pm
 					}
 					const header = await pm.getHeader()
+					if (cancelled) return
+
 					const nativeMaxZoom = header.maxZoom
 					const effectiveMaxZoom =
 						Number.isFinite(nativeMaxZoom) && nativeMaxZoom >= 0
@@ -390,10 +400,13 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 					pmworldState.maxZoom = effectiveMaxZoom
 					setTileSourceMaxZoom(effectiveMaxZoom)
 				} catch {
+					if (cancelled) return
+
 					const fallback =
 						Number.isFinite(announcedMaxZoom) && announcedMaxZoom > 0
 							? announcedMaxZoom
 							: pmworldState.maxZoom
+
 					pmworldState.maxZoom = fallback
 					setTileSourceMaxZoom(fallback)
 				}
@@ -464,29 +477,27 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 
 		// Prevent runtime crashes when styles reference missing sprite icons.
 		// MapLibre emits "styleimagemissing"; we supply a transparent 1x1 placeholder.
-		const onStyleImageMissing = (e: { id: string }) => {
+		const onStyleImageMissing = (e: maplibregl.MapStyleImageMissingEvent) => {
 			try {
 				const id = e.id
 				if (!id) return
 				if (map.hasImage(id)) return
 				// MapLibre accepts ImageData in browsers.
-				const imageData =
+				const imageData:
+					| ImageData
+					| { width: number; height: number; data: Uint8Array | Uint8ClampedArray } =
 					typeof ImageData !== 'undefined'
 						? new ImageData(new Uint8ClampedArray([0, 0, 0, 0]), 1, 1)
 						: { width: 1, height: 1, data: new Uint8Array([0, 0, 0, 0]) }
-				map.addImage(id, imageData as any)
+				map.addImage(id, imageData)
 			} catch {
 				// ignore
 			}
 		}
-		map.on('styleimagemissing', onStyleImageMissing as any)
+		map.on('styleimagemissing', onStyleImageMissing)
 
 		map.on('load', () => {
 			setIsLoaded(true)
-			styleLoadedAtRef.current = Date.now()
-			if (config.isDevelopment && typeof window !== 'undefined') {
-				;(window as any).__earthlyGeoEditorMap = map
-			}
 			onLoadRef.current?.(map)
 		})
 
@@ -504,6 +515,8 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 		mapSource.url,
 		mapSource.file,
 		tileSourceMaxZoom,
+		blossomOverlayStyle.signature,
+		blossomOverlayStyle.overlays,
 	])
 
 	// Cleanup map on unmount only.
@@ -592,7 +605,13 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 		}
 
 		updateStyle()
-	}, [mapSource, initialStyle, tileSourceMaxZoom, blossomOverlayStyle.signature])
+	}, [
+		mapSource,
+		initialStyle,
+		tileSourceMaxZoom,
+		blossomOverlayStyle.signature,
+		blossomOverlayStyle.overlays,
+	])
 
 	// Sync mapLayers store state to MapLibre layers.
 	// Avoid structural style mutations here (add/remove/move layers) to prevent MapLibre placement crashes.
@@ -656,7 +675,8 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 					try {
 						if (styleLayer.type === 'fill') map.setPaintProperty(layerId, 'fill-opacity', opacity)
 						if (styleLayer.type === 'line') map.setPaintProperty(layerId, 'line-opacity', opacity)
-						if (styleLayer.type === 'circle') map.setPaintProperty(layerId, 'circle-opacity', opacity)
+						if (styleLayer.type === 'circle')
+							map.setPaintProperty(layerId, 'circle-opacity', opacity)
 						if (styleLayer.type === 'symbol') {
 							map.setPaintProperty(layerId, 'icon-opacity', opacity)
 							map.setPaintProperty(layerId, 'text-opacity', opacity)
@@ -696,7 +716,6 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 		scheduleApply()
 
 		const onStyleLoad = () => {
-			styleLoadedAtRef.current = Date.now()
 			protomapsLayerIdsRef.current = []
 			scheduleApply()
 		}

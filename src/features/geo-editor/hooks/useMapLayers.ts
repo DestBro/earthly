@@ -78,10 +78,8 @@ export function useMapLayers({
 	resolvedCollectionResolver,
 	resolvedCollectionsVersion,
 }: UseMapLayersOptions) {
-	// Use version to detect when resolved data changes (resolver uses a ref internally)
-	void resolvedCollectionsVersion
 	const [remoteLayersReady, setRemoteLayersReady] = useState(false)
-	const [layersVersion, setLayersVersion] = useState(0)
+	const [styleInitVersion, setStyleInitVersion] = useState(0)
 	const blobPreviewCollection = useEditorStore((state) => state.blobPreviewCollection)
 
 	// Initialize extra layers when map is ready
@@ -95,7 +93,6 @@ export function useMapLayers({
 
 		const initLayers = () => {
 			if (disposed) return
-			let didAdd = false
 			let textFont: string[] | null = null
 			try {
 				// Check if we can safely access the style
@@ -113,7 +110,6 @@ export function useMapLayers({
 						type: 'geojson',
 						data: { type: 'FeatureCollection', features: [] },
 					})
-					didAdd = true
 				}
 				// Add layers only if they don't exist
 				if (!mapInstance.getLayer(REMOTE_FILL_LAYER)) {
@@ -131,7 +127,6 @@ export function useMapLayers({
 							'fill-opacity': 0.15,
 						},
 					})
-					didAdd = true
 				}
 				if (!mapInstance.getLayer(REMOTE_LINE_LAYER)) {
 					mapInstance.addLayer({
@@ -143,7 +138,6 @@ export function useMapLayers({
 							'line-width': 2,
 						},
 					})
-					didAdd = true
 				}
 				// Point layer (excludes annotations)
 				if (!mapInstance.getLayer(REMOTE_POINT_LAYER)) {
@@ -163,7 +157,6 @@ export function useMapLayers({
 							'circle-stroke-color': '#fff',
 						},
 					})
-					didAdd = true
 				}
 
 				// Annotation anchor layer (small circle marker)
@@ -184,13 +177,12 @@ export function useMapLayers({
 							'circle-stroke-color': '#fff',
 						},
 					})
-					didAdd = true
 				}
 
 				// Annotation text layer
 				if (
 					textFont &&
-					(mapInstance.isStyleLoaded() ?? false) &&
+					mapInstance.isStyleLoaded() &&
 					!mapInstance.getLayer(REMOTE_ANNOTATION_LAYER)
 				) {
 					mapInstance.addLayer({
@@ -217,7 +209,6 @@ export function useMapLayers({
 							'text-halo-width': ['coalesce', ['get', 'textHaloWidth'], 1.5],
 						},
 					})
-					didAdd = true
 				}
 
 				// Blob preview source/layers
@@ -226,7 +217,6 @@ export function useMapLayers({
 						type: 'geojson',
 						data: { type: 'FeatureCollection', features: [] },
 					})
-					didAdd = true
 				}
 				if (!mapInstance.getLayer(BLOB_PREVIEW_FILL_LAYER)) {
 					mapInstance.addLayer({
@@ -243,7 +233,6 @@ export function useMapLayers({
 							'fill-opacity': 0.2,
 						},
 					})
-					didAdd = true
 				}
 				if (!mapInstance.getLayer(BLOB_PREVIEW_LINE_LAYER)) {
 					mapInstance.addLayer({
@@ -255,16 +244,14 @@ export function useMapLayers({
 							'line-width': 2,
 						},
 					})
-					didAdd = true
-					}
-					setRemoteLayersReady(true)
-					if (didAdd) {
-						setLayersVersion((prev) => prev + 1)
-					}
-				} catch (error) {
-					console.warn('Failed to initialize remote map layers:', error)
 				}
+
+				setRemoteLayersReady(true)
+				setStyleInitVersion((prev) => prev + 1)
+			} catch (error) {
+				console.warn('Failed to initialize remote map layers:', error)
 			}
+		}
 
 		const scheduleInitLayers = () => {
 			if (disposed) return
@@ -303,12 +290,14 @@ export function useMapLayers({
 
 	// Update remote datasets layer
 	useEffect(() => {
-		if (!mapRef.current) return
+		const map = mapRef.current
+		if (!map) return
 		if (!remoteLayersReady) return
-		void layersVersion
+		void resolvedCollectionsVersion
+		void styleInitVersion
 
 		try {
-			const source = mapRef.current.getSource(REMOTE_SOURCE_ID) as GeoJSONSource | undefined
+			const source = map.getSource(REMOTE_SOURCE_ID) as GeoJSONSource | undefined
 			if (!source) return
 
 			const collection = convertGeoEventsToFeatureCollection(
@@ -319,27 +308,30 @@ export function useMapLayers({
 		} catch {
 			// Map may have been removed during source switch
 		}
-	}, [visibleGeoEvents, resolvedCollectionResolver, remoteLayersReady, mapRef, layersVersion])
+	}, [
+		visibleGeoEvents,
+		resolvedCollectionResolver,
+		resolvedCollectionsVersion,
+		remoteLayersReady,
+		mapRef,
+		styleInitVersion,
+	])
 
 	// Update blob preview layer
 	useEffect(() => {
-		if (!mapRef.current) return
+		const map = mapRef.current
+		if (!map) return
 		if (!remoteLayersReady) return
-		void layersVersion
+		void styleInitVersion
 
 		try {
-			// Don't check isStyleLoaded() - remoteLayersReady guarantees layers exist
-			const source = mapRef.current.getSource(BLOB_PREVIEW_SOURCE_ID) as GeoJSONSource | undefined
+			const source = map.getSource(BLOB_PREVIEW_SOURCE_ID) as GeoJSONSource | undefined
 			if (!source) return
-			if (blobPreviewCollection) {
-				source.setData(blobPreviewCollection)
-			} else {
-				source.setData({ type: 'FeatureCollection', features: [] })
-			}
+			source.setData(blobPreviewCollection ?? { type: 'FeatureCollection', features: [] })
 		} catch {
 			// Map may have been removed during source switch
 		}
-	}, [blobPreviewCollection, remoteLayersReady, mapRef, layersVersion])
+	}, [blobPreviewCollection, remoteLayersReady, mapRef, styleInitVersion])
 
 	return {
 		remoteLayersReady,
