@@ -957,6 +957,7 @@ export class GeoEditor {
 		this.features.set(normalized.id, normalized)
 		this.history.recordCreate([normalized])
 		this.render()
+		this.emit('create', { type: 'create', features: [normalized] })
 	}
 
 	updateFeature(featureId: string, feature: EditorFeature): void {
