@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '../../ui/button'
 import { Input } from '../../ui/input'
 import { GeometryBadge, GeometryDisplay } from './GeometryDisplay'
+import { StylePropertiesSection } from '../StylePropertiesSection'
 
 interface FeatureRowProps {
 	feature: EditorFeature
@@ -32,7 +33,7 @@ function FeatureRow({
 	const [newPropKey, setNewPropKey] = useState('')
 	const [newPropValue, setNewPropValue] = useState('')
 
-	const onFieldChange = (field: 'name' | 'description' | 'color', value: string) => {
+	const onFieldChange = (field: 'name' | 'description', value: string) => {
 		if (!editor) return
 		editor.updateFeature(feature.id, {
 			...feature,
@@ -200,21 +201,16 @@ function FeatureRow({
 						</div>
 					)}
 
-					{/* Name + Color inline */}
-					<div className="flex items-center gap-1">
-						<Input
-							className="h-6 text-xs flex-1"
-							placeholder="Name"
-							value={(feature.properties?.name as string) ?? ''}
-							onChange={(e) => onFieldChange('name', e.target.value)}
-						/>
-						<Input
-							type="color"
-							className="h-6 w-8 p-0.5 rounded border border-gray-200"
-							value={(feature.properties?.color as string) ?? '#16a34a'}
-							onChange={(e) => onFieldChange('color', e.target.value)}
-						/>
-					</div>
+					{/* Name */}
+					<Input
+						className="h-6 text-xs"
+						placeholder="Name"
+						value={(feature.properties?.name as string) ?? ''}
+						onChange={(e) => onFieldChange('name', e.target.value)}
+					/>
+
+					{/* Style Properties Section (for non-annotation features) */}
+					{!isAnnotation && <StylePropertiesSection feature={feature} />}
 
 					{/* Description */}
 					<textarea

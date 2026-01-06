@@ -1,8 +1,11 @@
 import { Plus, Trash2 } from 'lucide-react'
 import type { EditorFeature } from '../../features/geo-editor/core'
+import { isStyleProperty } from '../../features/geo-editor/types/styleProperties'
 import { useEditorStore } from '../../features/geo-editor/store'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
+import { StylePropertiesSection } from './StylePropertiesSection'
+
 
 export interface FeaturePropertiesSectionProps {
 	feature: EditorFeature
@@ -18,7 +21,7 @@ export function FeaturePropertiesSection({ feature }: FeaturePropertiesSectionPr
 
 	const isAnnotation = feature.properties?.featureType === 'annotation'
 
-	const onFieldChange = (field: 'name' | 'description' | 'color', value: string) => {
+	const onFieldChange = (field: 'name' | 'description', value: string) => {
 		if (!editor) return
 		editor.updateFeature(feature.id, {
 			...feature,
@@ -150,21 +153,16 @@ export function FeaturePropertiesSection({ feature }: FeaturePropertiesSectionPr
 				</div>
 			)}
 
-			{/* Name + Color inline */}
-			<div className="flex items-center gap-2">
-				<Input
-					className="h-7 text-xs flex-1"
-					placeholder="Name"
-					value={(feature.properties?.name as string) ?? ''}
-					onChange={(e) => onFieldChange('name', e.target.value)}
-				/>
-				<Input
-					type="color"
-					className="h-7 w-10 p-0.5 rounded border border-gray-200"
-					value={(feature.properties?.color as string) ?? '#16a34a'}
-					onChange={(e) => onFieldChange('color', e.target.value)}
-				/>
-			</div>
+			{/* Name field */}
+			<Input
+				className="h-7 text-xs"
+				placeholder="Name"
+				value={(feature.properties?.name as string) ?? ''}
+				onChange={(e) => onFieldChange('name', e.target.value)}
+			/>
+
+			{/* Style Properties Section (not for annotations - they have their own styling) */}
+			{!isAnnotation && <StylePropertiesSection feature={feature} />}
 
 			{/* Description */}
 			<textarea

@@ -48,16 +48,19 @@ const REMOTE_SOURCE_ID = 'geo-editor-remote-datasets'
 const REMOTE_FILL_LAYER = 'geo-editor-remote-fill'
 const REMOTE_LINE_LAYER = 'geo-editor-remote-line'
 const REMOTE_POINT_LAYER = 'geo-editor-remote-point'
+const REMOTE_LABEL_LAYER = 'geo-editor-remote-label'
 const REMOTE_ANNOTATION_ANCHOR_LAYER = 'geo-editor-remote-annotation-anchor'
 const REMOTE_ANNOTATION_LAYER = 'geo-editor-remote-annotation'
 const BLOB_PREVIEW_SOURCE_ID = 'geo-editor-blob-preview'
 const BLOB_PREVIEW_FILL_LAYER = 'geo-editor-blob-preview-fill'
 const BLOB_PREVIEW_LINE_LAYER = 'geo-editor-blob-preview-line'
 
+
 export {
 	REMOTE_FILL_LAYER,
 	REMOTE_LINE_LAYER,
 	REMOTE_POINT_LAYER,
+	REMOTE_LABEL_LAYER,
 	REMOTE_ANNOTATION_ANCHOR_LAYER,
 	REMOTE_ANNOTATION_LAYER,
 }
@@ -123,8 +126,26 @@ export function useMapLayers({
 							['==', ['geometry-type'], 'MultiPolygon'],
 						],
 						paint: {
-							'fill-color': ['coalesce', ['get', 'color'], '#1d4ed8'],
-							'fill-opacity': 0.15,
+							'fill-color': ['coalesce', ['get', 'fillColor'], ['get', 'color'], '#1d4ed8'],
+							'fill-opacity': ['coalesce', ['get', 'fillOpacity'], 0.15],
+						},
+					})
+				}
+				// Polygon outline layer
+				const REMOTE_POLYGON_STROKE_LAYER = 'geo-editor-remote-polygon-stroke'
+				if (!mapInstance.getLayer(REMOTE_POLYGON_STROKE_LAYER)) {
+					mapInstance.addLayer({
+						id: REMOTE_POLYGON_STROKE_LAYER,
+						type: 'line',
+						source: REMOTE_SOURCE_ID,
+						filter: [
+							'any',
+							['==', ['geometry-type'], 'Polygon'],
+							['==', ['geometry-type'], 'MultiPolygon'],
+						],
+						paint: {
+							'line-color': ['coalesce', ['get', 'strokeColor'], ['get', 'fillColor'], ['get', 'color'], '#1d4ed8'],
+							'line-width': ['coalesce', ['get', 'strokeWidth'], 2],
 						},
 					})
 				}
@@ -133,9 +154,15 @@ export function useMapLayers({
 						id: REMOTE_LINE_LAYER,
 						type: 'line',
 						source: REMOTE_SOURCE_ID,
+						filter: [
+							'any',
+							['==', ['geometry-type'], 'LineString'],
+							['==', ['geometry-type'], 'MultiLineString'],
+						],
 						paint: {
-							'line-color': ['coalesce', ['get', 'color'], '#1d4ed8'],
-							'line-width': 2,
+							'line-color': ['coalesce', ['get', 'strokeColor'], ['get', 'color'], '#1d4ed8'],
+							'line-width': ['coalesce', ['get', 'strokeWidth'], 2],
+							'line-opacity': ['coalesce', ['get', 'strokeOpacity'], 1],
 						},
 					})
 				}
@@ -151,10 +178,10 @@ export function useMapLayers({
 							['!=', ['get', 'featureType'], 'annotation'],
 						],
 						paint: {
-							'circle-radius': 6,
+							'circle-radius': ['coalesce', ['get', 'radius'], 6],
 							'circle-color': ['coalesce', ['get', 'color'], '#1d4ed8'],
-							'circle-stroke-width': 2,
-							'circle-stroke-color': '#fff',
+							'circle-stroke-width': ['coalesce', ['get', 'strokeWidth'], 2],
+							'circle-stroke-color': ['coalesce', ['get', 'strokeColor'], '#fff'],
 						},
 					})
 				}
@@ -179,7 +206,7 @@ export function useMapLayers({
 					})
 				}
 
-				// Annotation text layer
+					// Annotation text layer
 				if (
 					textFont &&
 					mapInstance.isStyleLoaded() &&
@@ -207,6 +234,37 @@ export function useMapLayers({
 							'text-color': ['coalesce', ['get', 'textColor'], '#1f2937'],
 							'text-halo-color': ['coalesce', ['get', 'textHaloColor'], '#ffffff'],
 							'text-halo-width': ['coalesce', ['get', 'textHaloWidth'], 1.5],
+						},
+					})
+				}
+
+				// Feature label layer (for non-annotation features with labels)
+				if (
+					textFont &&
+					mapInstance.isStyleLoaded() &&
+					!mapInstance.getLayer(REMOTE_LABEL_LAYER)
+				) {
+					mapInstance.addLayer({
+						id: REMOTE_LABEL_LAYER,
+						type: 'symbol',
+						source: REMOTE_SOURCE_ID,
+						filter: [
+							'all',
+							['has', 'label'],
+							['!=', ['get', 'featureType'], 'annotation'],
+						],
+						layout: {
+							'text-field': ['get', 'label'],
+							'text-font': textFont,
+							'text-size': 12,
+							'text-anchor': 'center',
+							'text-allow-overlap': false,
+							'text-ignore-placement': false,
+						},
+						paint: {
+							'text-color': '#374151',
+							'text-halo-color': '#ffffff',
+							'text-halo-width': 1.5,
 						},
 					})
 				}

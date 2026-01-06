@@ -58,9 +58,32 @@ export interface EditorFeature extends Feature {
 		featureId?: string
 		name?: string
 		description?: string
-		color?: string
 		customProperties?: Record<string, any>
+
+		// ============================================================================
+		// Style Properties (geometry-specific, used by MapLibre layers)
+		// ============================================================================
+
+		// Point style properties
+		color?: string // Point fill color
+		strokeColor?: string // Point/Line/Polygon stroke color
+		strokeWidth?: number // Point/Line/Polygon stroke width (px)
+		radius?: number // Point radius (px)
+
+		// LineString style properties
+		strokeOpacity?: number // Line opacity (0-1)
+		lineDash?: 'solid' | 'dashed' | 'dotted' // Line dash pattern
+
+		// Polygon style properties
+		fillColor?: string // Polygon fill color
+		fillOpacity?: number // Polygon fill opacity (0-1)
+
+		// Label (all geometry types)
+		label?: string // Text label displayed at centroid
+
+		// ============================================================================
 		// Annotation-specific properties (flat for MapLibre compatibility)
+		// ============================================================================
 		featureType?: 'annotation' | 'marker'
 		text?: string
 		textFontSize?: number

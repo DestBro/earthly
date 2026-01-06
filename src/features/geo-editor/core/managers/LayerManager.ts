@@ -24,6 +24,7 @@ export class LayerManager {
 	readonly LAYER_LINE = 'geo-editor-line'
 	readonly LAYER_FILL = 'geo-editor-fill'
 	readonly LAYER_POINT = 'geo-editor-point'
+	readonly LAYER_LABEL = 'geo-editor-label'
 	readonly LAYER_ANNOTATION_ANCHOR = 'geo-editor-annotation-anchor'
 	readonly LAYER_ANNOTATION = 'geo-editor-annotation'
 	readonly LAYER_VERTEX = 'geo-editor-vertex'
@@ -193,10 +194,14 @@ export class LayerManager {
 							'case',
 							['==', ['get', 'active'], true],
 							'#fbb03b',
-							['coalesce', ['get', 'color'], '#3bb2d0'],
+							['coalesce', ['get', 'fillColor'], ['get', 'color'], '#3bb2d0'],
 						],
-						'fill-opacity': ['case', ['==', ['get', 'meta'], 'feature-temp'], 0.2, 0.3],
-						'fill-outline-color': ['case', ['==', ['get', 'active'], true], '#1d4ed8', '#1f2937'],
+						'fill-opacity': [
+							'case',
+							['==', ['get', 'meta'], 'feature-temp'],
+							0.2,
+							['coalesce', ['get', 'fillOpacity'], 0.3],
+						],
 					},
 				})
 			}
@@ -241,10 +246,15 @@ export class LayerManager {
 							'case',
 							['==', ['get', 'active'], true],
 							'#1d4ed8',
-							['coalesce', ['get', 'color'], '#3bb2d0'],
+							['coalesce', ['get', 'strokeColor'], ['get', 'color'], '#3bb2d0'],
 						],
-						'line-width': ['case', ['==', ['get', 'active'], true], 4, 2],
-						'line-dasharray': ['literal', [2, 2]],
+						'line-width': [
+							'case',
+							['==', ['get', 'active'], true],
+							4,
+							['coalesce', ['get', 'strokeWidth'], 2],
+						],
+						'line-opacity': ['coalesce', ['get', 'strokeOpacity'], 1],
 					},
 				})
 			}
@@ -283,15 +293,30 @@ export class LayerManager {
 						['!=', ['get', 'featureType'], 'annotation'],
 					],
 					paint: {
-						'circle-radius': ['case', ['==', ['get', 'active'], true], 8, 6],
+						'circle-radius': [
+							'case',
+							['==', ['get', 'active'], true],
+							['coalesce', ['+', ['get', 'radius'], 2], 8],
+							['coalesce', ['get', 'radius'], 6],
+						],
 						'circle-color': [
 							'case',
 							['==', ['get', 'active'], true],
 							'#1d4ed8',
 							['coalesce', ['get', 'color'], '#3bb2d0'],
 						],
-						'circle-stroke-width': ['case', ['==', ['get', 'active'], true], 3, 2],
-						'circle-stroke-color': ['case', ['==', ['get', 'active'], true], '#93c5fd', '#fff'],
+						'circle-stroke-width': [
+							'case',
+							['==', ['get', 'active'], true],
+							3,
+							['coalesce', ['get', 'strokeWidth'], 2],
+						],
+						'circle-stroke-color': [
+							'case',
+							['==', ['get', 'active'], true],
+							'#93c5fd',
+							['coalesce', ['get', 'strokeColor'], '#fff'],
+						],
 					},
 				})
 			}
@@ -362,6 +387,38 @@ export class LayerManager {
 							['coalesce', ['get', 'textHaloColor'], '#ffffff'],
 						],
 						'text-halo-width': ['coalesce', ['get', 'textHaloWidth'], 1.5],
+					},
+				})
+			}
+
+			// 5d. Feature label layer (for non-annotation features with labels)
+			if (
+				annotationTextFont &&
+				(this.map.isStyleLoaded() ?? false) &&
+				!this.map.getLayer(this.LAYER_LABEL)
+			) {
+				this.map.addLayer({
+					id: this.LAYER_LABEL,
+					type: 'symbol',
+					source: this.SOURCE_ID,
+					filter: [
+						'all',
+						['==', ['get', 'meta'], 'feature'],
+						['!=', ['get', 'featureType'], 'annotation'],
+						['has', 'label'],
+					],
+					layout: {
+						'text-field': ['get', 'label'],
+						'text-font': annotationTextFont,
+						'text-size': 12,
+						'text-anchor': 'center',
+						'text-allow-overlap': false,
+						'text-ignore-placement': false,
+					},
+					paint: {
+						'text-color': '#374151',
+						'text-halo-color': '#ffffff',
+						'text-halo-width': 1.5,
 					},
 				})
 			}
@@ -529,6 +586,7 @@ export class LayerManager {
 			if (this.map.getLayer(this.LAYER_GIZMO_LINE)) this.map.removeLayer(this.LAYER_GIZMO_LINE)
 			if (this.map.getLayer(this.LAYER_SELECTION_POINT))
 				this.map.removeLayer(this.LAYER_SELECTION_POINT)
+			if (this.map.getLayer(this.LAYER_LABEL)) this.map.removeLayer(this.LAYER_LABEL)
 			if (this.map.getLayer(this.LAYER_ANNOTATION)) this.map.removeLayer(this.LAYER_ANNOTATION)
 			if (this.map.getLayer(this.LAYER_ANNOTATION_ANCHOR))
 				this.map.removeLayer(this.LAYER_ANNOTATION_ANCHOR)
