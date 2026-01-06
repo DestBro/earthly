@@ -311,7 +311,6 @@ export class NDKGeoEvent extends NDKEvent {
 			deletion.tags.push(['e', dataset.id])
 		}
 
-		await deletion.sign(signer)
 		await deletion.publish()
 	}
 }
