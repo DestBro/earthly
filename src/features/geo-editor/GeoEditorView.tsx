@@ -596,6 +596,9 @@ export function GeoEditorView() {
 		if (!map.current || !remoteLayersReady) return
 		const mapInstance = map.current
 
+		// Check if we are in a drawing mode
+		const isInDrawingMode = currentMode.startsWith('draw_')
+
 		const remoteLayers = [
 			REMOTE_FILL_LAYER,
 			REMOTE_LINE_LAYER,
@@ -605,6 +608,9 @@ export function GeoEditorView() {
 		]
 
 		const handleMapDatasetClick = (event: maplibregl.MapLayerMouseEvent & any) => {
+			// Do not focus other datasets while in drawing mode
+			if (isInDrawingMode) return
+
 			const feature = event.features?.[0]
 			if (!feature?.properties) return
 			const sourceEventId = feature.properties.sourceEventId as string | undefined
@@ -621,10 +627,13 @@ export function GeoEditorView() {
 		}
 
 		const handleMouseEnter = () => {
+			// Keep default cursor in drawing mode
+			if (isInDrawingMode) return
 			mapInstance.getCanvas().style.cursor = 'pointer'
 		}
 
 		const handleMouseLeave = () => {
+			if (isInDrawingMode) return
 			mapInstance.getCanvas().style.cursor = ''
 		}
 
@@ -647,7 +656,7 @@ export function GeoEditorView() {
 				}
 			}
 		}
-	}, [handleInspectDataset, ensureResolvedFeatureCollection, geoEventsRef, remoteLayersReady])
+	}, [handleInspectDataset, ensureResolvedFeatureCollection, geoEventsRef, remoteLayersReady, currentMode])
 
 	// Inspector click handling
 	useEffect(() => {
