@@ -1,4 +1,5 @@
 import {
+	Combine,
 	Copy,
 	CopyPlus,
 	Crosshair,
@@ -9,6 +10,7 @@ import {
 	Magnet,
 	MapPin,
 	Merge,
+	Minus,
 	MousePointer2,
 	Pentagon,
 	Redo2,
@@ -259,6 +261,20 @@ export function Toolbar({
 		editor?.duplicateSelectedFeatures()
 	}
 
+	const handleBooleanUnion = () => {
+		editor?.startBooleanUnion()
+	}
+
+	const handleBooleanDifference = () => {
+		editor?.startBooleanDifference()
+	}
+
+	// Check if single polygon is selected (required for boolean ops)
+	const selectedFeatures = editor?.getSelectedFeatures() ?? []
+	const singlePolygonSelected = selectedFeatures.length === 1 && 
+		(selectedFeatures[0]?.geometry.type === 'Polygon' || selectedFeatures[0]?.geometry.type === 'MultiPolygon')
+	const booleanOpActive = editor?.getBooleanOperation()
+
 	const datasetsOpen = isMobile ? mobileDatasetsOpen : showDatasetsPanel
 	const infoPanelOpen = isMobile ? mobileInfoOpen : showInfoPanel
 
@@ -389,6 +405,24 @@ export function Toolbar({
 			disabled: isEditingDisabled,
 			ariaLabel: 'Duplicate',
 			description: 'Duplicate selected features',
+		},
+		{
+			key: 'union',
+			icon: Combine,
+			onClick: handleBooleanUnion,
+			disabled: isEditingDisabled || !singlePolygonSelected,
+			variant: booleanOpActive?.type === 'union' ? 'default' : 'outline',
+			ariaLabel: 'Union',
+			description: 'Union: combine two polygons',
+		},
+		{
+			key: 'difference',
+			icon: Minus,
+			onClick: handleBooleanDifference,
+			disabled: isEditingDisabled || !singlePolygonSelected,
+			variant: booleanOpActive?.type === 'difference' ? 'default' : 'outline',
+			ariaLabel: 'Difference',
+			description: 'Difference: subtract second polygon',
 		},
 	]
 

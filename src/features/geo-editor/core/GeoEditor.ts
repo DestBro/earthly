@@ -84,6 +84,10 @@ export class GeoEditor {
 	private touchDrawInProgress: boolean = false
 	private lastTouchPoint?: ScreenPoint
 	private vertexDragMoved: boolean = false
+	private booleanOperation?: {
+		type: 'union' | 'difference'
+		firstFeatureId: string
+	}
 	private readonly DRAW_MIN_LINE_POINTS = 2
 	private readonly DRAW_MIN_POLYGON_POINTS = 3
 	private readonly keyDownHandler = this.onKeyDown.bind(this)
@@ -293,6 +297,20 @@ export class GeoEditor {
 		if (features.length > 0) {
 			const featureId = this.getRenderedFeatureId(features[0])
 			if (!featureId) return
+
+			// If in boolean operation mode, complete the operation with this feature
+			if (this.booleanOperation) {
+				const clickedFeature = this.features.get(featureId)
+				if (
+					clickedFeature &&
+					featureId !== this.booleanOperation.firstFeatureId &&
+					(clickedFeature.geometry.type === 'Polygon' || clickedFeature.geometry.type === 'MultiPolygon')
+				) {
+					this.completeBooleanOperation(featureId)
+				}
+				return
+			}
+
 			if (!this.isMultiSelectEvent(e.originalEvent)) {
 				this.selection.clearSelection()
 			}
@@ -303,6 +321,11 @@ export class GeoEditor {
 				features: this.getSelectedFeatures(),
 			})
 		} else if (!this.isMultiSelectEvent(e.originalEvent)) {
+			// Cancel boolean operation if clicking empty space
+			if (this.booleanOperation) {
+				this.cancelBooleanOperation()
+				return
+			}
 			this.selection.clearSelection()
 			this.updateActiveStates()
 			this.emit('selection.change', { type: 'selection.change', features: [] })
@@ -1058,6 +1081,129 @@ export class GeoEditor {
 			type: 'selection.change',
 			features: duplicates,
 		})
+	}
+
+	// Boolean Operations
+	startBooleanUnion(): boolean {
+		const selected = this.getSelectedFeatures()
+		if (selected.length !== 1) return false
+		
+		const feature = selected[0]
+		if (feature.geometry.type !== 'Polygon' && feature.geometry.type !== 'MultiPolygon') {
+			return false
+		}
+
+		this.booleanOperation = {
+			type: 'union',
+			firstFeatureId: feature.id,
+		}
+		this.emit('mode.change', { type: 'mode.change', mode: this.mode })
+		return true
+	}
+
+	startBooleanDifference(): boolean {
+		const selected = this.getSelectedFeatures()
+		if (selected.length !== 1) return false
+		
+		const feature = selected[0]
+		if (feature.geometry.type !== 'Polygon' && feature.geometry.type !== 'MultiPolygon') {
+			return false
+		}
+
+		this.booleanOperation = {
+			type: 'difference',
+			firstFeatureId: feature.id,
+		}
+		this.emit('mode.change', { type: 'mode.change', mode: this.mode })
+		return true
+	}
+
+	cancelBooleanOperation(): void {
+		this.booleanOperation = undefined
+		this.emit('mode.change', { type: 'mode.change', mode: this.mode })
+	}
+
+	getBooleanOperation(): { type: 'union' | 'difference'; firstFeatureId: string } | undefined {
+		return this.booleanOperation
+	}
+
+	completeBooleanOperation(secondFeatureId: string): boolean {
+		if (!this.booleanOperation) return false
+		
+		const firstFeature = this.features.get(this.booleanOperation.firstFeatureId)
+		const secondFeature = this.features.get(secondFeatureId)
+		
+		if (!firstFeature || !secondFeature) {
+			this.cancelBooleanOperation()
+			return false
+		}
+
+		// Ensure both are polygons
+		if (
+			(firstFeature.geometry.type !== 'Polygon' && firstFeature.geometry.type !== 'MultiPolygon') ||
+			(secondFeature.geometry.type !== 'Polygon' && secondFeature.geometry.type !== 'MultiPolygon')
+		) {
+			this.cancelBooleanOperation()
+			return false
+		}
+
+		try {
+			let result: Feature | null = null
+
+			// Cast to proper polygon types for turf
+			const poly1 = turf.polygon((firstFeature.geometry as any).coordinates)
+			const poly2 = turf.polygon((secondFeature.geometry as any).coordinates)
+
+			if (this.booleanOperation.type === 'union') {
+				result = turf.union(turf.featureCollection([poly1, poly2]))
+			} else {
+				result = turf.difference(turf.featureCollection([poly1, poly2]))
+			}
+
+			if (!result || !result.geometry) {
+				this.cancelBooleanOperation()
+				return false
+			}
+
+			// Create new feature with result geometry
+			const newFeature: EditorFeature = {
+				...firstFeature,
+				id: crypto.randomUUID(),
+				geometry: result.geometry as Geometry,
+				properties: {
+					...firstFeature.properties,
+					featureId: crypto.randomUUID(),
+				},
+			}
+
+			const normalized = this.normalizeFeature(newFeature)
+
+			// Delete original features
+			this.features.delete(firstFeature.id)
+			this.features.delete(secondFeature.id)
+
+			// Add result
+			this.features.set(normalized.id, normalized)
+			this.history.recordUpdate([normalized], [firstFeature, secondFeature])
+
+			// Select the result
+			this.selection.clearSelection()
+			this.selection.select([normalized.id])
+
+			this.render()
+			this.emit('update', { type: 'update', features: [normalized] })
+			this.emit('selection.change', {
+				type: 'selection.change',
+				features: [normalized],
+			})
+		} catch (error) {
+			console.error('Boolean operation failed:', error)
+			this.cancelBooleanOperation()
+			return false
+		}
+
+		this.booleanOperation = undefined
+		return true
 	}
 
 	addFeature(feature: EditorFeature): void {
