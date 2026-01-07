@@ -190,6 +190,7 @@ export class RenderingManager {
 			feature: EditorFeature,
 		) => Array<{ position: Position; path: number[] }>,
 		extractMidpoints: (feature: EditorFeature) => Array<{ position: Position; path: number[] }>,
+		selectedVertex?: { featureId: string; coordinatePath: number[] },
 	): void {
 		const source = this.layers.getGeoJSONSource(this.layers.SOURCE_VERTICES)
 		if (!source) return
@@ -205,6 +206,10 @@ export class RenderingManager {
 			// Add vertices
 			const vertices = extractVerticesWithPaths(feature)
 			vertices.forEach(({ position, path }) => {
+				const isSelected = selectedVertex &&
+					selectedVertex.featureId === feature.id &&
+					JSON.stringify(selectedVertex.coordinatePath) === JSON.stringify(path)
+				
 				vertexFeatures.push({
 					type: 'Feature',
 					geometry: {
@@ -215,6 +220,7 @@ export class RenderingManager {
 						meta: 'vertex',
 						featureId: feature.id,
 						path: JSON.stringify(path),
+						selected: isSelected ? true : undefined,
 					},
 				})
 			})

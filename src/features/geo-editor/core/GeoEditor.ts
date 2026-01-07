@@ -83,6 +83,7 @@ export class GeoEditor {
 	private panLockDragPanWasEnabled: boolean = false
 	private touchDrawInProgress: boolean = false
 	private lastTouchPoint?: ScreenPoint
+	private vertexDragMoved: boolean = false
 	private readonly DRAW_MIN_LINE_POINTS = 2
 	private readonly DRAW_MIN_POLYGON_POINTS = 3
 	private readonly keyDownHandler = this.onKeyDown.bind(this)
@@ -375,9 +376,14 @@ export class GeoEditor {
 			const featureId = vertex.properties?.featureId as string
 			const path = JSON.parse(vertex.properties?.path as string)
 
+			this.vertexDragMoved = false
 			this.editMode.setDraggingVertex(featureId, path, [e.lngLat.lng, e.lngLat.lat])
 			this.map.getCanvas().style.cursor = 'grabbing'
 			e.preventDefault()
+		} else {
+			// Clicked on empty space in edit mode - clear vertex selection
+			this.editMode.clearSelectedVertex()
+			this.renderVertices()
 		}
 	}
 
@@ -399,6 +405,14 @@ export class GeoEditor {
 
 		const state = this.editMode.getState()
 		if (state.draggingVertex) {
+			const { featureId, coordinatePath } = state.draggingVertex
+			
+			// If we didn't move, this is a click - select the vertex
+			if (!this.vertexDragMoved) {
+				this.editMode.setSelectedVertex(featureId, coordinatePath)
+				this.renderVertices()
+			}
+			
 			this.editMode.clearDragging()
 			this.map.getCanvas().style.cursor = ''
 		}
@@ -482,6 +496,7 @@ export class GeoEditor {
 		} else if (this.mode === 'edit') {
 			const state = this.editMode.getState()
 			if (state.draggingVertex) {
+				this.vertexDragMoved = true
 				const { featureId, coordinatePath } = state.draggingVertex
 				const feature = this.features.get(featureId)
 
@@ -541,10 +556,40 @@ export class GeoEditor {
 			return
 		}
 
+		// Copy selected features to clipboard
+		if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
+			const selected = this.getSelectedFeatures()
+			if (selected.length > 0) {
+				e.preventDefault()
+				this.copySelectedFeatures()
+				return
+			}
+		}
+
+		// Duplicate selected features
+		if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
+			const selected = this.getSelectedFeatures()
+			if (selected.length > 0) {
+				e.preventDefault()
+				this.duplicateSelectedFeatures()
+				return
+			}
+		}
+
 		if (
 			e.key === 'Delete' ||
 			(e.key === 'Backspace' && (this.mode === 'select' || this.mode === 'edit'))
 		) {
+			// In edit mode, check if there's a selected vertex to delete first
+			if (this.mode === 'edit') {
+				const selectedVertex = this.editMode.getSelectedVertex()
+				if (selectedVertex) {
+					e.preventDefault()
+					this.deleteSelectedVertex()
+					return
+				}
+			}
+			
 			const selected = this.getSelectedFeatures()
 			if (selected.length > 0) {
 				e.preventDefault()
@@ -950,6 +995,69 @@ export class GeoEditor {
 		})
 		this.emit('update', { type: 'update', features: newFeatures })
 		return true
+	}
+
+	copySelectedFeatures(): void {
+		const selected = this.getSelectedFeatures()
+		if (selected.length === 0) return
+
+		const geojson = {
+			type: 'FeatureCollection' as const,
+			features: selected.map((f) => ({
+				...f,
+				properties: { ...f.properties, meta: 'feature' },
+			})),
+		}
+
+		navigator.clipboard.writeText(JSON.stringify(geojson, null, 2)).catch((err) => {
+			console.error('Failed to copy to clipboard:', err)
+		})
+	}
+
+	deleteSelectedVertex(): void {
+		const selectedVertex = this.editMode.getSelectedVertex()
+		if (!selectedVertex) return
+
+		const { featureId, coordinatePath } = selectedVertex
+		const feature = this.features.get(featureId)
+		if (!feature) return
+
+		const updated = this.editMode.removeVertex(feature, coordinatePath)
+		if (updated) {
+			this.updateFeature(featureId, updated)
+			this.editMode.clearSelectedVertex()
+			this.renderVertices()
+		}
+	}
+
+	duplicateSelectedFeatures(): void {
+		const selected = this.getSelectedFeatures()
+		if (selected.length === 0) return
+
+		const duplicates: EditorFeature[] = selected.map((f) => {
+			const clone = this.cloneFeature(f)
+			clone.id = crypto.randomUUID()
+			clone.properties = {
+				...clone.properties,
+				featureId: clone.id,
+			}
+			return this.normalizeFeature(clone)
+		})
+
+		// Add duplicates to the map
+		duplicates.forEach((f) => this.features.set(f.id, f))
+		this.history.recordCreate(duplicates)
+
+		// Select the duplicates
+		this.selection.clearSelection()
+		this.selection.select(duplicates.map((f) => f.id))
+
+		this.render()
+		this.emit('create', { type: 'create', features: duplicates })
+		this.emit('selection.change', {
+			type: 'selection.change',
+			features: duplicates,
+		})
 	}
 
 	addFeature(feature: EditorFeature): void {
@@ -1402,11 +1510,13 @@ export class GeoEditor {
 	}
 
 	private renderVertices(): void {
+		const selectedVertex = this.editMode.getSelectedVertex()
 		this.rendering.renderVertices(
 			this.mode,
 			this.getAllFeatures(),
 			(feature) => this.editMode.extractVerticesWithPaths(feature),
 			(feature) => this.editMode.extractMidpoints(feature),
+			selectedVertex,
 		)
 	}
 }

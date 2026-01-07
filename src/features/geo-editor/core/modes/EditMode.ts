@@ -19,6 +19,10 @@ export interface EditState {
 		featureId: string
 		coordinatePath: number[]
 	}
+	selectedVertex?: {
+		featureId: string
+		coordinatePath: number[]
+	}
 }
 
 export class EditMode {
@@ -72,6 +76,21 @@ export class EditMode {
 
 	clearHovered(): void {
 		this.state.hoveredVertex = undefined
+	}
+
+	setSelectedVertex(featureId: string, coordinatePath: number[]): void {
+		this.state.selectedVertex = {
+			featureId,
+			coordinatePath,
+		}
+	}
+
+	clearSelectedVertex(): void {
+		this.state.selectedVertex = undefined
+	}
+
+	getSelectedVertex(): EditState['selectedVertex'] {
+		return this.state.selectedVertex
 	}
 
 	isDragging(): boolean {

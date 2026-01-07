@@ -1,4 +1,5 @@
 import {
+	Copy,
 	CopyPlus,
 	Crosshair,
 	Download,
@@ -254,6 +255,10 @@ export function Toolbar({
 		editor?.splitSelectedFeatures()
 	}
 
+	const handleDuplicate = () => {
+		editor?.duplicateSelectedFeatures()
+	}
+
 	const datasetsOpen = isMobile ? mobileDatasetsOpen : showDatasetsPanel
 	const infoPanelOpen = isMobile ? mobileInfoOpen : showInfoPanel
 
@@ -376,6 +381,14 @@ export function Toolbar({
 			disabled: isEditingDisabled,
 			ariaLabel: 'Split',
 			description: 'Split feature at vertex',
+		},
+		{
+			key: 'duplicate',
+			icon: Copy,
+			onClick: handleDuplicate,
+			disabled: isEditingDisabled,
+			ariaLabel: 'Duplicate',
+			description: 'Duplicate selected features',
 		},
 	]
 
