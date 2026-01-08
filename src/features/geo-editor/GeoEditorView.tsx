@@ -33,6 +33,7 @@ import {
 	useMapLayers,
 	usePublishing,
 	useViewMode,
+	useRouting,
 	REMOTE_FILL_LAYER,
 	REMOTE_LINE_LAYER,
 	REMOTE_POINT_LAYER,
@@ -206,11 +207,44 @@ export function GeoEditorView() {
 		handleOpenDebug,
 	} = useViewMode({ geoEvents, onEnsureInfoPanelVisible: ensureInfoPanelVisible })
 
-	// Visible geo events based on visibility toggle
-	const visibleGeoEvents = useMemo(
-		() => geoEvents.filter((event) => datasetVisibility[getDatasetKey(event)] !== false),
-		[geoEvents, datasetVisibility, getDatasetKey],
-	)
+	// Routing hook for URL-based focus mode
+	const { route, navigateTo, navigateHome, encodeGeoEventNaddr, encodeCollectionNaddr, isFocused } =
+		useRouting()
+
+	// Store focus state
+	const focusedNaddr = useEditorStore((state) => state.focusedNaddr)
+	const focusedType = useEditorStore((state) => state.focusedType)
+
+	// Visible geo events based on visibility toggle and focus mode
+	const visibleGeoEvents = useMemo(() => {
+		// If in focused mode, filter to show only the focused item(s)
+		if (focusedNaddr && focusedType) {
+			if (focusedType === 'geoevent') {
+				// Find the single dataset that matches the naddr
+				const dataset = geoEvents.find((event) => {
+					const eventNaddr = encodeGeoEventNaddr(event)
+					return eventNaddr === focusedNaddr
+				})
+				return dataset ? [dataset] : []
+			} else if (focusedType === 'collection') {
+				// Find the collection and return its referenced datasets
+				const collection = collectionEvents.find((col) => {
+					const colNaddr = encodeCollectionNaddr(col)
+					return colNaddr === focusedNaddr
+				})
+				if (!collection) return []
+				const references = new Set(collection.datasetReferences)
+				return geoEvents.filter((event) => {
+					const datasetId = event.datasetId ?? event.dTag ?? event.id
+					if (!datasetId) return false
+					const coordinate = `${event.kind ?? 31991}:${event.pubkey}:${datasetId}`
+					return references.has(coordinate)
+				})
+			}
+		}
+		// Default: filter by visibility toggles
+		return geoEvents.filter((event) => datasetVisibility[getDatasetKey(event)] !== false)
+	}, [geoEvents, collectionEvents, datasetVisibility, getDatasetKey, focusedNaddr, focusedType, encodeGeoEventNaddr, encodeCollectionNaddr])
 
 	useEffect(() => {
 		featuresRef.current = features
@@ -338,6 +372,35 @@ export function GeoEditorView() {
 		setShowDatasetsPanel,
 		setShowInfoPanel,
 	])
+
+	// Handle initial route on page load (direct URL navigation)
+	useEffect(() => {
+		if (route.type === 'home' || !route.naddr) return
+		// Wait for data to be available
+		if (geoEvents.length === 0 && collectionEvents.length === 0) return
+
+		if (route.type === 'geoevent') {
+			// Find the dataset matching the naddr
+			const dataset = geoEvents.find((event) => {
+				const eventNaddr = encodeGeoEventNaddr(event)
+				return eventNaddr === route.naddr
+			})
+			if (dataset) {
+				handleInspectDataset(dataset)
+			}
+		} else if (route.type === 'collection') {
+			// Find the collection matching the naddr
+			const collection = collectionEvents.find((col) => {
+				const colNaddr = encodeCollectionNaddr(col)
+				return colNaddr === route.naddr
+			})
+			if (collection) {
+				handleInspectCollection(collection, [])
+			}
+		}
+		// Only run once when data becomes available
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [route.type, route.naddr, geoEvents.length, collectionEvents.length])
 
 	// Lock document scrolling on mobile to prevent address bar jitter during map gestures.
 	useEffect(() => {

@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { nip19 } from 'nostr-tools'
 import type { NDKGeoCollectionEvent } from '../../../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../../../lib/ndk/NDKGeoEvent'
 import { useEditorStore } from '../store'
@@ -6,6 +7,42 @@ import { useEditorStore } from '../store'
 interface UseViewModeOptions {
 	geoEvents: NDKGeoEvent[]
 	onEnsureInfoPanelVisible: () => void
+}
+
+/**
+ * Generate naddr for a geo event
+ */
+function encodeGeoEventNaddr(event: NDKGeoEvent): string | null {
+	const identifier = event.datasetId ?? event.dTag
+	if (!identifier || !event.kind) return null
+
+	try {
+		return nip19.naddrEncode({
+			kind: event.kind,
+			pubkey: event.pubkey,
+			identifier,
+		})
+	} catch {
+		return null
+	}
+}
+
+/**
+ * Generate naddr for a collection
+ */
+function encodeCollectionNaddr(event: NDKGeoCollectionEvent): string | null {
+	const identifier = event.dTag
+	if (!identifier || !event.kind) return null
+
+	try {
+		return nip19.naddrEncode({
+			kind: event.kind,
+			pubkey: event.pubkey,
+			identifier,
+		})
+	} catch {
+		return null
+	}
 }
 
 export function useViewMode({ geoEvents, onEnsureInfoPanelVisible }: UseViewModeOptions) {
@@ -25,6 +62,7 @@ export function useViewMode({ geoEvents, onEnsureInfoPanelVisible }: UseViewMode
 	const setViewingCollection = useEditorStore((state) => state.setViewCollection)
 	const setViewingCollectionEvents = useEditorStore((state) => state.setViewCollectionEvents)
 	const setViewMode = useEditorStore((state) => state.setViewMode)
+	const clearFocused = useEditorStore((state) => state.clearFocused)
 
 	const resolveEventsForCollection = useCallback(
 		(collection: NDKGeoCollectionEvent): NDKGeoEvent[] => {
@@ -47,7 +85,10 @@ export function useViewMode({ geoEvents, onEnsureInfoPanelVisible }: UseViewMode
 		setViewingCollection(null)
 		setViewingCollectionEvents([])
 		setSidebarMode('editor')
-	}, [setViewingDataset, setViewingCollection, setViewingCollectionEvents, setViewMode])
+		// Clear URL and focus state
+		clearFocused()
+		window.location.hash = '/'
+	}, [setViewingDataset, setViewingCollection, setViewingCollectionEvents, setViewMode, clearFocused])
 
 	const handleInspectDataset = useCallback(
 		(event: NDKGeoEvent) => {
@@ -58,6 +99,12 @@ export function useViewMode({ geoEvents, onEnsureInfoPanelVisible }: UseViewMode
 			setViewMode('view')
 			setSidebarMode('dataset')
 			onEnsureInfoPanelVisible()
+
+			// Update URL with naddr
+			const naddr = encodeGeoEventNaddr(event)
+			if (naddr) {
+				window.location.hash = `/geoevent/${naddr}`
+			}
 		},
 		[
 			setViewingDataset,
@@ -79,6 +126,12 @@ export function useViewMode({ geoEvents, onEnsureInfoPanelVisible }: UseViewMode
 			setViewMode('view')
 			setSidebarMode('dataset')
 			onEnsureInfoPanelVisible()
+
+			// Update URL with naddr
+			const naddr = encodeCollectionNaddr(collection)
+			if (naddr) {
+				window.location.hash = `/collection/${naddr}`
+			}
 		},
 		[
 			resolveEventsForCollection,
@@ -114,3 +167,4 @@ export function useViewMode({ geoEvents, onEnsureInfoPanelVisible }: UseViewMode
 		resolveEventsForCollection,
 	}
 }
+

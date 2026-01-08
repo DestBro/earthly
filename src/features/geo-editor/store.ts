@@ -69,6 +69,10 @@ interface EditorState {
 	viewCollection: NDKGeoCollectionEvent | null
 	viewCollectionEvents: NDKGeoEvent[]
 
+	// Focus State (for URL routing)
+	focusedNaddr: string | null
+	focusedType: 'geoevent' | 'collection' | null
+
 	// UI Input State (moved from view)
 	newCollectionProp: { key: string; value: string }
 	newFeatureProp: { key: string; value: string }
@@ -127,6 +131,10 @@ interface EditorState {
 	setViewDataset: (dataset: NDKGeoEvent | null) => void
 	setViewCollection: (collection: NDKGeoCollectionEvent | null) => void
 	setViewCollectionEvents: (events: NDKGeoEvent[]) => void
+
+	// Focus Actions
+	setFocused: (type: 'geoevent' | 'collection', naddr: string) => void
+	clearFocused: () => void
 
 	setNewCollectionProp: (prop: { key: string; value: string }) => void
 	setNewFeatureProp: (prop: { key: string; value: string }) => void
@@ -210,6 +218,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	viewDataset: null,
 	viewCollection: null,
 	viewCollectionEvents: [],
+
+	// Focus State
+	focusedNaddr: null,
+	focusedType: null,
 
 	newCollectionProp: { key: '', value: '' },
 	newFeatureProp: { key: '', value: '' },
@@ -405,6 +417,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	setViewDataset: (viewDataset) => set({ viewDataset }),
 	setViewCollection: (viewCollection) => set({ viewCollection }),
 	setViewCollectionEvents: (viewCollectionEvents) => set({ viewCollectionEvents }),
+
+	// Focus Actions
+	setFocused: (type, naddr) => set({ focusedType: type, focusedNaddr: naddr }),
+	clearFocused: () => set({ focusedType: null, focusedNaddr: null }),
 
 	setNewCollectionProp: (newCollectionProp) => set({ newCollectionProp }),
 	setNewFeatureProp: (newFeatureProp) => set({ newFeatureProp }),
