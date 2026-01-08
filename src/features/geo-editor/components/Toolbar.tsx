@@ -153,7 +153,9 @@ export function Toolbar({
 	const setShowInfoPanel = useEditorStore((state) => state.setShowInfoPanel)
 	const setMobileActiveState = useEditorStore((state) => state.setMobileActiveState)
 	const mobileDatasetsOpen = useEditorStore((state) => state.mobileDatasetsOpen)
+	const setMobileDatasetsOpen = useEditorStore((state) => state.setMobileDatasetsOpen)
 	const mobileInfoOpen = useEditorStore((state) => state.mobileInfoOpen)
+	const setMobileInfoOpen = useEditorStore((state) => state.setMobileInfoOpen)
 	const mobileToolsOpen = useEditorStore((state) => state.mobileToolsOpen)
 	const mobileSearchOpen = useEditorStore((state) => state.mobileSearchOpen)
 	const mobileActionsOpen = useEditorStore((state) => state.mobileActionsOpen)
@@ -208,7 +210,9 @@ export function Toolbar({
 
 	const handleToggleDatasets = () => {
 		if (isMobile) {
-			setMobileActiveState(mobileDatasetsOpen ? null : 'datasets')
+			// Only close the other drawer, preserve toolbar state
+			setMobileInfoOpen(false)
+			setMobileDatasetsOpen(!mobileDatasetsOpen)
 		} else {
 			setShowDatasetsPanel(!showDatasetsPanel)
 		}
@@ -216,7 +220,9 @@ export function Toolbar({
 
 	const handleToggleInfo = () => {
 		if (isMobile) {
-			setMobileActiveState(mobileInfoOpen ? null : 'info')
+			// Only close the other drawer, preserve toolbar state
+			setMobileDatasetsOpen(false)
+			setMobileInfoOpen(!mobileInfoOpen)
 		} else {
 			setShowInfoPanel(!showInfoPanel)
 		}

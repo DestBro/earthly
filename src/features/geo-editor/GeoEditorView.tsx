@@ -112,8 +112,11 @@ export function GeoEditorView() {
 	const setMobileInfoOpen = useEditorStore((state) => state.setMobileInfoOpen)
 	const setShowTips = useEditorStore((state) => state.setShowTips)
 	const mobileToolsOpen = useEditorStore((state) => state.mobileToolsOpen)
+	const setMobileToolsOpen = useEditorStore((state) => state.setMobileToolsOpen)
 	const mobileSearchOpen = useEditorStore((state) => state.mobileSearchOpen)
+	const setMobileSearchOpen = useEditorStore((state) => state.setMobileSearchOpen)
 	const mobileActionsOpen = useEditorStore((state) => state.mobileActionsOpen)
+	const setMobileActionsOpen = useEditorStore((state) => state.setMobileActionsOpen)
 	const setMobileActiveState = useEditorStore((state) => state.setMobileActiveState)
 	const panLocked = useEditorStore((state) => state.panLocked)
 	const setPanLocked = useEditorStore((state) => state.setPanLocked)
@@ -1256,7 +1259,12 @@ export function GeoEditorView() {
 			{isMobile && (
 				<>
 					<Sheet open={mobileDatasetsOpen} onOpenChange={setMobileDatasetsOpen} modal={false}>
-						<SheetContent side="bottom" className="p-0 h-[35vh] sm:hidden">
+						<SheetContent
+							side="bottom"
+							className="p-0 h-[40vh] sm:hidden"
+							onPointerDownOutside={(e) => e.preventDefault()}
+							onInteractOutside={(e) => e.preventDefault()}
+						>
 							<div className="h-full w-full overflow-y-auto px-4 pb-6 pt-3">
 								<GeoDatasetsPanelContent
 									geoEvents={geoEvents}
@@ -1289,7 +1297,12 @@ export function GeoEditorView() {
 					</Sheet>
 
 					<Sheet open={mobileInfoOpen} onOpenChange={setMobileInfoOpen} modal={false}>
-						<SheetContent side="bottom" className="p-0 h-[35vh] sm:hidden">
+						<SheetContent
+							side="bottom"
+							className="p-0 h-[40vh] sm:hidden"
+							onPointerDownOutside={(e) => e.preventDefault()}
+							onInteractOutside={(e) => e.preventDefault()}
+						>
 							<div className="h-full w-full overflow-y-auto px-4 pb-6 pt-3">
 								<GeoEditorInfoPanelContent
 									currentUserPubkey={currentUser?.pubkey}
@@ -1399,46 +1412,79 @@ export function GeoEditorView() {
 							</div>
 						</div>
 					</div>
-					<div className="fixed bottom-2 right-2 z-50 flex flex-col gap-2 md:hidden">
-						<Button
-							size="icon"
-							className="shadow-lg h-10 w-10 rounded-full"
-							variant={mobileDatasetsOpen ? 'default' : 'outline'}
-							onClick={() => setMobileActiveState(mobileDatasetsOpen ? null : 'datasets')}
-						>
-							<Layers className="h-5 w-5" />
-						</Button>
-						<Button
-							size="icon"
-							className="shadow-lg h-10 w-10 rounded-full"
-							variant={mobileInfoOpen ? 'default' : 'outline'}
-							onClick={() => setMobileActiveState(mobileInfoOpen ? null : 'info')}
-						>
-							<FilePenLine className="h-5 w-5" />
-						</Button>
+					{/* Mobile buttons - positioned to move up when drawer is open */}
+					<div
+						className={`fixed bottom-2 right-2 z-50 flex flex-col gap-2 md:hidden transition-all duration-300 ${
+							mobileDatasetsOpen || mobileInfoOpen ? 'bottom-[calc(40vh+0.5rem)]' : ''
+						}`}
+					>
+						{/* Draw tools */}
 						<Button
 							size="icon"
 							className="shadow-lg h-10 w-10 rounded-full"
 							variant={mobileToolsOpen ? 'default' : 'outline'}
-							onClick={() => setMobileActiveState(mobileToolsOpen ? null : 'tools')}
+							onClick={() => {
+								// Close other toolbars, keep drawers
+								setMobileSearchOpen(false)
+								setMobileActionsOpen(false)
+								setMobileToolsOpen(!mobileToolsOpen)
+							}}
 						>
 							<Edit3 className="h-5 w-5" />
 						</Button>
+						{/* Search tools */}
 						<Button
 							size="icon"
 							className="shadow-lg h-10 w-10 rounded-full"
 							variant={mobileSearchOpen ? 'default' : 'outline'}
-							onClick={() => setMobileActiveState(mobileSearchOpen ? null : 'search')}
+							onClick={() => {
+								// Close other toolbars, keep drawers
+								setMobileToolsOpen(false)
+								setMobileActionsOpen(false)
+								setMobileSearchOpen(!mobileSearchOpen)
+							}}
 						>
 							<Search className="h-5 w-5" />
 						</Button>
+						{/* Upload/settings/etc */}
 						<Button
 							size="icon"
 							className="shadow-lg h-10 w-10 rounded-full"
 							variant={mobileActionsOpen ? 'default' : 'outline'}
-							onClick={() => setMobileActiveState(mobileActionsOpen ? null : 'actions')}
+							onClick={() => {
+								// Close other toolbars, keep drawers
+								setMobileToolsOpen(false)
+								setMobileSearchOpen(false)
+								setMobileActionsOpen(!mobileActionsOpen)
+							}}
 						>
 							<UploadCloud className="h-5 w-5" />
+						</Button>
+						{/* Drawer 1 (datasets) */}
+						<Button
+							size="icon"
+							className="shadow-lg h-10 w-10 rounded-full"
+							variant={mobileDatasetsOpen ? 'default' : 'outline'}
+							onClick={() => {
+								// Close other drawer, keep toolbars
+								setMobileInfoOpen(false)
+								setMobileDatasetsOpen(!mobileDatasetsOpen)
+							}}
+						>
+							<Layers className="h-5 w-5" />
+						</Button>
+						{/* Drawer 2 (editor) */}
+						<Button
+							size="icon"
+							className="shadow-lg h-10 w-10 rounded-full"
+							variant={mobileInfoOpen ? 'default' : 'outline'}
+							onClick={() => {
+								// Close other drawer, keep toolbars
+								setMobileDatasetsOpen(false)
+								setMobileInfoOpen(!mobileInfoOpen)
+							}}
+						>
+							<FilePenLine className="h-5 w-5" />
 						</Button>
 					</div>
 				</>
