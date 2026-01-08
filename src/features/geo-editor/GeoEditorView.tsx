@@ -205,7 +205,12 @@ export function GeoEditorView() {
 		handleInspectDataset,
 		handleInspectCollection,
 		handleOpenDebug,
-	} = useViewMode({ geoEvents, onEnsureInfoPanelVisible: ensureInfoPanelVisible })
+	} = useViewMode({
+		geoEvents,
+		onEnsureInfoPanelVisible: ensureInfoPanelVisible,
+		onZoomToDataset: zoomToDataset,
+		onZoomToCollection: zoomToCollection,
+	})
 
 	// Routing hook for URL-based focus mode
 	const { route, navigateTo, navigateHome, encodeGeoEventNaddr, encodeCollectionNaddr, isFocused } =
@@ -245,6 +250,22 @@ export function GeoEditorView() {
 		// Default: filter by visibility toggles
 		return geoEvents.filter((event) => datasetVisibility[getDatasetKey(event)] !== false)
 	}, [geoEvents, collectionEvents, datasetVisibility, getDatasetKey, focusedNaddr, focusedType, encodeGeoEventNaddr, encodeCollectionNaddr])
+
+	// Effective visibility for sidebar - shows actual visibility state including focus mode
+	const effectiveVisibility = useMemo(() => {
+		// When focused, only focused items are visible
+		if (focusedNaddr && focusedType) {
+			const effectiveMap: Record<string, boolean> = {}
+			const visibleKeys = new Set(visibleGeoEvents.map((e) => getDatasetKey(e)))
+			geoEvents.forEach((event) => {
+				const key = getDatasetKey(event)
+				effectiveMap[key] = visibleKeys.has(key)
+			})
+			return effectiveMap
+		}
+		// Default: use actual visibility state
+		return datasetVisibility
+	}, [geoEvents, visibleGeoEvents, datasetVisibility, getDatasetKey, focusedNaddr, focusedType])
 
 	useEffect(() => {
 		featuresRef.current = features
@@ -984,6 +1005,30 @@ export function GeoEditorView() {
 		[resolveNaddrToDataset, toggleDatasetVisibility],
 	)
 
+	// Wrapped visibility toggle that exits focus mode
+	const handleToggleVisibilityWithExitFocus = useCallback(
+		(event: NDKGeoEvent) => {
+			// Exit focus mode when manually toggling visibility
+			if (isFocused) {
+				navigateHome()
+			}
+			toggleDatasetVisibility(event)
+		},
+		[isFocused, navigateHome, toggleDatasetVisibility],
+	)
+
+	// Wrapped toggle all visibility that exits focus mode
+	const handleToggleAllVisibilityWithExitFocus = useCallback(
+		(visible: boolean) => {
+			// Exit focus mode when toggling all visibility
+			if (isFocused) {
+				navigateHome()
+			}
+			toggleAllDatasetVisibility(visible)
+		},
+		[isFocused, navigateHome, toggleAllDatasetVisibility],
+	)
+
 	// Collection Editor Handlers
 	const handleCreateCollection = useCallback(() => {
 		setCollectionEditorMode('create')
@@ -1139,13 +1184,13 @@ export function GeoEditorView() {
 								collectionEvents={collectionEvents}
 								activeDataset={activeDataset}
 								currentUserPubkey={currentUser?.pubkey}
-								datasetVisibility={datasetVisibility}
+								datasetVisibility={effectiveVisibility}
 								isPublishing={isPublishing}
 								deletingKey={deletingKey}
 								onClearEditing={clearEditingSession}
 								onLoadDataset={handleDatasetSelect}
-								onToggleVisibility={toggleDatasetVisibility}
-								onToggleAllVisibility={toggleAllDatasetVisibility}
+								onToggleVisibility={handleToggleVisibilityWithExitFocus}
+								onToggleAllVisibility={handleToggleAllVisibilityWithExitFocus}
 								onZoomToDataset={zoomToDataset}
 								onDeleteDataset={onDeleteDataset}
 								getDatasetKey={getDatasetKey}
@@ -1157,6 +1202,8 @@ export function GeoEditorView() {
 								onClose={() => setShowDatasetsPanel(false)}
 								onCreateCollection={handleCreateCollection}
 								onEditCollection={handleEditCollection}
+								isFocused={isFocused}
+								onExitFocus={navigateHome}
 							/>
 						</div>
 					</div>
@@ -1216,13 +1263,13 @@ export function GeoEditorView() {
 									collectionEvents={collectionEvents}
 									activeDataset={activeDataset}
 									currentUserPubkey={currentUser?.pubkey}
-									datasetVisibility={datasetVisibility}
+									datasetVisibility={effectiveVisibility}
 									isPublishing={isPublishing}
 									deletingKey={deletingKey}
 									onClearEditing={clearEditingSession}
 									onLoadDataset={loadDatasetForEditing}
-									onToggleVisibility={toggleDatasetVisibility}
-									onToggleAllVisibility={toggleAllDatasetVisibility}
+									onToggleVisibility={handleToggleVisibilityWithExitFocus}
+									onToggleAllVisibility={handleToggleAllVisibilityWithExitFocus}
 									onZoomToDataset={zoomToDataset}
 									onDeleteDataset={onDeleteDataset}
 									getDatasetKey={getDatasetKey}
@@ -1234,6 +1281,8 @@ export function GeoEditorView() {
 									onClose={() => setMobileDatasetsOpen(false)}
 									onCreateCollection={handleCreateCollection}
 									onEditCollection={handleEditCollection}
+									isFocused={isFocused}
+									onExitFocus={navigateHome}
 								/>
 							</div>
 						</SheetContent>

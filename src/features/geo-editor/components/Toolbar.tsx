@@ -17,15 +17,18 @@ import {
 	RefreshCw,
 	Route,
 	Settings2,
+	Share2,
 	Split as SplitIcon,
 	Trash2,
 	Type,
 	Undo2,
 	Upload,
 	UploadCloud,
+	X,
+	Check,
 } from 'lucide-react'
 import type React from 'react'
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { HelpPopover } from '../../../components/HelpPopover'
 import { LoginSessionButtons } from '../../../components/LoginSessionButtom'
 import { Button } from '../../../components/ui/button'
@@ -159,6 +162,12 @@ export function Toolbar({
 	const showMapSettings = useEditorStore((state) => state.showMapSettings)
 	const setShowMapSettings = useEditorStore((state) => state.setShowMapSettings)
 
+	// Focus state for share button
+	const focusedNaddr = useEditorStore((state) => state.focusedNaddr)
+	const focusedType = useEditorStore((state) => state.focusedType)
+	const clearFocused = useEditorStore((state) => state.clearFocused)
+	const isFocused = Boolean(focusedNaddr && focusedType)
+
 	// Search State
 	const searchQuery = useEditorStore((state) => state.searchQuery)
 	const searchResults = useEditorStore((state) => state.searchResults)
@@ -169,6 +178,8 @@ export function Toolbar({
 	const clearSearch = useEditorStore((state) => state.clearSearch)
 
 	const fileInputRef = useRef<HTMLInputElement>(null)
+	const [sharePopoverOpen, setSharePopoverOpen] = useState(false)
+	const [copiedUrl, setCopiedUrl] = useState(false)
 
 	// Computed: Is editing disabled (view mode active)?
 	const isEditingDisabled = viewMode !== 'edit'
@@ -267,6 +278,23 @@ export function Toolbar({
 
 	const handleBooleanDifference = () => {
 		editor?.startBooleanDifference()
+	}
+
+	const handleCopyShareUrl = async () => {
+		const url = window.location.href
+		try {
+			await navigator.clipboard.writeText(url)
+			setCopiedUrl(true)
+			setTimeout(() => setCopiedUrl(false), 2000)
+		} catch (error) {
+			console.error('Failed to copy URL:', error)
+		}
+	}
+
+	const handleExitFocus = () => {
+		clearFocused()
+		window.location.hash = '/'
+		setSharePopoverOpen(false)
 	}
 
 	// Check if single polygon is selected (required for boolean ops)
@@ -694,6 +722,72 @@ export function Toolbar({
 
 				{/* Panels */}
 				<IconButtonRow buttons={panelButtons} />
+
+				{/* Share button - only visible when focused on a route */}
+				{isFocused && (
+					<>
+						<Divider />
+						<TooltipProvider delayDuration={500}>
+							<Popover open={sharePopoverOpen} onOpenChange={setSharePopoverOpen}>
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<PopoverTrigger asChild>
+											<Button
+												variant="default"
+												size="icon"
+												aria-label="Share"
+											>
+												<Share2 className="h-4 w-4" />
+											</Button>
+										</PopoverTrigger>
+									</TooltipTrigger>
+									<TooltipContent side="bottom" sideOffset={8}>
+										<p>Share this view</p>
+									</TooltipContent>
+								</Tooltip>
+								<PopoverContent className="w-64" side="bottom" align="end">
+									<div className="space-y-3">
+										<div>
+											<h4 className="text-sm font-semibold mb-1">Share this view</h4>
+											<p className="text-xs text-gray-500">
+												Others will see only this {focusedType === 'collection' ? 'collection' : 'dataset'}.
+											</p>
+										</div>
+										<div className="flex flex-col gap-2">
+											<Button
+												size="sm"
+												variant="outline"
+												className="w-full justify-start"
+												onClick={handleCopyShareUrl}
+											>
+												{copiedUrl ? (
+													<>
+														<Check className="h-4 w-4 mr-2 text-green-600" />
+														Copied!
+													</>
+												) : (
+													<>
+														<Copy className="h-4 w-4 mr-2" />
+														Copy link
+													</>
+												)}
+											</Button>
+											<Button
+												size="sm"
+												variant="ghost"
+												className="w-full justify-start text-gray-600"
+												onClick={handleExitFocus}
+											>
+												<X className="h-4 w-4 mr-2" />
+												Exit focus mode
+											</Button>
+										</div>
+									</div>
+								</PopoverContent>
+							</Popover>
+						</TooltipProvider>
+					</>
+				)}
 
 				<div className="flex-1" />
 

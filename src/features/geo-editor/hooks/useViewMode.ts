@@ -7,6 +7,10 @@ import { useEditorStore } from '../store'
 interface UseViewModeOptions {
 	geoEvents: NDKGeoEvent[]
 	onEnsureInfoPanelVisible: () => void
+	/** Callback to zoom/fly to a dataset's bounds */
+	onZoomToDataset?: (event: NDKGeoEvent) => void
+	/** Callback to zoom/fly to a collection's bounds */
+	onZoomToCollection?: (collection: NDKGeoCollectionEvent, events: NDKGeoEvent[]) => void
 }
 
 /**
@@ -45,7 +49,12 @@ function encodeCollectionNaddr(event: NDKGeoCollectionEvent): string | null {
 	}
 }
 
-export function useViewMode({ geoEvents, onEnsureInfoPanelVisible }: UseViewModeOptions) {
+export function useViewMode({
+	geoEvents,
+	onEnsureInfoPanelVisible,
+	onZoomToDataset,
+	onZoomToCollection,
+}: UseViewModeOptions) {
 	const [infoMode, setInfoMode] = useState<'properties' | 'json' | 'edit' | 'view'>('properties')
 	const [sidebarMode, setSidebarMode] = useState<
 		'datasets' | 'info' | 'editor' | 'dataset' | 'inspector'
@@ -105,6 +114,9 @@ export function useViewMode({ geoEvents, onEnsureInfoPanelVisible }: UseViewMode
 			if (naddr) {
 				window.location.hash = `/geoevent/${naddr}`
 			}
+
+			// Fly to the dataset bounds
+			onZoomToDataset?.(event)
 		},
 		[
 			setViewingDataset,
@@ -112,6 +124,7 @@ export function useViewMode({ geoEvents, onEnsureInfoPanelVisible }: UseViewMode
 			setViewingCollectionEvents,
 			setViewMode,
 			onEnsureInfoPanelVisible,
+			onZoomToDataset,
 		],
 	)
 
@@ -132,6 +145,9 @@ export function useViewMode({ geoEvents, onEnsureInfoPanelVisible }: UseViewMode
 			if (naddr) {
 				window.location.hash = `/collection/${naddr}`
 			}
+
+			// Fly to the collection bounds
+			onZoomToCollection?.(collection, referencedEvents)
 		},
 		[
 			resolveEventsForCollection,
@@ -140,6 +156,7 @@ export function useViewMode({ geoEvents, onEnsureInfoPanelVisible }: UseViewMode
 			setViewingDataset,
 			setViewMode,
 			onEnsureInfoPanelVisible,
+			onZoomToCollection,
 		],
 	)
 
@@ -167,4 +184,5 @@ export function useViewMode({ geoEvents, onEnsureInfoPanelVisible }: UseViewMode
 		resolveEventsForCollection,
 	}
 }
+
 

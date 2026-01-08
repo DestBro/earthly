@@ -1,4 +1,4 @@
-import { X, Plus } from 'lucide-react'
+import { X, Plus, Eye } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
@@ -42,6 +42,10 @@ export interface GeoDatasetsPanelProps {
 	onCreateCollection?: () => void
 	onEditCollection?: (collection: NDKGeoCollectionEvent) => void
 	availableFeatures?: GeoFeatureItem[]
+	/** Whether focus mode is active (viewing a single dataset/collection via route) */
+	isFocused?: boolean
+	/** Callback to exit focus mode */
+	onExitFocus?: () => void
 }
 
 const getDatasetDescriptionText = (event: NDKGeoEvent): string | undefined => {
@@ -90,6 +94,8 @@ export function GeoDatasetsPanelContent({
 	onCreateCollection,
 	onEditCollection,
 	availableFeatures = [],
+	isFocused = false,
+	onExitFocus,
 }: GeoDatasetsPanelProps) {
 	const [activeTab, setActiveTab] = useState<'datasets' | 'collections'>('datasets')
 	const [searchQuery, setSearchQuery] = useState('')
@@ -275,11 +281,26 @@ export function GeoDatasetsPanelContent({
 			<div className="flex items-center justify-between gap-2">
 				<div>
 					<h3 className="text-base font-semibold text-gray-800">Datasets</h3>
-					<p className="text-xs text-gray-500">
-						Remote GeoJSON datasets and collections available to load.
-					</p>
+					{isFocused ? (
+						<p className="text-xs text-amber-600">Focused view — other datasets hidden</p>
+					) : (
+						<p className="text-xs text-gray-500">
+							Remote GeoJSON datasets and collections available to load.
+						</p>
+					)}
 				</div>
 				<div className="flex items-center gap-1">
+					{isFocused && onExitFocus && (
+						<Button
+							size="sm"
+							variant="outline"
+							onClick={onExitFocus}
+							className="text-xs"
+						>
+							<Eye className="h-3.5 w-3.5 mr-1" />
+							Show all
+						</Button>
+					)}
 					{activeTab === 'collections' && onCreateCollection && (
 						<Button
 							size="icon"
