@@ -696,8 +696,8 @@ export function GeoEditorView() {
 		]
 
 		const handleMapDatasetClick = (event: maplibregl.MapLayerMouseEvent & any) => {
-			// Do not focus other datasets while in drawing mode
-			if (isInDrawingMode) return
+			// Do not focus other datasets while in drawing or edit mode
+			if (isInDrawingMode || currentMode === 'edit') return
 
 			const feature = event.features?.[0]
 			if (!feature?.properties) return
