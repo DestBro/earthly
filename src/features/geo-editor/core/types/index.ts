@@ -8,6 +8,7 @@ export type EditorMode =
 	| 'draw_annotation'
 	| 'edit'
 	| 'select'
+	| 'box_select'
 	| 'static'
 
 export type DrawFeatureType = 'Point' | 'LineString' | 'Polygon'

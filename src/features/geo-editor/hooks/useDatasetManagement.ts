@@ -295,6 +295,78 @@ export function useDatasetManagement(
 		resetBlobReferenceState,
 	])
 
+	/**
+	 * Start a new dataset editing session.
+	 * Clears any existing data and switches to edit mode.
+	 */
+	const startNewDataset = useCallback(() => {
+		if (!editor) return
+		editor.setFeatures([])
+		setFeatures([])
+		setActiveDataset(null)
+		setPublishMessage(null)
+		setPublishError(null)
+		setSelectedFeatureIds([])
+		setCollectionMeta(createDefaultCollectionMeta())
+		setNewCollectionProp({ key: '', value: '' })
+		setNewFeatureProp({ key: '', value: '' })
+		resetBlobReferenceState()
+		// Switch to edit mode
+		setViewMode('edit')
+		setViewDataset(null)
+		setViewCollection(null)
+	}, [
+		editor,
+		setFeatures,
+		setActiveDataset,
+		setPublishMessage,
+		setPublishError,
+		setSelectedFeatureIds,
+		setCollectionMeta,
+		setNewCollectionProp,
+		setNewFeatureProp,
+		resetBlobReferenceState,
+		setViewMode,
+		setViewDataset,
+		setViewCollection,
+	])
+
+	/**
+	 * Cancel editing and return to view mode.
+	 * Clears the editor and any unsaved changes.
+	 */
+	const cancelEditing = useCallback(() => {
+		if (!editor) return
+		editor.setFeatures([])
+		setFeatures([])
+		setActiveDataset(null)
+		setPublishMessage(null)
+		setPublishError(null)
+		setSelectedFeatureIds([])
+		setCollectionMeta(createDefaultCollectionMeta())
+		setNewCollectionProp({ key: '', value: '' })
+		setNewFeatureProp({ key: '', value: '' })
+		resetBlobReferenceState()
+		// Return to view mode
+		setViewMode('view')
+		setViewDataset(null)
+		setViewCollection(null)
+	}, [
+		editor,
+		setFeatures,
+		setActiveDataset,
+		setPublishMessage,
+		setPublishError,
+		setSelectedFeatureIds,
+		setCollectionMeta,
+		setNewCollectionProp,
+		setNewFeatureProp,
+		resetBlobReferenceState,
+		setViewMode,
+		setViewDataset,
+		setViewCollection,
+	])
+
 	const resolveEventsForCollection = useCallback(
 		(collection: NDKGeoCollectionEvent): NDKGeoEvent[] => {
 			const references = new Set(collection.datasetReferences)
@@ -329,5 +401,7 @@ export function useDatasetManagement(
 		toggleAllDatasetVisibility,
 		loadDatasetForEditing,
 		clearEditingSession,
+		startNewDataset,
+		cancelEditing,
 	}
 }

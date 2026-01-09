@@ -13,18 +13,21 @@ import {
 	Minus,
 	MousePointer2,
 	Pentagon,
+	PlusCircle,
 	Redo2,
 	RefreshCw,
 	Route,
 	Settings2,
 	Share2,
 	Split as SplitIcon,
+	SquareDashedMousePointer,
 	Trash2,
 	Type,
 	Undo2,
 	Upload,
 	UploadCloud,
 	X,
+	XCircle,
 	Check,
 } from 'lucide-react'
 import type React from 'react'
@@ -128,6 +131,8 @@ interface ToolbarProps {
 	showLogin?: boolean
 	onSearchResultSelect?: (result: GeoSearchResult) => void
 	onInspectorDeactivate?: () => void
+	onStartNewDataset?: () => void
+	onCancelEditing?: () => void
 }
 
 export function Toolbar({
@@ -136,15 +141,17 @@ export function Toolbar({
 	showLogin = true,
 	onSearchResultSelect,
 	onInspectorDeactivate,
+	onStartNewDataset,
+	onCancelEditing,
 }: ToolbarProps) {
 	const editor = useEditorStore((state) => state.editor)
 	const mode = useEditorStore((state) => state.mode)
 	const setMode = useEditorStore((state) => state.setMode)
 	const snappingEnabled = useEditorStore((state) => state.snappingEnabled)
 	const setSnappingEnabled = useEditorStore((state) => state.setSnappingEnabled)
+	const viewMode = useEditorStore((state) => state.viewMode)
 	const history = useEditorStore((state) => state.history)
 	const setHistoryState = useEditorStore((state) => state.setHistoryState)
-	const viewMode = useEditorStore((state) => state.viewMode)
 
 	// UI State
 	const showDatasetsPanel = useEditorStore((state) => state.showDatasetsPanel)
@@ -316,6 +323,27 @@ export function Toolbar({
 	// BUTTON SECTIONS - Organized by function
 	// ============================================
 
+	// Section 0: Session control (New Dataset / Cancel)
+	const sessionButtons: ToolbarButton[] = viewMode === 'edit'
+		? [
+			{
+				key: 'cancel',
+				icon: XCircle,
+				onClick: onCancelEditing ?? (() => {}),
+				ariaLabel: 'Cancel editing',
+				description: 'Discard changes and exit',
+			},
+		]
+		: [
+			{
+				key: 'new-dataset',
+				icon: PlusCircle,
+				onClick: onStartNewDataset ?? (() => {}),
+				ariaLabel: 'New dataset',
+				description: 'Start a new dataset',
+			},
+		]
+
 	// Section 1: Select
 	const selectButtons: ToolbarButton[] = [
 		{
@@ -323,8 +351,18 @@ export function Toolbar({
 			icon: MousePointer2,
 			onClick: () => handleModeChange('select'),
 			variant: mode === 'select' && !inspectorActive ? 'default' : 'outline',
+			disabled: isEditingDisabled,
 			ariaLabel: 'Select mode',
 			description: 'Select and move features',
+		},
+		{
+			key: 'box_select',
+			icon: SquareDashedMousePointer,
+			onClick: () => handleModeChange('box_select'),
+			variant: mode === 'box_select' ? 'default' : 'outline',
+			disabled: isEditingDisabled,
+			ariaLabel: 'Box select mode',
+			description: 'Drag to select multiple features',
 		},
 	]
 
@@ -548,8 +586,10 @@ export function Toolbar({
 				<div className="pointer-events-auto w-full max-w-md px-2 mx-auto">
 					{mobileToolsOpen && (
 						<div className="glass-panel rounded-lg p-1.5">
-							{/* Row 1: Select + Draw */}
+							{/* Row 1: Session + Select + Draw */}
 							<div className="flex items-center justify-center gap-1 flex-wrap mb-1">
+								<IconButtonRow buttons={sessionButtons} small />
+								<Divider />
 								<IconButtonRow buttons={selectButtons} small />
 								<Divider />
 								<IconButtonRow buttons={drawButtons} small />
@@ -653,6 +693,10 @@ export function Toolbar({
 	return (
 		<div className="flex flex-col gap-2 pointer-events-auto">
 			<div className="glass-panel flex items-center gap-1 rounded-lg p-1.5">
+				{/* Session control (New Dataset / Cancel) */}
+				<IconButtonRow buttons={sessionButtons} />
+				<Divider />
+
 				{/* Select */}
 				<IconButtonRow buttons={selectButtons} />
 				<Divider />

@@ -214,7 +214,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	previewingBlobReferenceId: null,
 	blobPreviewCollection: null,
 
-	viewMode: 'edit',
+	viewMode: 'view',
 	viewDataset: null,
 	viewCollection: null,
 	viewCollectionEvents: [],

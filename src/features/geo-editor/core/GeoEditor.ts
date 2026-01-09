@@ -276,7 +276,7 @@ export class GeoEditor {
 			}
 			this.emitDrawChange()
 			this.render()
-		} else if (this.mode === 'select') {
+		} else if (this.mode === 'select' || this.mode === 'box_select') {
 			this.handleSelectClick(e)
 		} else if (this.mode === 'edit') {
 			this.handleEditClick(e, clickPoint)
@@ -387,6 +387,14 @@ export class GeoEditor {
 			return
 		}
 
+		// Box select mode: always start box selection on left mouse button
+		if (this.mode === 'box_select') {
+			if (e.originalEvent.button === 0) {
+				this.startSelectionDrag(e)
+			}
+			return
+		}
+
 		if (this.mode !== 'edit') return
 
 		if (!this.map.getLayer(this.layers.LAYER_VERTEX)) return
@@ -419,7 +427,7 @@ export class GeoEditor {
 		if (this.isTouchLikeEvent(_e as any) && this.isDrawMode(this.mode) && !this.panLockEnabled)
 			return
 
-		if (this.mode === 'select') {
+		if (this.mode === 'select' || this.mode === 'box_select') {
 			if (this.selectionDragState) this.completeSelectionDrag()
 			return
 		}
@@ -494,7 +502,7 @@ export class GeoEditor {
 
 		if (this.isTouchLikeEvent(e) && this.isDrawMode(this.mode) && !this.panLockEnabled) return
 
-		if (this.mode === 'select') {
+		if (this.mode === 'select' || this.mode === 'box_select') {
 			if (this.selectionDragState) this.updateSelectionDrag(e)
 			return
 		}
@@ -855,7 +863,7 @@ export class GeoEditor {
 
 		if (mode === 'edit') this.renderVertices()
 
-		if (mode !== 'select' && this.selectionDragState) {
+		if (mode !== 'select' && mode !== 'box_select' && this.selectionDragState) {
 			this.completeSelectionDrag(true)
 		}
 

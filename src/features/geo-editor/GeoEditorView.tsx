@@ -179,7 +179,12 @@ export function GeoEditorView() {
 		toggleAllDatasetVisibility,
 		loadDatasetForEditing,
 		clearEditingSession,
+		startNewDataset,
+		cancelEditing,
 	} = useDatasetManagement(map, geoEvents)
+
+	// Store state for viewMode
+	const viewMode = useEditorStore((state) => state.viewMode)
 
 	const {
 		handlePublishNew,
@@ -696,8 +701,8 @@ export function GeoEditorView() {
 		]
 
 		const handleMapDatasetClick = (event: maplibregl.MapLayerMouseEvent & any) => {
-			// Do not focus other datasets while in drawing or edit mode
-			if (isInDrawingMode || currentMode === 'edit') return
+			// Do not inspect other datasets while in edit mode
+			if (viewMode === 'edit') return
 
 			const feature = event.features?.[0]
 			if (!feature?.properties) return
@@ -745,7 +750,7 @@ export function GeoEditorView() {
 				}
 			}
 		}
-	}, [handleInspectDatasetWithoutFocus, ensureResolvedFeatureCollection, geoEventsRef, remoteLayersReady, currentMode])
+	}, [handleInspectDatasetWithoutFocus, ensureResolvedFeatureCollection, geoEventsRef, remoteLayersReady, viewMode])
 
 	// Inspector click handling
 	useEffect(() => {
@@ -1175,6 +1180,8 @@ export function GeoEditorView() {
 							showLogin={true}
 							onSearchResultSelect={(result) => handleSearchResultSelect(result as any)}
 							onInspectorDeactivate={disableInspector}
+							onStartNewDataset={startNewDataset}
+							onCancelEditing={cancelEditing}
 						/>
 					</div>
 				</div>
