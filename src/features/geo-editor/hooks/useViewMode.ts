@@ -128,6 +128,30 @@ export function useViewMode({
 		],
 	)
 
+	/**
+	 * Inspect a dataset without triggering focus mode (no URL update).
+	 * Used when clicking on a geometry on the map.
+	 */
+	const handleInspectDatasetWithoutFocus = useCallback(
+		(event: NDKGeoEvent) => {
+			setViewingDataset(event)
+			setViewingCollection(null)
+			setViewingCollectionEvents([])
+			setInfoMode('view')
+			setViewMode('view')
+			setSidebarMode('dataset')
+			onEnsureInfoPanelVisible()
+			// Do NOT update URL - this prevents focus mode from being triggered
+		},
+		[
+			setViewingDataset,
+			setViewingCollection,
+			setViewingCollectionEvents,
+			setViewMode,
+			onEnsureInfoPanelVisible,
+		],
+	)
+
 	const handleInspectCollection = useCallback(
 		(collection: NDKGeoCollectionEvent, eventsInCollection: NDKGeoEvent[]) => {
 			const referencedEvents =
@@ -179,6 +203,7 @@ export function useViewMode({
 		// Actions
 		exitViewMode,
 		handleInspectDataset,
+		handleInspectDatasetWithoutFocus,
 		handleInspectCollection,
 		handleOpenDebug,
 		resolveEventsForCollection,

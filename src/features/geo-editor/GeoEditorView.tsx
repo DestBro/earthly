@@ -206,6 +206,7 @@ export function GeoEditorView() {
 		viewingCollection,
 		exitViewMode,
 		handleInspectDataset,
+		handleInspectDatasetWithoutFocus,
 		handleInspectCollection,
 		handleOpenDebug,
 	} = useViewMode({
@@ -710,7 +711,8 @@ export function GeoEditorView() {
 			if (!dataset) return
 
 			ensureResolvedFeatureCollection(dataset).catch(() => undefined)
-			handleInspectDataset(dataset)
+			// Just inspect the dataset without triggering focus mode (no URL change)
+			handleInspectDatasetWithoutFocus(dataset)
 		}
 
 		const handleMouseEnter = () => {
@@ -743,7 +745,7 @@ export function GeoEditorView() {
 				}
 			}
 		}
-	}, [handleInspectDataset, ensureResolvedFeatureCollection, geoEventsRef, remoteLayersReady, currentMode])
+	}, [handleInspectDatasetWithoutFocus, ensureResolvedFeatureCollection, geoEventsRef, remoteLayersReady, currentMode])
 
 	// Inspector click handling
 	useEffect(() => {
