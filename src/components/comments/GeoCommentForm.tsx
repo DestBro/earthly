@@ -3,7 +3,6 @@ import { forwardRef, useState, useRef, useCallback } from 'react'
 import { useNDKCurrentUser } from '@nostr-dev-kit/react'
 import type { FeatureCollection } from 'geojson'
 import { Button } from '../ui/button'
-import { Textarea } from '../ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import {
 	GeoRichTextEditor,
@@ -36,21 +35,22 @@ export const GeoCommentForm = forwardRef<HTMLTextAreaElement, GeoCommentFormProp
 			onCancel,
 			placeholder = 'Add a comment...',
 			isReply = false,
-			autoFocus = false,
+			autoFocus: _autoFocus = false,
 			attachedGeojson,
 			onClearAttachment,
 			availableFeatures = [],
 			className = '',
 		},
-		ref,
+		_ref,
 	) => {
 		const currentUser = useNDKCurrentUser()
 		const [text, setText] = useState('')
 		const [isSubmitting, setIsSubmitting] = useState(false)
 		const richEditorRef = useRef<GeoRichTextEditorRef>(null)
 
-		// Use rich editor when features are available
-		const useRichEditor = availableFeatures.length > 0
+		// Always use the rich editor so `$` mentions can work in comments.
+		// If there are no available features yet, the editor will still open the menu (showing "No matches").
+		const useRichEditor = true
 
 		const hasAttachment = attachedGeojson && attachedGeojson.features.length > 0
 		const featureCount = attachedGeojson?.features.length ?? 0
@@ -96,33 +96,14 @@ export const GeoCommentForm = forwardRef<HTMLTextAreaElement, GeoCommentFormProp
 			<form onSubmit={handleSubmit} className={`space-y-2 ${className}`}>
 				{/* Editor */}
 				<div className="relative">
-					{useRichEditor ? (
-						<GeoRichTextEditor
-							ref={richEditorRef}
-							placeholder={effectivePlaceholder}
-							availableFeatures={availableFeatures}
-							onChange={handleRichEditorChange}
-							disabled={isSubmitting || !currentUser}
-							rows={isReply ? 2 : 3}
-						/>
-					) : (
-						<>
-							<Textarea
-								ref={ref}
-								value={text}
-								onChange={(e) => setText(e.target.value)}
-								placeholder={effectivePlaceholder}
-								rows={isReply ? 2 : 3}
-								autoFocus={autoFocus}
-								disabled={isSubmitting || !currentUser}
-								className="resize-none pr-16 text-sm"
-							/>
-							{/* Character count */}
-							<div className="absolute bottom-2 right-2 text-[10px] text-gray-400">
-								{text.length}
-							</div>
-						</>
-					)}
+					<GeoRichTextEditor
+						ref={richEditorRef}
+						placeholder={effectivePlaceholder}
+						availableFeatures={availableFeatures}
+						onChange={handleRichEditorChange}
+						disabled={isSubmitting || !currentUser}
+						rows={isReply ? 2 : 3}
+					/>
 				</div>
 
 				{/* Attachment indicator */}

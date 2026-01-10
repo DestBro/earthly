@@ -2,7 +2,16 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import Mention from '@tiptap/extension-mention'
-import { useState, useCallback, useRef, forwardRef, useImperativeHandle } from 'react'
+import type { SuggestionKeyDownProps, SuggestionProps } from '@tiptap/suggestion'
+import {
+	useState,
+	useCallback,
+	useRef,
+	forwardRef,
+	useImperativeHandle,
+	useMemo,
+	useEffect,
+} from 'react'
 import { MapPin } from 'lucide-react'
 import { GeoMentionNode, serializeToText, parseFromText } from './GeoMentionExtension'
 
@@ -33,7 +42,11 @@ export interface GeoRichTextEditorProps {
 	/** Called when a feature is dropped */
 	onFeatureDrop?: (feature: GeoFeatureItem) => void
 	/** Callback when a geo mention's visibility is toggled */
-	onMentionVisibilityToggle?: (address: string, featureId: string | undefined, visible: boolean) => void
+	onMentionVisibilityToggle?: (
+		address: string,
+		featureId: string | undefined,
+		visible: boolean,
+	) => void
 	/** Callback to zoom to a mentioned geometry */
 	onMentionZoomTo?: (address: string, featureId: string | undefined) => void
 	/** Whether the editor is disabled */
@@ -65,7 +78,10 @@ interface SuggestionState {
 	items: GeoFeatureItem[]
 	selectedIndex: number
 	clientRect: DOMRect | null
+	range: { from: number; to: number } | null
 }
+
+type GeoSuggestionProps = SuggestionProps<GeoFeatureItem, GeoFeatureItem>
 
 /**
  * Rich text editor with inline geo mention support.
@@ -96,96 +112,165 @@ export const GeoRichTextEditor = forwardRef<GeoRichTextEditorRef, GeoRichTextEdi
 			items: [],
 			selectedIndex: 0,
 			clientRect: null,
+			range: null,
 		})
 		const [isDragOver, setIsDragOver] = useState(false)
 		const suggestionRef = useRef<HTMLDivElement>(null)
+		const rootRef = useRef<HTMLDivElement>(null)
 		const editorContainerRef = useRef<HTMLDivElement>(null)
+		const suggestionCommandRef = useRef<((item: GeoFeatureItem) => void) | null>(null)
+		const suggestionStateRef = useRef<SuggestionState | null>(null)
+
+		useEffect(() => {
+			suggestionStateRef.current = suggestion
+		}, [suggestion])
+
+		// Use ref to access latest availableFeatures inside Tiptap extension callback
+		// without recreating the extension (which useEditor wouldn't pick up)
+		const availableFeaturesRef = useRef(availableFeatures)
+		useEffect(() => {
+			availableFeaturesRef.current = availableFeatures
+		}, [availableFeatures])
 
 		// Filter features based on query
-		const filterFeatures = useCallback(
-			(query: string): GeoFeatureItem[] => {
-				if (!query) return availableFeatures.slice(0, 10)
-				const lowerQuery = query.toLowerCase()
-				return availableFeatures
-					.filter(
-						(f) =>
-							f.name.toLowerCase().includes(lowerQuery) ||
-							f.featureId?.toLowerCase().includes(lowerQuery) ||
-							f.datasetName?.toLowerCase().includes(lowerQuery),
-					)
-					.slice(0, 10)
-			},
-			[availableFeatures],
-		)
+		const filterFeatures = useCallback((query: string): GeoFeatureItem[] => {
+			const features = availableFeaturesRef.current
+			if (!query) return features.slice(0, 10)
+			const lowerQuery = query.toLowerCase()
+			return features
+				.filter(
+					(f) =>
+						f.name.toLowerCase().includes(lowerQuery) ||
+						f.featureId?.toLowerCase().includes(lowerQuery) ||
+						f.datasetName?.toLowerCase().includes(lowerQuery),
+				)
+				.slice(0, 10)
+		}, [])
 
 		// Create mention extension with $ trigger
-		const mentionExtension = Mention.configure({
-			HTMLAttributes: {
-				class: 'geo-mention-trigger',
-			},
-			suggestion: {
-				char: '$',
-				allowSpaces: false,
-				startOfLine: false,
-				items: ({ query }) => filterFeatures(query),
-				render: () => {
-					return {
-						onStart: (props) => {
-							setSuggestion({
-								isOpen: true,
-								query: props.query,
-								items: filterFeatures(props.query),
-								selectedIndex: 0,
-								clientRect: props.clientRect?.() ?? null,
-							})
-						},
-						onUpdate: (props) => {
-							setSuggestion((prev) => ({
-								...prev,
-								query: props.query,
-								items: filterFeatures(props.query),
-								clientRect: props.clientRect?.() ?? null,
-							}))
-						},
-						onExit: () => {
-							setSuggestion((prev) => ({ ...prev, isOpen: false }))
-						},
-						onKeyDown: (props) => {
-							if (props.event.key === 'ArrowUp') {
-								setSuggestion((prev) => ({
-									...prev,
-									selectedIndex: Math.max(0, prev.selectedIndex - 1),
-								}))
-								return true
-							}
-							if (props.event.key === 'ArrowDown') {
-								setSuggestion((prev) => ({
-									...prev,
-									selectedIndex: Math.min(prev.items.length - 1, prev.selectedIndex + 1),
-								}))
-								return true
-							}
-							if (props.event.key === 'Enter') {
-								const item = suggestion.items[suggestion.selectedIndex]
-								if (item) {
-									selectSuggestion(item)
+		// We use useMemo to avoid recreating the extension on every render,
+		// but we need to ensure it has access to the latest filterFeatures
+		const mentionExtension = useMemo(() => {
+			return Mention.configure({
+				HTMLAttributes: {
+					class: 'geo-mention-trigger',
+				},
+				suggestion: {
+					char: '$',
+					allowSpaces: false,
+					startOfLine: false,
+					allowedPrefixes: null,
+					items: ({ query }) => filterFeatures(query),
+					render: () => {
+						return {
+							onStart: (props: GeoSuggestionProps) => {
+								const items = Array.isArray(props.items)
+									? (props.items as GeoFeatureItem[])
+									: filterFeatures(props.query)
+
+								suggestionCommandRef.current = props.command ?? null
+								const next: SuggestionState = {
+									isOpen: true,
+									query: props.query,
+									items,
+									selectedIndex: 0,
+									clientRect: props.clientRect?.() ?? null,
+									range: props.range ?? null,
 								}
-								return true
-							}
-							if (props.event.key === 'Escape') {
-								setSuggestion((prev) => ({ ...prev, isOpen: false }))
-								return true
-							}
-							return false
-						},
-					}
+
+								suggestionStateRef.current = next
+								setSuggestion(next)
+							},
+							onUpdate: (props: GeoSuggestionProps) => {
+								const items = Array.isArray(props.items)
+									? (props.items as GeoFeatureItem[])
+									: filterFeatures(props.query)
+
+								suggestionCommandRef.current = props.command ?? null
+								setSuggestion((prev) => {
+									const selectedIndex = Math.min(prev.selectedIndex, Math.max(0, items.length - 1))
+									const next: SuggestionState = {
+										...prev,
+										query: props.query,
+										items,
+										selectedIndex,
+										clientRect: props.clientRect?.() ?? null,
+										range: props.range ?? null,
+									}
+									suggestionStateRef.current = next
+									return next
+								})
+							},
+							onExit: () => {
+								suggestionCommandRef.current = null
+								setSuggestion((prev) => {
+									const next: SuggestionState = { ...prev, isOpen: false, range: null }
+									suggestionStateRef.current = next
+									return next
+								})
+							},
+							onKeyDown: (props: SuggestionKeyDownProps) => {
+								if (props.event.key === 'ArrowUp') {
+									setSuggestion((prev) => {
+										const next: SuggestionState = {
+											...prev,
+											selectedIndex: Math.max(0, prev.selectedIndex - 1),
+										}
+										suggestionStateRef.current = next
+										return next
+									})
+									return true
+								}
+								if (props.event.key === 'ArrowDown') {
+									setSuggestion((prev) => {
+										const next: SuggestionState = {
+											...prev,
+											selectedIndex: Math.max(
+												0,
+												Math.min(prev.items.length - 1, prev.selectedIndex + 1),
+											),
+										}
+										suggestionStateRef.current = next
+										return next
+									})
+									return true
+								}
+								if (props.event.key === 'Enter' || props.event.key === 'Tab') {
+									const state = suggestionStateRef.current
+									const selectedItem = state?.items[state.selectedIndex]
+									if (selectedItem && suggestionCommandRef.current) {
+										props.event.preventDefault()
+										suggestionCommandRef.current(selectedItem)
+										return true
+									}
+								}
+								return false
+							},
+						}
+					},
+					command: ({ editor, range, props }) => {
+						const item = props as unknown as GeoFeatureItem
+
+						editor
+							.chain()
+							.focus()
+							.deleteRange(range)
+							.insertContent({
+								type: 'geoMention',
+								attrs: {
+									address: item.address,
+									featureId: item.featureId,
+									displayName: item.name,
+								},
+							})
+							.insertContent(' ')
+							.run()
+
+						setSuggestion((prev) => ({ ...prev, isOpen: false }))
+					},
 				},
-				command: () => {
-					// This is called when a suggestion is selected
-					// We'll handle it via selectSuggestion
-				},
-			},
-		})
+			})
+		}, [filterFeatures])
 
 		const editor = useEditor({
 			extensions: [
@@ -219,36 +304,11 @@ export const GeoRichTextEditor = forwardRef<GeoRichTextEditorRef, GeoRichTextEdi
 		})
 
 		// Handle suggestion selection
-		const selectSuggestion = useCallback(
-			(item: GeoFeatureItem) => {
-				if (!editor) return
-
-				// Delete the $ trigger and query
-				const { from } = editor.state.selection
-				const textBefore = editor.state.doc.textBetween(Math.max(0, from - 50), from)
-				const dollarIndex = textBefore.lastIndexOf('$')
-				if (dollarIndex >= 0) {
-					const deleteFrom = from - (textBefore.length - dollarIndex)
-					editor
-						.chain()
-						.focus()
-						.deleteRange({ from: deleteFrom, to: from })
-						.insertContent({
-							type: 'geoMention',
-							attrs: {
-								address: item.address,
-								featureId: item.featureId,
-								displayName: item.name,
-							},
-						})
-						.insertContent(' ')
-						.run()
-				}
-
-				setSuggestion((prev) => ({ ...prev, isOpen: false }))
-			},
-			[editor],
-		)
+		const selectSuggestion = useCallback((item: GeoFeatureItem) => {
+			const command = suggestionCommandRef.current
+			if (!command) return
+			command(item)
+		}, [])
 
 		// Expose methods via ref
 		useImperativeHandle(
@@ -339,16 +399,29 @@ export const GeoRichTextEditor = forwardRef<GeoRichTextEditorRef, GeoRichTextEdi
 		)
 
 		// Calculate suggestion popup position
-		const suggestionStyle = suggestion.clientRect
-			? {
+		const suggestionStyle = (() => {
+			if (!suggestion.clientRect) return {}
+
+			const rootRect = rootRef.current?.getBoundingClientRect()
+			if (!rootRect) {
+				return {
 					position: 'fixed' as const,
 					top: suggestion.clientRect.bottom + 4,
 					left: suggestion.clientRect.left,
 				}
-			: {}
+			}
+
+			// Use absolute positioning relative to the root wrapper. This avoids issues with
+			// `position: fixed` inside transformed ancestors (common in modals/sheets).
+			return {
+				position: 'absolute' as const,
+				top: suggestion.clientRect.bottom - rootRect.top + 4,
+				left: suggestion.clientRect.left - rootRect.left,
+			}
+		})()
 
 		return (
-			<div className={`relative ${className}`}>
+			<div ref={rootRef} className={`relative ${className}`}>
 				{/* biome-ignore lint/a11y/noStaticElementInteractions: container needs drag & drop handlers */}
 				<div
 					ref={editorContainerRef}
@@ -393,34 +466,38 @@ export const GeoRichTextEditor = forwardRef<GeoRichTextEditorRef, GeoRichTextEdi
 				</div>
 
 				{/* Suggestion popup */}
-				{suggestion.isOpen && suggestion.items.length > 0 && (
+				{suggestion.isOpen && (
 					<div
 						ref={suggestionRef}
 						className="absolute z-50 w-64 max-h-48 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg"
 						style={suggestionStyle}
 					>
-						{suggestion.items.map((item, index) => (
-							<button
-								key={item.id}
-								type="button"
-								className={`
-									w-full flex items-center gap-2 px-3 py-2 text-left text-sm
-									${index === suggestion.selectedIndex ? 'bg-sky-50 text-sky-700' : 'hover:bg-gray-50'}
-								`}
-								onClick={() => selectSuggestion(item)}
-							>
-								<MapPin className="h-4 w-4 text-gray-400 flex-shrink-0" />
-								<div className="flex-1 min-w-0">
-									<div className="font-medium truncate">{item.name}</div>
-									{item.datasetName && (
-										<div className="text-xs text-gray-500 truncate">{item.datasetName}</div>
+						{suggestion.items.length > 0 ? (
+							suggestion.items.map((item, index) => (
+								<button
+									key={item.id}
+									type="button"
+									className={`
+										w-full flex items-center gap-2 px-3 py-2 text-left text-sm
+										${index === suggestion.selectedIndex ? 'bg-sky-50 text-sky-700' : 'hover:bg-gray-50'}
+									`}
+									onClick={() => selectSuggestion(item)}
+								>
+									<MapPin className="h-4 w-4 text-gray-400 flex-shrink-0" />
+									<div className="flex-1 min-w-0">
+										<div className="font-medium truncate">{item.name}</div>
+										{item.datasetName && (
+											<div className="text-xs text-gray-500 truncate">{item.datasetName}</div>
+										)}
+									</div>
+									{item.geometryType && (
+										<span className="text-xs text-gray-400 flex-shrink-0">{item.geometryType}</span>
 									)}
-								</div>
-								{item.geometryType && (
-									<span className="text-xs text-gray-400 flex-shrink-0">{item.geometryType}</span>
-								)}
-							</button>
-						))}
+								</button>
+							))
+						) : (
+							<div className="px-3 py-2 text-xs text-gray-500">No matches</div>
+						)}
 					</div>
 				)}
 			</div>

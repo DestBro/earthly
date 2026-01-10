@@ -21,8 +21,8 @@ export function useAvailableGeoFeatures(
 		const items: GeoFeatureItem[] = []
 
 		for (const event of geoEvents) {
-			const datasetId = event.datasetId ?? event.dTag
-			if (!datasetId || !event.pubkey || !event.kind) continue
+			const identifier = event.datasetId ?? event.dTag ?? event.id
+			if (!identifier || !event.pubkey || !event.kind) continue
 
 			// Create naddr for the dataset
 			let naddr: string
@@ -30,21 +30,21 @@ export function useAvailableGeoFeatures(
 				naddr = nip19.naddrEncode({
 					kind: event.kind,
 					pubkey: event.pubkey,
-					identifier: datasetId,
+					identifier,
 				})
 			} catch {
 				// Fallback to a simple format if encoding fails
-				naddr = `${event.kind}:${event.pubkey}:${datasetId}`
+				naddr = `${event.kind}:${event.pubkey}:${identifier}`
 			}
 
 			// Get dataset name from featureCollection
 			const collection = (resolvedCollectionResolver?.(event) ??
 				event.featureCollection) as NamedFeatureCollection
-			const datasetName = collection?.name || collection?.properties?.name || datasetId
+			const datasetName = collection?.name || collection?.properties?.name || identifier
 
 			// Add dataset-level item
 			items.push({
-				id: `dataset:${event.id}`,
+				id: `dataset:${event.id ?? identifier}`,
 				name: datasetName,
 				address: naddr,
 				datasetName,

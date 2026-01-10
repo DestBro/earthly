@@ -288,7 +288,14 @@ export function GeoEditorView() {
 	}, [features])
 
 	// Available features for $ mentions in comments
-	const availableFeatures = useAvailableGeoFeatures(visibleGeoEvents, resolvedCollectionResolver)
+	// We want to allow mentioning any loaded dataset, not just visible ones
+	const geoEventsForMentions = useMemo(() => {
+		if (!viewingDataset) return geoEvents
+		if (geoEvents.some((ev) => ev.id === viewingDataset.id)) return geoEvents
+		return [...geoEvents, viewingDataset]
+	}, [geoEvents, viewingDataset])
+
+	const availableFeatures = useAvailableGeoFeatures(geoEventsForMentions, resolvedCollectionResolver)
 
 	// Map layers hook
 	const { remoteLayersReady } = useMapLayers({
@@ -953,7 +960,7 @@ export function GeoEditorView() {
 						(ev) =>
 							ev.kind === kind &&
 							ev.pubkey === pubkey &&
-							(ev.datasetId === identifier || ev.dTag === identifier),
+							(ev.datasetId === identifier || ev.dTag === identifier || ev.id === identifier),
 					) ?? null
 				)
 			} catch {
