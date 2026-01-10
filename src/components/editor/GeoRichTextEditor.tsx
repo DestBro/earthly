@@ -32,11 +32,14 @@ export interface GeoRichTextEditorProps {
 	onChange?: (text: string) => void
 	/** Called when a feature is dropped */
 	onFeatureDrop?: (feature: GeoFeatureItem) => void
+	/** Callback when a geo mention's visibility is toggled */
+	onMentionVisibilityToggle?: (address: string, featureId: string | undefined, visible: boolean) => void
+	/** Callback to zoom to a mentioned geometry */
+	onMentionZoomTo?: (address: string, featureId: string | undefined) => void
 	/** Whether the editor is disabled */
 	disabled?: boolean
 	/** Minimum height in rows */
 	rows?: number
-	/** Additional class names */
 	/** Additional class names */
 	className?: string
 	/** Whether the editor is strictly read-only (no editing UI) */
@@ -46,6 +49,8 @@ export interface GeoRichTextEditorProps {
 export interface GeoRichTextEditorRef {
 	/** Get plain text with nostr: mentions */
 	getText: () => string
+	/** Set content from nostr: mention text */
+	setContent: (text: string) => void
 	/** Clear the editor */
 	clear: () => void
 	/** Focus the editor */
@@ -76,6 +81,8 @@ export const GeoRichTextEditor = forwardRef<GeoRichTextEditorRef, GeoRichTextEdi
 			availableFeatures = [],
 			onChange,
 			onFeatureDrop,
+			onMentionVisibilityToggle,
+			onMentionZoomTo,
 			disabled = false,
 			rows = 3,
 			className = '',
@@ -194,7 +201,12 @@ export const GeoRichTextEditor = forwardRef<GeoRichTextEditorRef, GeoRichTextEdi
 				Placeholder.configure({
 					placeholder,
 				}),
-				GeoMentionNode,
+				GeoMentionNode.configure({
+					callbacks: {
+						onVisibilityToggle: onMentionVisibilityToggle,
+						onZoomTo: onMentionZoomTo,
+					},
+				}),
 				mentionExtension,
 			],
 			content: initialValue ? parseFromText(initialValue) : '',
@@ -245,6 +257,11 @@ export const GeoRichTextEditor = forwardRef<GeoRichTextEditorRef, GeoRichTextEdi
 				getText: () => {
 					if (!editor) return ''
 					return serializeToText(editor.getJSON())
+				},
+				setContent: (text: string) => {
+					if (!editor) return
+					const content = text ? parseFromText(text) : ''
+					editor.commands.setContent(content)
 				},
 				clear: () => {
 					editor?.commands.clearContent()

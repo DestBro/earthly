@@ -1,6 +1,7 @@
 import { mergeAttributes, Node } from '@tiptap/core'
 import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react'
-import { MapPin } from 'lucide-react'
+import { MapPin, Eye, EyeOff, Maximize2 } from 'lucide-react'
+import { useState } from 'react'
 import { Button } from '../ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 
@@ -13,12 +14,42 @@ export interface GeoMentionAttrs {
 	displayName: string
 }
 
+/** Callbacks for geo mention interactions */
+export interface GeoMentionCallbacks {
+	onVisibilityToggle?: (address: string, featureId: string | undefined, visible: boolean) => void
+	onZoomTo?: (address: string, featureId: string | undefined) => void
+}
+
+/** Options for configuring the GeoMentionNode extension */
+export interface GeoMentionNodeOptions {
+	callbacks?: GeoMentionCallbacks
+}
+
 /**
  * React component for rendering geo mentions in the TipTap editor.
+ * Shows visibility, zoom, and optionally delete buttons.
  */
-function GeoMentionNodeView({ node, deleteNode }: NodeViewProps) {
+function GeoMentionNodeView({ node, deleteNode, editor }: NodeViewProps) {
 	const attrs = node.attrs as GeoMentionAttrs
 	const { address, featureId, displayName } = attrs
+	
+	// Get callbacks from extension storage (type-safe access)
+	const extension = editor.extensionManager.extensions.find(ext => ext.name === 'geoMention')
+	const callbacks = (extension?.storage?.callbacks ?? extension?.options?.callbacks) as GeoMentionCallbacks | undefined
+	const isEditable = editor.isEditable
+	
+	// Local visibility state for UI feedback
+	const [isVisible, setIsVisible] = useState(false)
+
+	const handleToggleVisibility = () => {
+		const newVisible = !isVisible
+		setIsVisible(newVisible)
+		callbacks?.onVisibilityToggle?.(address, featureId, newVisible)
+	}
+
+	const handleZoomTo = () => {
+		callbacks?.onZoomTo?.(address, featureId)
+	}
 
 	return (
 		<NodeViewWrapper as="span" className="inline">
@@ -33,19 +64,57 @@ function GeoMentionNodeView({ node, deleteNode }: NodeViewProps) {
 				>
 					{displayName}
 				</span>
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<Button
-							variant="ghost"
-							size="icon-xs"
-							onClick={deleteNode}
-							className="h-4 w-4 p-0 text-gray-400 hover:text-red-500"
-						>
-							<span className="text-xs">×</span>
-						</Button>
-					</TooltipTrigger>
-					<TooltipContent>Remove mention</TooltipContent>
-				</Tooltip>
+
+				{/* Visibility Toggle - always shown if callback exists */}
+				{callbacks?.onVisibilityToggle && (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								variant="ghost"
+								size="icon-xs"
+								onClick={handleToggleVisibility}
+								className={`h-4 w-4 p-0 ${isVisible ? 'text-sky-600' : 'text-gray-400'} hover:text-sky-700`}
+							>
+								{isVisible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>{isVisible ? 'Hide on map' : 'Show on map'}</TooltipContent>
+					</Tooltip>
+				)}
+
+				{/* Zoom Button - always shown if callback exists */}
+				{callbacks?.onZoomTo && (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								variant="ghost"
+								size="icon-xs"
+								onClick={handleZoomTo}
+								className="h-4 w-4 p-0 text-gray-400 hover:text-sky-700"
+							>
+								<Maximize2 className="h-3 w-3" />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>Zoom to feature</TooltipContent>
+					</Tooltip>
+				)}
+
+				{/* Delete Button - only in edit mode */}
+				{isEditable && (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								variant="ghost"
+								size="icon-xs"
+								onClick={deleteNode}
+								className="h-4 w-4 p-0 text-gray-400 hover:text-red-500"
+							>
+								<span className="text-xs">×</span>
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>Remove mention</TooltipContent>
+					</Tooltip>
+				)}
 			</span>
 		</NodeViewWrapper>
 	)
@@ -53,14 +122,26 @@ function GeoMentionNodeView({ node, deleteNode }: NodeViewProps) {
 
 /**
  * TipTap extension for geo mentions.
- * Renders as inline chips with the dataset/feature name.
+ * Renders as inline chips with visibility/zoom/delete controls.
  */
-export const GeoMentionNode = Node.create({
+export const GeoMentionNode = Node.create<GeoMentionNodeOptions>({
 	name: 'geoMention',
 	group: 'inline',
 	inline: true,
 	selectable: true,
 	atom: true,
+
+	addOptions() {
+		return {
+			callbacks: undefined,
+		}
+	},
+
+	addStorage() {
+		return {
+			callbacks: this.options.callbacks,
+		}
+	},
 
 	addAttributes() {
 		return {

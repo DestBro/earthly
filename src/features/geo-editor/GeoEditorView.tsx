@@ -89,6 +89,9 @@ export function GeoEditorView() {
 	} | null>(null)
 	const mapContainerRef = useRef<HTMLDivElement>(null)
 
+	// Collection visibility state (local to view)
+	const [collectionVisibility, setCollectionVisibility] = useState<Record<string, boolean>>({})
+
 	// Store state
 	const editor = useEditorStore((state) => state.editor)
 	const features = useEditorStore((state) => state.features)
@@ -252,7 +255,11 @@ export function GeoEditorView() {
 					const datasetId = event.datasetId ?? event.dTag ?? event.id
 					if (!datasetId) return false
 					const coordinate = `${event.kind ?? 31991}:${event.pubkey}:${datasetId}`
-					return references.has(coordinate)
+					const inCollection = references.has(coordinate)
+					if (!inCollection) return false
+					
+					// Also respect visibility toggle
+					return datasetVisibility[getDatasetKey(event)] !== false
 				})
 			}
 		}
@@ -1000,19 +1007,21 @@ export function GeoEditorView() {
 
 	// Handle mention visibility toggle
 	const handleMentionVisibilityToggle = useCallback(
-		(address: string, _featureId: string | undefined, _visible: boolean) => {
+		(address: string, _featureId: string | undefined, visible: boolean) => {
 			const dataset = resolveNaddrToDataset(address)
 			if (!dataset) {
 				console.warn('Could not find dataset for address:', address)
 				return
 			}
-
-			// Toggle the dataset visibility
-			// Note: For now, we toggle the whole dataset. Feature-level visibility
-			// would require additional layer/filter management.
-			toggleDatasetVisibility(dataset)
+			// Set the dataset visibility explicitly based on the visible parameter
+			// datasetVisibility semantics: false = hidden, true/undefined = visible
+			const key = getDatasetKey(dataset)
+			setDatasetVisibility((prev) => ({
+				...prev,
+				[key]: visible,
+			}))
 		},
-		[resolveNaddrToDataset, toggleDatasetVisibility],
+		[resolveNaddrToDataset, getDatasetKey, setDatasetVisibility],
 	)
 
 	// Wrapped visibility toggle that exits focus mode
@@ -1097,6 +1106,38 @@ export function GeoEditorView() {
 			handleInspectCollection(collection, events)
 		},
 		[handleInspectCollection],
+	)
+
+	// Get collection key for visibility tracking
+	const getCollectionKey = useCallback((collection: NDKGeoCollectionEvent): string => {
+		return collection.dTag ?? collection.id ?? collection.collectionId ?? ''
+	}, [])
+
+	// Toggle collection visibility
+	const handleToggleCollectionVisibility = useCallback(
+		(collection: NDKGeoCollectionEvent) => {
+			const key = getCollectionKey(collection)
+			setCollectionVisibility((prev) => ({
+				...prev,
+				[key]: prev[key] === false ? true : false,
+			}))
+		},
+		[getCollectionKey],
+	)
+
+	// Toggle all collection visibility
+	const handleToggleAllCollectionVisibility = useCallback(
+		(visible: boolean) => {
+			setCollectionVisibility((prev) => {
+				const next: Record<string, boolean> = {}
+				collectionEvents.forEach((collection) => {
+					const key = getCollectionKey(collection)
+					next[key] = visible
+				})
+				return next
+			})
+		},
+		[collectionEvents, getCollectionKey],
 	)
 
 	const multiSelectModifierLabel = editor?.getMultiSelectModifierLabel() ?? 'Shift'
@@ -1191,18 +1232,21 @@ export function GeoEditorView() {
 				<div className="pointer-events-auto absolute left-4 top-[88px] bottom-4 z-40 hidden md:flex w-[25vw]">
 					<div className="glass-panel flex-1 overflow-hidden rounded-lg">
 						<div className="h-full overflow-y-auto p-4">
-							<GeoDatasetsPanelContent
+								<GeoDatasetsPanelContent
 								geoEvents={geoEvents}
 								collectionEvents={collectionEvents}
 								activeDataset={activeDataset}
 								currentUserPubkey={currentUser?.pubkey}
 								datasetVisibility={effectiveVisibility}
+								collectionVisibility={collectionVisibility}
 								isPublishing={isPublishing}
 								deletingKey={deletingKey}
 								onClearEditing={clearEditingSession}
 								onLoadDataset={handleDatasetSelect}
 								onToggleVisibility={handleToggleVisibilityWithExitFocus}
 								onToggleAllVisibility={handleToggleAllVisibilityWithExitFocus}
+								onToggleCollectionVisibility={handleToggleCollectionVisibility}
+								onToggleAllCollectionVisibility={handleToggleAllCollectionVisibility}
 								onZoomToDataset={zoomToDataset}
 								onDeleteDataset={onDeleteDataset}
 								getDatasetKey={getDatasetKey}
@@ -1281,12 +1325,15 @@ export function GeoEditorView() {
 									activeDataset={activeDataset}
 									currentUserPubkey={currentUser?.pubkey}
 									datasetVisibility={effectiveVisibility}
+									collectionVisibility={collectionVisibility}
 									isPublishing={isPublishing}
 									deletingKey={deletingKey}
 									onClearEditing={clearEditingSession}
 									onLoadDataset={loadDatasetForEditing}
 									onToggleVisibility={handleToggleVisibilityWithExitFocus}
 									onToggleAllVisibility={handleToggleAllVisibilityWithExitFocus}
+									onToggleCollectionVisibility={handleToggleCollectionVisibility}
+									onToggleAllCollectionVisibility={handleToggleAllCollectionVisibility}
 									onZoomToDataset={zoomToDataset}
 									onDeleteDataset={onDeleteDataset}
 									getDatasetKey={getDatasetKey}

@@ -24,12 +24,15 @@ export interface GeoDatasetsPanelProps {
 	activeDataset: NDKGeoEvent | null
 	currentUserPubkey?: string
 	datasetVisibility: Record<string, boolean>
+	collectionVisibility: Record<string, boolean>
 	isPublishing: boolean
 	deletingKey: string | null
 	onClearEditing: () => void
 	onLoadDataset: (event: NDKGeoEvent) => void
 	onToggleVisibility: (event: NDKGeoEvent) => void
 	onToggleAllVisibility: (visible: boolean) => void
+	onToggleCollectionVisibility: (collection: NDKGeoCollectionEvent) => void
+	onToggleAllCollectionVisibility: (visible: boolean) => void
 	onZoomToDataset: (event: NDKGeoEvent) => void
 	onDeleteDataset: (event: NDKGeoEvent) => void
 	getDatasetKey: (event: NDKGeoEvent) => string
@@ -76,12 +79,15 @@ export function GeoDatasetsPanelContent({
 	activeDataset,
 	currentUserPubkey,
 	datasetVisibility,
+	collectionVisibility,
 	isPublishing,
 	deletingKey,
 	onClearEditing,
 	onLoadDataset,
 	onToggleVisibility,
 	onToggleAllVisibility,
+	onToggleCollectionVisibility,
+	onToggleAllCollectionVisibility,
 	onZoomToDataset,
 	onDeleteDataset,
 	getDatasetKey,
@@ -195,6 +201,11 @@ export function GeoDatasetsPanelContent({
 		return 'some'
 	}, [datasetTableData])
 
+	// Get collection key for visibility
+	const getCollectionKey = (collection: NDKGeoCollectionEvent): string => {
+		return collection.dTag ?? collection.id ?? collection.collectionId ?? ''
+	}
+
 	// Prepare collection table data
 	const collectionTableData: CollectionRowData[] = useMemo(() => {
 		return filteredCollections.map((collection) => {
@@ -205,6 +216,8 @@ export function GeoDatasetsPanelContent({
 				.filter((event): event is NDKGeoEvent => Boolean(event))
 			const zoomDisabled =
 				!onZoomToCollection || (!collection.boundingBox && referencedEvents.length === 0)
+			const collectionKey = getCollectionKey(collection)
+			const isVisible = collectionVisibility[collectionKey] !== false
 
 			return {
 				collection,
@@ -212,9 +225,19 @@ export function GeoDatasetsPanelContent({
 				datasetCount,
 				referencedEvents,
 				zoomDisabled,
+				isVisible,
 			}
 		})
-	}, [filteredCollections, datasetReferenceMap, onZoomToCollection])
+	}, [filteredCollections, datasetReferenceMap, onZoomToCollection, collectionVisibility])
+
+	// Compute visibility state for all filtered collections (for header checkbox)
+	const allCollectionVisibleState = useMemo((): 'all' | 'none' | 'some' => {
+		if (collectionTableData.length === 0) return 'none'
+		const visibleCount = collectionTableData.filter((row) => row.isVisible).length
+		if (visibleCount === 0) return 'none'
+		if (visibleCount === collectionTableData.length) return 'all'
+		return 'some'
+	}, [collectionTableData])
 
 	// Dataset columns context
 	const datasetColumnsContext: DatasetColumnsContext = useMemo(
@@ -252,8 +275,10 @@ export function GeoDatasetsPanelContent({
 			onOpenDebug,
 			getDatasetName,
 			onEditCollection,
+			onToggleVisibility: onToggleCollectionVisibility,
+			onToggleAllVisibility: onToggleAllCollectionVisibility,
 			currentUserPubkey,
-			availableFeatures,
+			allVisibleState: allCollectionVisibleState,
 		}),
 		[
 			onZoomToCollection,
@@ -261,8 +286,10 @@ export function GeoDatasetsPanelContent({
 			onOpenDebug,
 			getDatasetName,
 			onEditCollection,
+			onToggleCollectionVisibility,
+			onToggleAllCollectionVisibility,
 			currentUserPubkey,
-			availableFeatures,
+			allCollectionVisibleState,
 		],
 	)
 
@@ -377,7 +404,11 @@ export function GeoDatasetsPanelContent({
 			) : filteredCollections.length === 0 ? (
 				<p className="text-xs text-gray-500">No collections match your filters.</p>
 			) : (
-				<DataTable columns={collectionColumns} data={collectionTableData} />
+				<DataTable
+					columns={collectionColumns}
+					data={collectionTableData}
+					getRowClassName={(row) => (!row.isVisible ? 'opacity-60' : undefined)}
+				/>
 			)}
 		</div>
 	)

@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, Eye, EyeOff, MapPin } from 'lucide-react'
-import { useState, useMemo, Fragment } from 'react'
+import { useState, useMemo } from 'react'
 import type { FeatureCollection } from 'geojson'
 import type { CommentNode } from '../../lib/hooks/useGeoComments'
 import type { NDKGeoCommentEvent } from '../../lib/ndk/NDKGeoCommentEvent'
@@ -7,7 +7,7 @@ import { Button } from '../ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { GeoCommentForm } from './GeoCommentForm'
 import { GeoSocialActions } from './GeoSocialActions'
-import { GeoMention, parseGeoMentions } from './GeoMention'
+import { GeoRichTextEditor } from '../editor/GeoRichTextEditor'
 
 interface GeoCommentProps {
 	commentNode: CommentNode
@@ -85,8 +85,7 @@ export function GeoComment({
 		onZoomToGeojson?.(comment)
 	}
 
-	// Parse text for geo mentions
-	const textSegments = useMemo(() => parseGeoMentions(comment.text), [comment.text])
+	// Parse text for geo mentions - removed, now using GeoRichTextEditor
 
 	// Calculate indentation (capped at maxDepth)
 	const indentLevel = Math.min(depth, maxDepth)
@@ -129,30 +128,16 @@ export function GeoComment({
 					</div>
 				</div>
 
-				{/* Content with parsed mentions */}
-				<div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words">
-					{textSegments.map((segment) => {
-						const key =
-							segment.type === 'text'
-								? `text-${segment.content.slice(0, 20)}-${segment.content.length}`
-								: `mention-${segment.address}-${segment.featureId ?? ''}`
-						return (
-							<Fragment key={key}>
-								{segment.type === 'text' ? (
-									segment.content
-								) : (
-									<GeoMention
-										address={segment.address ?? ''}
-										featureId={segment.featureId}
-										onToggleVisibility={(visible) =>
-											onMentionVisibilityToggle?.(segment.address ?? '', segment.featureId, visible)
-										}
-										onZoomTo={() => onMentionZoomTo?.(segment.address ?? '', segment.featureId)}
-									/>
-								)}
-							</Fragment>
-						)
-					})}
+				{/* Content rendered with GeoRichTextEditor for consistent mention display */}
+				<div className="text-sm text-gray-800">
+					<GeoRichTextEditor
+						initialValue={comment.text}
+						readOnly
+						onMentionVisibilityToggle={onMentionVisibilityToggle}
+						onMentionZoomTo={onMentionZoomTo}
+						className="prose-sm"
+						rows={1}
+					/>
 				</div>
 
 				{/* GeoJSON attachment indicator */}

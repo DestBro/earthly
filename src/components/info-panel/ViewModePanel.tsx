@@ -319,6 +319,8 @@ export function ViewModePanel({
 												initialValue={viewCollection.metadata.description}
 												readOnly
 												availableFeatures={availableFeatures}
+												onMentionVisibilityToggle={onMentionVisibilityToggle}
+												onMentionZoomTo={onMentionZoomTo}
 											/>
 										</div>
 									)}

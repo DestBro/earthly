@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { useNDK, useNDKCurrentUser } from '@nostr-dev-kit/react'
 import type { FeatureCollection } from 'geojson'
-import { X, Save, MapPin, Trash2, FileText, MessageCircle } from 'lucide-react'
+import { X, Save, MapPin, Trash2, FileText, MessageCircle, Eye, EyeOff, Maximize2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -61,6 +61,7 @@ export function GeoCollectionEditorPanel({
 	const [activeTab, setActiveTab] = useState<EditorTab>('details')
 	const [visibleGeojsonCommentIds, setVisibleGeojsonCommentIds] = useState<Set<string>>(new Set())
 	const [attachedGeojson, setAttachedGeojson] = useState<FeatureCollection | null>(null)
+	const [visibleReferenceAddrs, setVisibleReferenceAddrs] = useState<Set<string>>(new Set())
 
 	// Form state
 	const selectedFeatureIds = useEditorStore((state) => state.selectedFeatureIds)
@@ -72,22 +73,28 @@ export function GeoCollectionEditorPanel({
 	}, [features, selectedFeatureIds])
 
 	const canAttachGeometry = selectedFeatures.length > 0 && !attachedGeojson
-	const [name, setName] = useState('')
-	const [description, setDescription] = useState('')
+	
+	// Initialize form state directly from collection to avoid timing issues
+	const initialName = initialCollection?.metadata.name || ''
+	const initialDescription = initialCollection?.metadata.description || ''
+	
+	const [name, setName] = useState(initialName)
+	const [description, setDescription] = useState(initialDescription)
 	const [isSaving, setIsSaving] = useState(false)
 
-	// Initialize from collection
+	// Sync state when initialCollection changes
 	useEffect(() => {
+		const newName = initialCollection?.metadata.name || ''
+		const newDesc = initialCollection?.metadata.description || ''
+		setName(newName)
+		setDescription(newDesc)
+		// Also reset editor content if it exists
 		if (initialCollection) {
-			const meta = initialCollection.metadata
-			setName(meta.name || '')
-			setDescription(initialCollection.metadata.description || '')
+			editorRef.current?.setContent(newDesc)
 		} else {
-			setName('')
-			setDescription('')
 			editorRef.current?.clear()
 		}
-	}, [initialCollection])
+	}, [initialCollection?.id, initialCollection?.dTag])
 
 	// Extract references from description
 	const referencedAddresses = useMemo(() => {
@@ -302,11 +309,14 @@ export function GeoCollectionEditorPanel({
 								Describe your collection. Mention datasets using $ or drag them here.
 							</div>
 							<GeoRichTextEditor
+								key={initialCollection?.id ?? initialCollection?.dTag ?? 'new'}
 								ref={editorRef}
 								initialValue={description}
 								onChange={handleDescriptionChange}
 								placeholder="This collection contains..."
 								availableFeatures={availableFeatures}
+								onMentionVisibilityToggle={onMentionVisibilityToggle}
+								onMentionZoomTo={onMentionZoomTo}
 								className="min-h-[150px]"
 								rows={6}
 							/>
@@ -316,15 +326,49 @@ export function GeoCollectionEditorPanel({
 							<div className="space-y-2">
 								<Label>Referenced Datasets ({referencedAddresses.length})</Label>
 								<div className="bg-gray-50 rounded-md p-2 space-y-1">
-									{resolvedReferences.map((ref) => (
-										<div
-											key={ref.address}
-											className="flex items-center gap-2 text-sm text-gray-700 bg-white border border-gray-200 rounded px-2 py-1"
-										>
-											<MapPin className="h-3 w-3 text-gray-400" />
-											<span className="truncate flex-1">{ref.name}</span>
-										</div>
-									))}
+									{resolvedReferences.map((ref) => {
+										const isVisible = visibleReferenceAddrs.has(ref.address)
+										return (
+											<div
+												key={ref.address}
+												className="flex items-center gap-2 text-sm text-gray-700 bg-white border border-gray-200 rounded px-2 py-1"
+											>
+												<MapPin className="h-3 w-3 text-gray-400 flex-shrink-0" />
+												<span className="truncate flex-1">{ref.name}</span>
+												<Button
+													size="icon-xs"
+													variant="ghost"
+													onClick={() => {
+														setVisibleReferenceAddrs((prev) => {
+															const next = new Set(prev)
+															if (isVisible) {
+																next.delete(ref.address)
+															} else {
+																next.add(ref.address)
+															}
+															return next
+														})
+														onMentionVisibilityToggle?.(ref.address, undefined, !isVisible)
+													}}
+													title={isVisible ? 'Hide on map' : 'Show on map'}
+												>
+													{isVisible ? (
+														<Eye className="h-3 w-3 text-blue-600" />
+													) : (
+														<EyeOff className="h-3 w-3 text-gray-400" />
+													)}
+												</Button>
+												<Button
+													size="icon-xs"
+													variant="ghost"
+													onClick={() => onMentionZoomTo?.(ref.address, undefined)}
+													title="Zoom to dataset"
+												>
+													<Maximize2 className="h-3 w-3" />
+												</Button>
+											</div>
+										)
+									})}
 								</div>
 							</div>
 						)}
