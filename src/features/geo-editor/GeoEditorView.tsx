@@ -366,7 +366,54 @@ export function GeoEditorView() {
 				// Map may have been removed
 			}
 		}
-	}, [mapSourceKey, activeDataset, zoomToDataset])
+	}, [mapSourceKey, activeDataset])
+
+	// Initial zoom to latest geometry on app load
+	const initialZoomPerformed = useRef(false)
+	useEffect(() => {
+		if (initialZoomPerformed.current || !map.current || !mounted) return
+		
+		// Only perform initial zoom if we're on the home route
+		if (route.type !== 'home') return
+
+		if (geoEvents.length === 0) return
+
+		// Sort events by creation time (descending)
+		const sortedEvents = [...geoEvents].sort((a, b) => {
+			return (b.created_at || 0) - (a.created_at || 0)
+		})
+
+		const latestEvent = sortedEvents[0]
+		if (!latestEvent) return
+
+		const performZoom = async () => {
+			try {
+				// Get collection or feature collection
+				const dataset = resolveNaddrToDataset(latestEvent.datasetId || latestEvent.dTag || latestEvent.id)
+				const col = dataset?.featureCollection || latestEvent.featureCollection
+				
+				if (!col) return
+
+				const turf = await import('@turf/turf')
+				const bbox = turf.bbox(col as any)
+				
+				if (Array.isArray(bbox) && bbox.length === 4 && bbox.every(n => Number.isFinite(n))) {
+					map.current?.fitBounds(
+						[
+							[bbox[0], bbox[1]],
+							[bbox[2], bbox[3]],
+						],
+						{ padding: 100, duration: 1500, maxZoom: 16 }
+					)
+					initialZoomPerformed.current = true
+				}
+			} catch (err) {
+				console.warn('Failed to auto-zoom to latest event:', err)
+			}
+		}
+
+		performZoom()
+	}, [geoEvents, mounted, route])
 
 	// Pan lock sync with drawing mode
 	useEffect(() => {
@@ -419,6 +466,8 @@ export function GeoEditorView() {
 
 	// Handle initial route on page load (direct URL navigation)
 	useEffect(() => {
+		// Only perform initial zoom if we're on the home route
+		// If there's a specific route (e.g. /geoevent/...), that component handles its own zoom
 		if (route.type === 'home' || !route.naddr) return
 		// Wait for data to be available
 		if (geoEvents.length === 0 && collectionEvents.length === 0) return
