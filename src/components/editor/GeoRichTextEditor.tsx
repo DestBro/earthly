@@ -132,6 +132,15 @@ export const GeoRichTextEditor = forwardRef<GeoRichTextEditorRef, GeoRichTextEdi
 			availableFeaturesRef.current = availableFeatures
 		}, [availableFeatures])
 
+		// Create a name resolver that looks up names from available features by address
+		const createNameResolver = useCallback(
+			() => (address: string): string | undefined => {
+				const feature = availableFeaturesRef.current.find((f) => f.address === address)
+				return feature?.name
+			},
+			[],
+		)
+
 		// Filter features based on query
 		const filterFeatures = useCallback((query: string): GeoFeatureItem[] => {
 			const features = availableFeaturesRef.current
@@ -294,7 +303,7 @@ export const GeoRichTextEditor = forwardRef<GeoRichTextEditorRef, GeoRichTextEdi
 				}),
 				mentionExtension,
 			],
-			content: initialValue ? parseFromText(initialValue) : '',
+			content: initialValue ? parseFromText(initialValue, createNameResolver()) : '',
 			editable: !disabled && !readOnly,
 			onUpdate: ({ editor }) => {
 				const json = editor.getJSON()
@@ -320,7 +329,7 @@ export const GeoRichTextEditor = forwardRef<GeoRichTextEditorRef, GeoRichTextEdi
 				},
 				setContent: (text: string) => {
 					if (!editor) return
-					const content = text ? parseFromText(text) : ''
+					const content = text ? parseFromText(text, createNameResolver()) : ''
 					editor.commands.setContent(content)
 				},
 				clear: () => {
@@ -346,8 +355,33 @@ export const GeoRichTextEditor = forwardRef<GeoRichTextEditorRef, GeoRichTextEdi
 						.run()
 				},
 			}),
-			[editor],
+			[editor, createNameResolver],
 		)
+
+		// Re-parse content when availableFeatures changes from empty to populated
+		// This ensures mention names are resolved even if features load after initial render
+		useEffect(() => {
+			if (!editor || availableFeatures.length === 0) return
+
+			// Get current content as text
+			const json = editor.getJSON()
+			const text = serializeToText(json)
+
+			// Only re-parse if there are nostr: mentions that might need name resolution
+			if (!text.includes('nostr:naddr1')) return
+
+			// Re-parse with the name resolver to update display names
+			const newContent = parseFromText(text, createNameResolver())
+			editor.commands.setContent(newContent)
+		}, [editor, availableFeatures, createNameResolver])
+
+		// Update content when initialValue prop changes (e.g., switching between collections)
+		useEffect(() => {
+			if (!editor) return
+
+			const newContent = initialValue ? parseFromText(initialValue, createNameResolver()) : ''
+			editor.commands.setContent(newContent)
+		}, [editor, initialValue, createNameResolver])
 
 		// Drag & drop handlers
 		const handleDragOver = useCallback((e: React.DragEvent) => {

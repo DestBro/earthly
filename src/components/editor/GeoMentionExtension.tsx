@@ -229,8 +229,13 @@ export function serializeToText(json: TipTapNode | null): string {
 
 /**
  * Parses plain text with nostr: mentions back to TipTap JSON.
+ * @param text The text to parse
+ * @param nameResolver Optional function to resolve display names from naddr addresses
  */
-export function parseFromText(text: string): TipTapNode {
+export function parseFromText(
+	text: string,
+	nameResolver?: (address: string) => string | undefined,
+): TipTapNode {
 	const pattern = /nostr:(naddr1[a-z0-9]+)(#([a-zA-Z0-9_-]+))?/g
 	const content: TipTapNode[] = []
 	let lastIndex = 0
@@ -238,6 +243,8 @@ export function parseFromText(text: string): TipTapNode {
 
 	while (match !== null) {
 		const matchIndex = match.index
+		const address = match[1]
+		const featureId = match[3] || null
 
 		// Add text before the match
 		if (matchIndex > lastIndex) {
@@ -247,13 +254,23 @@ export function parseFromText(text: string): TipTapNode {
 			})
 		}
 
+		// Try to resolve the name, fall back to generic label
+		let displayName: string
+		if (featureId) {
+			displayName = `Feature: ${featureId}`
+		} else if (nameResolver) {
+			displayName = nameResolver(address) ?? 'Dataset'
+		} else {
+			displayName = 'Dataset'
+		}
+
 		// Add the geo mention node
 		content.push({
 			type: 'geoMention',
 			attrs: {
-				address: match[1],
-				featureId: match[3] || null,
-				displayName: match[3] ? `Feature: ${match[3]}` : `Dataset`,
+				address,
+				featureId,
+				displayName,
 			},
 		})
 
