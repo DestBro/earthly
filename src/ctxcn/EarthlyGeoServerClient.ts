@@ -6,6 +6,7 @@ import {
 } from '@contextvm/sdk'
 import { Client } from '@modelcontextprotocol/sdk/client'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import { config } from '../config'
 
 export interface SearchLocationInput {
 	/**
@@ -95,7 +96,7 @@ export type EarthlyGeoServer = {
 
 export class EarthlyGeoServerClient implements EarthlyGeoServer {
 	static readonly SERVER_PUBKEY = 'ceadb7d5b739189fb3ecb7023a0c3f55d8995404d7750f5068865decf8b304cc'
-	static readonly DEFAULT_RELAYS = ['ws://localhost:3334', 'wss://relay.wavefunc.live']
+	static readonly DEFAULT_RELAYS = config.relayUrls
 	private client: Client
 	private transport: Transport
 

@@ -28,7 +28,7 @@ const app = (
 	<StrictMode>
 		<NDKHeadless
 			ndk={{
-				explicitRelayUrls: [config.relayUrl],
+				explicitRelayUrls: config.relayUrls,
 				cacheAdapter: dexieAdapter,
 			}}
 			session={{

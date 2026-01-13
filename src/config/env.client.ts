@@ -14,6 +14,8 @@ const DEV_DEFAULTS = {
 	CLIENT_KEY: '4e842ce1a820603c44f6ce3c4acd6527fdeb4898a9023d84bed51c1b4417eb5c',
 } as const
 
+const LOCAL_DEV_RELAY_URL = 'ws://localhost:3334'
+
 /**
  * Safely access process.env with fallback.
  * The bundler replaces process.env.X with literal strings in production.
@@ -30,6 +32,63 @@ function safeEnv<T>(getValue: () => T, fallback: T): T {
 	}
 }
 
+function parseRelayUrls(relayUrl: string): string[] {
+	return relayUrl
+		.split(',')
+		.map((url) => url.trim())
+		.filter(Boolean)
+}
+
+function getBrowserLocation(): Pick<Location, 'hostname' | 'protocol'> | null {
+	try {
+		if (typeof location === 'undefined') return null
+		return { hostname: location.hostname, protocol: location.protocol }
+	} catch {
+		return null
+	}
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+	return (
+		hostname === 'localhost' ||
+		hostname === '127.0.0.1' ||
+		hostname === '0.0.0.0' ||
+		hostname === '::1' ||
+		hostname === '[::1]'
+	)
+}
+
+function isLoopbackRelayUrl(relayUrl: string): boolean {
+	try {
+		return isLoopbackHostname(new URL(relayUrl).hostname)
+	} catch {
+		return false
+	}
+}
+
+function buildRelayUrls({
+	relayUrl,
+	isDevelopment,
+}: { relayUrl: string; isDevelopment: boolean }): string[] {
+	const locationInfo = getBrowserLocation()
+	const isLocalOrigin = locationInfo ? isLoopbackHostname(locationInfo.hostname) : false
+	const isHttps = locationInfo ? locationInfo.protocol === 'https:' : false
+
+	const candidates = [
+		...(isDevelopment && isLocalOrigin ? [LOCAL_DEV_RELAY_URL] : []),
+		...parseRelayUrls(relayUrl),
+	]
+
+	const filtered = candidates.filter((url) => {
+		if (isHttps && url.startsWith('ws://')) return false
+		if (!isLocalOrigin && isLoopbackRelayUrl(url)) return false
+		return true
+	})
+
+	const deduped = filtered.filter((url, index, self) => self.indexOf(url) === index)
+	return deduped.length > 0 ? deduped : [DEV_DEFAULTS.RELAY_URL]
+}
+
 /**
  * Frontend configuration object.
  * Production: baked in at build time via bundler's define.
@@ -37,9 +96,13 @@ function safeEnv<T>(getValue: () => T, fallback: T): T {
  *
  * IMPORTANT: Each process.env.X must be a static access for bundler replacement to work.
  */
+const relayUrl = safeEnv(() => process.env.RELAY_URL as string, DEV_DEFAULTS.RELAY_URL)
+const isProduction = safeEnv(() => process.env.NODE_ENV === 'production', false)
+const isDevelopment = safeEnv(() => process.env.NODE_ENV !== 'production', true)
+
 export const config = {
 	/** Primary relay WebSocket URL */
-	relayUrl: safeEnv(() => process.env.RELAY_URL as string, DEV_DEFAULTS.RELAY_URL),
+	relayUrl,
 
 	/** Public key of the ContextVM geo server */
 	serverPubkey: safeEnv(() => process.env.SERVER_PUBKEY as string, DEV_DEFAULTS.SERVER_PUBKEY),
@@ -47,11 +110,14 @@ export const config = {
 	/** Client private key for ContextVM communication */
 	clientKey: safeEnv(() => process.env.CLIENT_KEY as string, DEV_DEFAULTS.CLIENT_KEY),
 
+	/** Relay URLs to use (sanitized for the current runtime) */
+	relayUrls: buildRelayUrls({ relayUrl, isDevelopment }),
+
 	/** Whether running in production mode */
-	isProduction: safeEnv(() => process.env.NODE_ENV === 'production', false),
+	isProduction,
 
 	/** Whether running in development mode */
-	isDevelopment: safeEnv(() => process.env.NODE_ENV !== 'production', true),
+	isDevelopment,
 } as const
 
 /** Type for the frontend config object */
