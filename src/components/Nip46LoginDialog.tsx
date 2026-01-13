@@ -25,11 +25,11 @@ type TabType = 'scan' | 'paste'
 
 // Common NIP-46 relays
 const DEFAULT_RELAYS = [
-	{ value: 'wss://relay.nsec.app', label: 'relay.nsec.app (recommended)' },
+	{ value: 'wss://relay.wavefunc.live', label: 'relay.wavefunc.live' },
+	{ value: 'wss://relay.nsec.app', label: 'relay.nsec.app' },
 	{ value: 'wss://relay.damus.io', label: 'relay.damus.io' },
 	{ value: 'wss://nos.lol', label: 'nos.lol' },
 	{ value: 'wss://relay.primal.net', label: 'relay.primal.net' },
-	{ value: 'wss://relay.wavefunc.live', label: 'relay.wavefunc.live' },
 ]
 
 type ConnectionState = 'idle' | 'generating' | 'waiting' | 'connected' | 'error'

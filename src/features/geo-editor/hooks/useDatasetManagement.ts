@@ -136,10 +136,26 @@ export function useDatasetManagement(
 
 			const collection = convertGeoEventsToFeatureCollection([event], resolvedCollectionResolver)
 			const coords = turf.coordAll(collection)
-			if (coords.length === 0) return
-			const bounds = coords.reduce(
-				(acc, coord) => acc.extend(coord as [number, number]),
-				new maplibregl.LngLatBounds(coords[0] as [number, number], coords[0] as [number, number]),
+			// Filter out invalid coordinates (NaN, undefined, or out of valid lng/lat range)
+			const validCoords = coords.filter(
+				(coord): coord is [number, number] =>
+					Array.isArray(coord) &&
+					coord.length >= 2 &&
+					typeof coord[0] === 'number' &&
+					typeof coord[1] === 'number' &&
+					!Number.isNaN(coord[0]) &&
+					!Number.isNaN(coord[1]) &&
+					coord[0] >= -180 &&
+					coord[0] <= 180 &&
+					coord[1] >= -90 &&
+					coord[1] <= 90,
+			)
+			if (validCoords.length === 0) return
+			// Slice to [lng, lat] as MapLibre requires exactly 2-element arrays
+			const lngLatCoords = validCoords.map((c) => [c[0], c[1]] as [number, number])
+			const bounds = lngLatCoords.reduce(
+				(acc, coord) => acc.extend(coord),
+				new maplibregl.LngLatBounds(lngLatCoords[0], lngLatCoords[0]),
 			)
 			mapRef.current.fitBounds(bounds, { padding: 40, duration: 500 })
 		},
@@ -178,10 +194,26 @@ export function useDatasetManagement(
 				resolvedCollectionResolver,
 			)
 			const coords = turf.coordAll(collectionFc)
-			if (coords.length === 0) return
-			const bounds = coords.reduce(
-				(acc, coord) => acc.extend(coord as [number, number]),
-				new maplibregl.LngLatBounds(coords[0] as [number, number], coords[0] as [number, number]),
+			// Filter out invalid coordinates (NaN, undefined, or out of valid lng/lat range)
+			const validCoords = coords.filter(
+				(coord): coord is [number, number] =>
+					Array.isArray(coord) &&
+					coord.length >= 2 &&
+					typeof coord[0] === 'number' &&
+					typeof coord[1] === 'number' &&
+					!Number.isNaN(coord[0]) &&
+					!Number.isNaN(coord[1]) &&
+					coord[0] >= -180 &&
+					coord[0] <= 180 &&
+					coord[1] >= -90 &&
+					coord[1] <= 90,
+			)
+			if (validCoords.length === 0) return
+			// Slice to [lng, lat] as MapLibre requires exactly 2-element arrays
+			const lngLatCoords = validCoords.map((c) => [c[0], c[1]] as [number, number])
+			const bounds = lngLatCoords.reduce(
+				(acc, coord) => acc.extend(coord),
+				new maplibregl.LngLatBounds(lngLatCoords[0], lngLatCoords[0]),
 			)
 			mapRef.current.fitBounds(bounds, { padding: 40, duration: 500 })
 		},
