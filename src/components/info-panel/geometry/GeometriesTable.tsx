@@ -322,7 +322,7 @@ export function GeometriesTable({ className }: GeometriesTableProps) {
 						const text = feature.properties?.text as string
 						name = text ? `"${text.slice(0, 20)}${text.length > 20 ? '…' : ''}"` : 'Annotation'
 					} else {
-						name = `${feature.geometry.type} • ${feature.id.slice(0, 6)}`
+						name = `${feature.geometry.type} • ${String(feature.id).slice(0, 6)}`
 					}
 				}
 				return {

@@ -5,11 +5,19 @@ import { useEditorStore } from '../../features/geo-editor/store'
 import type { NDKGeoCollectionEvent } from '../../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
 import type { NDKGeoCommentEvent } from '../../lib/ndk/NDKGeoCommentEvent'
+import { cn } from '@/lib/utils'
 import { Button } from '../ui/button'
+import { DataTable } from '../ui/data-table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { DatasetActionCard } from './DatasetActionCard'
 import { CommentsPanel } from '../comments'
 import { GeoRichTextEditor, type GeoFeatureItem } from '../editor/GeoRichTextEditor'
+import {
+	createViewModeColumns,
+	type ViewModeColumnsContext,
+	type ViewModeRowData,
+} from './view-mode-columns'
+import { DatasetFeaturesList } from './DatasetFeaturesList'
 
 export interface ViewModePanelProps {
 	currentUserPubkey?: string
@@ -180,6 +188,34 @@ export function ViewModePanel({
 			}
 		},
 		[onZoomToBounds],
+	)
+
+	// Prepare linked events table data for collection view
+	const linkedEventsTableData: ViewModeRowData[] = useMemo(() => {
+		return viewCollectionEvents.map((event) => {
+			const datasetKey = getDatasetKey(event)
+			const datasetName = getDatasetName(event)
+			const isVisible = datasetVisibility[datasetKey] !== false
+			const isOwned = currentUserPubkey === event.pubkey
+			return { event, datasetKey, datasetName, isVisible, isOwned }
+		})
+	}, [viewCollectionEvents, getDatasetKey, getDatasetName, datasetVisibility, currentUserPubkey])
+
+	// Columns context for linked events table
+	const linkedEventsColumnsContext: ViewModeColumnsContext = useMemo(
+		() => ({
+			onLoadDataset,
+			onToggleVisibility,
+			onZoomToDataset,
+			isPublishing,
+			datasetVisibility,
+		}),
+		[onLoadDataset, onToggleVisibility, onZoomToDataset, isPublishing, datasetVisibility],
+	)
+
+	const linkedEventsColumns = useMemo(
+		() => createViewModeColumns(linkedEventsColumnsContext),
+		[linkedEventsColumnsContext],
 	)
 
 	const renderDatasetCard = (event: NDKGeoEvent) => {
@@ -354,9 +390,11 @@ export function ViewModePanel({
 											load datasets first.
 										</p>
 									) : (
-										<div className="space-y-2">
-											{viewCollectionEvents.map((event) => renderDatasetCard(event))}
-										</div>
+										<DataTable
+											columns={linkedEventsColumns}
+											data={linkedEventsTableData}
+											getRowClassName={(row) => (!row.isVisible ? 'opacity-60' : undefined)}
+										/>
 									)}
 								</section>
 							</>
@@ -396,9 +434,45 @@ export function ViewModePanel({
 									</div>
 								</section>
 
+								{/* Inline action buttons */}
+								<div className="flex items-center gap-2">
+									<Button
+										size="sm"
+										className={cn(
+											currentUserPubkey === viewDataset.pubkey
+												? 'bg-green-600 text-white hover:bg-green-700'
+												: 'bg-blue-600 text-white hover:bg-blue-700',
+										)}
+										onClick={() => onLoadDataset(viewDataset)}
+										disabled={isPublishing}
+									>
+										{currentUserPubkey === viewDataset.pubkey ? 'Edit' : 'Load copy'}
+									</Button>
+									<Button
+										size="sm"
+										variant="outline"
+										onClick={() => onToggleVisibility(viewDataset)}
+									>
+										{datasetVisibility[getDatasetKey(viewDataset)] !== false ? 'Hide' : 'Show'}
+									</Button>
+									<Button
+										size="sm"
+										variant="outline"
+										onClick={() => onZoomToDataset(viewDataset)}
+									>
+										Zoom
+									</Button>
+								</div>
+
+								{/* Features list */}
 								<section className="space-y-2">
-									<h4 className="text-sm font-semibold text-gray-800">Dataset controls</h4>
-									{renderDatasetCard(viewDataset)}
+									<h4 className="text-sm font-semibold text-gray-800">
+										Features ({viewDataset.featureCollection?.features?.length ?? 0})
+									</h4>
+									<DatasetFeaturesList
+										featureCollection={viewDataset.featureCollection}
+										className="max-h-[40vh] overflow-y-auto"
+									/>
 								</section>
 							</>
 						)}
