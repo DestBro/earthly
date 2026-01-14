@@ -1028,6 +1028,117 @@ export class GeoEditor {
 		return true
 	}
 
+	/**
+	 * Connect two LineStrings at overlapping endpoints.
+	 * Returns true if lines were successfully connected.
+	 */
+	connectSelectedLines(): boolean {
+		const selected = this.getSelectedFeatures()
+		if (selected.length !== 2) return false
+
+		// Both must be LineStrings
+		const line1 = selected[0]
+		const line2 = selected[1]
+		if (!line1 || !line2) return false
+		if (line1.geometry.type !== 'LineString' || line2.geometry.type !== 'LineString') {
+			return false
+		}
+
+		const coords1 = (line1.geometry as GeoJSON.LineString).coordinates
+		const coords2 = (line2.geometry as GeoJSON.LineString).coordinates
+
+		if (coords1.length < 2 || coords2.length < 2) return false
+
+		// Find matching endpoints (tolerance ~10cm on Earth)
+		const TOLERANCE = 1e-6
+		const pointsMatch = (a: Position, b: Position): boolean =>
+			Math.abs(a[0] - b[0]) < TOLERANCE && Math.abs(a[1] - b[1]) < TOLERANCE
+
+		const start1 = coords1[0]
+		const end1 = coords1[coords1.length - 1]
+		const start2 = coords2[0]
+		const end2 = coords2[coords2.length - 1]
+
+		// TypeScript guards
+		if (!start1 || !end1 || !start2 || !end2) return false
+
+		let newCoords: Position[] | null = null
+
+		if (pointsMatch(end1, start2)) {
+			// line1 end -> line2 start: append line2 (skip first point)
+			newCoords = [...coords1, ...coords2.slice(1)]
+		} else if (pointsMatch(start1, end2)) {
+			// line2 end -> line1 start: append line1 to line2 (skip first point)
+			newCoords = [...coords2, ...coords1.slice(1)]
+		} else if (pointsMatch(end1, end2)) {
+			// line1 end -> line2 end (reversed): append reversed line2
+			newCoords = [...coords1, ...coords2.slice(0, -1).reverse()]
+		} else if (pointsMatch(start1, start2)) {
+			// line1 start -> line2 start: reverse line1 and append line2
+			newCoords = [...[...coords1].reverse(), ...coords2.slice(1)]
+		}
+
+		if (!newCoords || newCoords.length < 2) return false
+
+		// Remove consecutive duplicate points
+		const firstCoord = newCoords[0]
+		if (!firstCoord) return false
+		const deduped: Position[] = [firstCoord]
+		for (let i = 1; i < newCoords.length; i++) {
+			const prev = deduped[deduped.length - 1]
+			const curr = newCoords[i]
+			if (prev && curr && !pointsMatch(prev, curr)) {
+				deduped.push(curr)
+			}
+		}
+		newCoords = deduped
+
+		// Create new feature using the first line as template
+		const template = this.cloneFeature(line1)
+		const newFeature: EditorFeature = {
+			...template,
+			id: generateId(),
+			geometry: {
+				type: 'LineString',
+				coordinates: newCoords,
+			} as Geometry,
+		}
+
+		// Remove old features
+		this.features.delete(line1.id)
+		this.features.delete(line2.id)
+
+		// Add new feature
+		const normalizedFeature = this.normalizeFeature(newFeature)
+		this.features.set(normalizedFeature.id, normalizedFeature)
+
+		// Update selection
+		this.selection.clearSelection()
+		this.selection.select(normalizedFeature.id)
+
+		// Record history
+		this.history.recordUpdate([normalizedFeature], selected)
+
+		// Render
+		this.render()
+		if (this.mode === 'edit') this.renderVertices()
+
+		// Emit events
+		this.emit('selection.change', {
+			type: 'selection.change',
+			features: this.getSelectedFeatures(),
+		})
+		this.emit('update', { type: 'update', features: [normalizedFeature] })
+
+		return true
+	}
+
+	canConnectSelectedLines(): boolean {
+		const selected = this.getSelectedFeatures()
+		if (selected.length !== 2) return false
+		return selected.every((f) => f.geometry.type === 'LineString')
+	}
+
 	copySelectedFeatures(): void {
 		const selected = this.getSelectedFeatures()
 		if (selected.length === 0) return

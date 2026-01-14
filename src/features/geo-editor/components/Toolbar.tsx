@@ -7,6 +7,7 @@ import {
 	Edit3,
 	FilePenLine,
 	Layers,
+	Link2,
 	Magnet,
 	MapPin,
 	Merge,
@@ -293,6 +294,10 @@ export function Toolbar({
 		editor?.startBooleanDifference()
 	}
 
+	const handleConnectLines = () => {
+		editor?.connectSelectedLines()
+	}
+
 	const handleCopyShareUrl = async () => {
 		const url = window.location.href
 		try {
@@ -315,6 +320,7 @@ export function Toolbar({
 	const singlePolygonSelected = selectedFeatures.length === 1 && 
 		(selectedFeatures[0]?.geometry.type === 'Polygon' || selectedFeatures[0]?.geometry.type === 'MultiPolygon')
 	const booleanOpActive = editor?.getBooleanOperation()
+	const canConnectLines = editor?.canConnectSelectedLines() ?? false
 
 	const datasetsOpen = isMobile ? mobileDatasetsOpen : showDatasetsPanel
 	const infoPanelOpen = isMobile ? mobileInfoOpen : showInfoPanel
@@ -477,6 +483,14 @@ export function Toolbar({
 			disabled: isEditingDisabled,
 			ariaLabel: 'Duplicate',
 			description: 'Duplicate selected features',
+		},
+		{
+			key: 'connect-lines',
+			icon: Link2,
+			onClick: handleConnectLines,
+			disabled: isEditingDisabled || !canConnectLines,
+			ariaLabel: 'Connect lines',
+			description: 'Connect two lines at overlapping endpoints',
 		},
 		{
 			key: 'union',
