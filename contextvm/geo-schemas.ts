@@ -82,3 +82,87 @@ export type ReverseLookupOutput = {
 		result: NominatimLocation | null;
 	};
 };
+
+// ==========================================
+// Overpass API Schemas
+// ==========================================
+
+export const osmElementTypeSchema = z.enum(["node", "way", "relation"]);
+
+export const osmFiltersSchema = z.record(z.string()).describe(
+	'OSM tag filters. Use "*" for any value, e.g. { highway: "*" } or { highway: "primary" }'
+);
+
+export const queryByIdInputSchema = {
+	osmType: osmElementTypeSchema.describe("OSM element type"),
+	osmId: z.number().positive().describe("OSM element ID"),
+};
+
+export const queryByIdOutputSchema = {
+	result: z.object({
+		feature: z.any().nullable().describe("GeoJSON Feature or null if not found"),
+		osmType: osmElementTypeSchema,
+		osmId: z.number(),
+	}),
+};
+
+export type QueryByIdInput = {
+	osmType: "node" | "way" | "relation";
+	osmId: number;
+};
+
+export type QueryByIdOutput = {
+	result: {
+		feature: unknown | null;
+		osmType: "node" | "way" | "relation";
+		osmId: number;
+	};
+};
+
+export const queryNearbyInputSchema = {
+	lat: z.number().min(-90).max(90).describe("Latitude coordinate"),
+	lon: z.number().min(-180).max(180).describe("Longitude coordinate"),
+	radius: z.number().min(1).max(5000).default(100).describe("Search radius in meters (1-5000)"),
+	filters: osmFiltersSchema.optional().describe("OSM tag filters"),
+	limit: z.number().min(1).max(100).optional().describe("Maximum results to return"),
+};
+
+export const queryFeaturesOutputSchema = {
+	result: z.object({
+		features: z.array(z.any()).describe("Array of GeoJSON Features"),
+		count: z.number().describe("Number of features returned"),
+	}),
+};
+
+export type QueryNearbyInput = {
+	lat: number;
+	lon: number;
+	radius?: number;
+	filters?: Record<string, string>;
+	limit?: number;
+};
+
+export type QueryFeaturesOutput = {
+	result: {
+		features: unknown[];
+		count: number;
+	};
+};
+
+export const queryBboxInputSchema = {
+	west: z.number().min(-180).max(180).describe("Western longitude"),
+	south: z.number().min(-90).max(90).describe("Southern latitude"),
+	east: z.number().min(-180).max(180).describe("Eastern longitude"),
+	north: z.number().min(-90).max(90).describe("Northern latitude"),
+	filters: osmFiltersSchema.optional().describe("OSM tag filters"),
+	limit: z.number().min(1).max(100).optional().describe("Maximum results to return"),
+};
+
+export type QueryBboxInput = {
+	west: number;
+	south: number;
+	east: number;
+	north: number;
+	filters?: Record<string, string>;
+	limit?: number;
+};

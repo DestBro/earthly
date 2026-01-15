@@ -1,6 +1,6 @@
 import type { FeatureCollection } from 'geojson'
 import { create } from 'zustand'
-import { earthlyGeoServer } from '../../ctxcn/EarthlyGeoServerClient'
+import { earthlyGeoServer } from '../../ctxcn'
 import type { NDKGeoCollectionEvent } from '../../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
 import type { EditorFeature, EditorMode, GeoEditor } from './core'
@@ -94,6 +94,14 @@ interface EditorState {
 	searchLoading: boolean
 	searchError: string | null
 
+	// OSM Query State (cursor-oriented)
+	osmQueryMode: 'idle' | 'click' | 'loading'
+	osmQueryFilter: string
+	osmQueryPosition: { x: number; y: number; lat: number; lon: number } | null
+	osmQueryResults: GeoJSON.Feature[]
+	osmQueryError: string | null
+	osmQuerySelectedIds: Set<string>
+
 	// Actions
 	setEditor: (editor: GeoEditor | null) => void
 	setFeatures: (features: EditorFeature[]) => void
@@ -158,6 +166,15 @@ interface EditorState {
 	setSearchError: (error: string | null) => void
 	performSearch: () => Promise<void>
 	clearSearch: () => void
+
+	// OSM Query Actions
+	setOsmQueryMode: (mode: 'idle' | 'click' | 'loading') => void
+	setOsmQueryFilter: (filter: string) => void
+	setOsmQueryPosition: (position: { x: number; y: number; lat: number; lon: number } | null) => void
+	setOsmQueryResults: (results: GeoJSON.Feature[]) => void
+	setOsmQueryError: (error: string | null) => void
+	toggleOsmQuerySelection: (id: string) => void
+	clearOsmQuery: () => void
 
 	setMapSource: (source: EditorState['mapSource']) => void
 	setShowMapSettings: (show: boolean) => void
@@ -242,6 +259,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	searchResults: [],
 	searchLoading: false,
 	searchError: null,
+
+	// OSM Query State
+	osmQueryMode: 'idle',
+	osmQueryFilter: 'highway',
+	osmQueryPosition: null,
+	osmQueryResults: [],
+	osmQueryError: null,
+	osmQuerySelectedIds: new Set(),
 
 	setEditor: (editor) => set({ editor }),
 
@@ -467,7 +492,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 			return
 		}
 
-		set({ searchLoading: true, searchError: null })
+		set({ searchLoading: true, searchError:  null })
 
 		try {
 			const response = await earthlyGeoServer.SearchLocation(trimmed, 8)
@@ -483,6 +508,29 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	},
 
 	clearSearch: () => set({ searchQuery: '', searchResults: [], searchError: null }),
+
+	// OSM Query Actions
+	setOsmQueryMode: (mode) => set({ osmQueryMode: mode }),
+	setOsmQueryFilter: (filter) => set({ osmQueryFilter: filter }),
+	setOsmQueryPosition: (position) => set({ osmQueryPosition: position }),
+	setOsmQueryResults: (results) => set({ osmQueryResults: results }),
+	setOsmQueryError: (error) => set({ osmQueryError: error }),
+	toggleOsmQuerySelection: (id) => set((state) => {
+		const newSet = new Set(state.osmQuerySelectedIds)
+		if (newSet.has(id)) {
+			newSet.delete(id)
+		} else {
+			newSet.add(id)
+		}
+		return { osmQuerySelectedIds: newSet }
+	}),
+	clearOsmQuery: () => set({
+		osmQueryMode: 'idle',
+		osmQueryPosition: null,
+		osmQueryResults: [],
+		osmQueryError: null,
+		osmQuerySelectedIds: new Set(),
+	}),
 
 	mapSource: {
 		type: 'default',

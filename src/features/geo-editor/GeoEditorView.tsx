@@ -13,32 +13,33 @@ import {
 import { DebugDialog } from '../../components/DebugDialog'
 import { GeoDatasetsPanelContent } from '../../components/GeoDatasetsPanel'
 import { GeoEditorInfoPanelContent } from '../../components/GeoEditorInfoPanel'
-import { LoginSessionButtons } from '../../components/LoginSessionButtom'
 import { Button } from '../../components/ui/button'
 import { Sheet, SheetContent } from '../../components/ui/sheet'
-import { earthlyGeoServer, type ReverseLookupOutput } from '../../ctxcn/EarthlyGeoServerClient'
+import { earthlyGeoServer, type ReverseLookupOutput } from '../../ctxcn'
 import { useAvailableGeoFeatures } from '../../lib/hooks/useAvailableGeoFeatures'
 import { useIsMobile } from '../../lib/hooks/useIsMobile'
 import { useGeoCollections, useStations } from '../../lib/hooks/useStations'
-import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
 import type { NDKGeoCollectionEvent } from '../../lib/ndk/NDKGeoCollectionEvent'
+import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
 import { Editor } from './components/Editor'
+import { ImportOsmDialog } from './components/ImportOsmDialog'
 import { LocationInspectorPopup } from './components/LocationInspectorPopup'
 import { Magnifier } from './components/Magnifier'
 import { GeoEditorMap as MapComponent } from './components/Map'
+import { OsmResultsPanel } from './components/OsmResultsPanel'
 import { Toolbar } from './components/Toolbar'
 import type { EditorFeature, EditorMode } from './core'
 import {
-	useDatasetManagement,
-	useMapLayers,
-	usePublishing,
-	useViewMode,
-	useRouting,
+	REMOTE_ANNOTATION_ANCHOR_LAYER,
+	REMOTE_ANNOTATION_LAYER,
 	REMOTE_FILL_LAYER,
 	REMOTE_LINE_LAYER,
 	REMOTE_POINT_LAYER,
-	REMOTE_ANNOTATION_ANCHOR_LAYER,
-	REMOTE_ANNOTATION_LAYER,
+	useDatasetManagement,
+	useMapLayers,
+	usePublishing,
+	useRouting,
+	useViewMode,
 } from './hooks'
 import { useEditorStore } from './store'
 import type { GeoSearchResult } from './types'
@@ -91,6 +92,9 @@ export function GeoEditorView() {
 
 	// Collection visibility state (local to view)
 	const [collectionVisibility, setCollectionVisibility] = useState<Record<string, boolean>>({})
+
+	// Import OSM dialog state
+	const [importOsmDialogOpen, setImportOsmDialogOpen] = useState(false)
 
 	// Store state
 	const editor = useEditorStore((state) => state.editor)
@@ -647,6 +651,122 @@ export function GeoEditorView() {
 		},
 		[editor, setCollectionMeta],
 	)
+
+	// OSM Query state from store
+	const osmQueryMode = useEditorStore((state) => state.osmQueryMode)
+	const osmQueryFilter = useEditorStore((state) => state.osmQueryFilter)
+	const setOsmQueryMode = useEditorStore((state) => state.setOsmQueryMode)
+	const setOsmQueryPosition = useEditorStore((state) => state.setOsmQueryPosition)
+	const setOsmQueryResults = useEditorStore((state) => state.setOsmQueryResults)
+	const setOsmQueryError = useEditorStore((state) => state.setOsmQueryError)
+	const clearOsmQuery = useEditorStore((state) => state.clearOsmQuery)
+
+	// OSM Query handlers
+	const handleOsmQueryClick = useCallback(() => {
+		// Enter click mode - next map click will query OSM
+		setOsmQueryMode('click')
+	}, [setOsmQueryMode])
+
+	const executeOsmQuery = useCallback(async (lat: number, lon: number, screenX: number, screenY: number) => {
+		setOsmQueryMode('loading')
+		setOsmQueryPosition({ x: screenX, y: screenY, lat, lon })
+		setOsmQueryError(null)
+		setOsmQueryResults([])
+
+		try {
+			const filters = osmQueryFilter === 'all' ? undefined : { [osmQueryFilter]: '*' }
+			const response = await earthlyGeoServer.QueryOsmNearby(lat, lon, 200, filters, 30)
+			
+			if (!response?.result) {
+				setOsmQueryError('Failed to query OSM - no response')
+				setOsmQueryMode('idle')
+				return
+			}
+
+			setOsmQueryResults(response.result.features)
+			setOsmQueryMode('idle')
+		} catch (err: any) {
+			setOsmQueryError(err.message || 'Failed to query OSM')
+			setOsmQueryMode('idle')
+		}
+	}, [osmQueryFilter, setOsmQueryMode, setOsmQueryPosition, setOsmQueryError, setOsmQueryResults])
+
+	const handleOsmQueryView = useCallback(async () => {
+		if (!map.current) return
+		const bounds = map.current.getBounds()
+		const center = map.current.getCenter()
+		const container = map.current.getContainer()
+		
+		setOsmQueryMode('loading')
+		setOsmQueryPosition({ 
+			x: container.clientWidth / 2, 
+			y: container.clientHeight / 2, 
+			lat: center.lat, 
+			lon: center.lng 
+		})
+		setOsmQueryError(null)
+		setOsmQueryResults([])
+
+		try {
+			const filters = osmQueryFilter === 'all' ? undefined : { [osmQueryFilter]: '*' }
+			const response = await earthlyGeoServer.QueryOsmBbox(
+				bounds.getWest(),
+				bounds.getSouth(),
+				bounds.getEast(),
+				bounds.getNorth(),
+				filters,
+				30
+			)
+			
+			if (!response?.result) {
+				setOsmQueryError('Failed to query OSM - no response')
+				setOsmQueryMode('idle')
+				return
+			}
+
+			setOsmQueryResults(response.result.features)
+			setOsmQueryMode('idle')
+		} catch (err: any) {
+			setOsmQueryError(err.message || 'Failed to query OSM')
+			setOsmQueryMode('idle')
+		}
+	}, [osmQueryFilter, setOsmQueryMode, setOsmQueryPosition, setOsmQueryError, setOsmQueryResults])
+
+	const handleOsmImport = useCallback((features: GeoJSON.Feature[]) => {
+		if (!editor) return
+		features.forEach((feature) => {
+			const newFeature = {
+				...feature,
+				id: feature.id?.toString() || crypto.randomUUID(),
+				properties: {
+					...feature.properties,
+					meta: 'feature',
+					featureId: feature.id?.toString() || crypto.randomUUID(),
+				},
+			}
+			editor.addFeature(newFeature as EditorFeature)
+		})
+	}, [editor])
+
+	// Handle map click for OSM query
+	useEffect(() => {
+		if (!map.current || osmQueryMode !== 'click') return
+		const mapInstance = map.current
+
+		const handleMapClick = (e: maplibregl.MapMouseEvent) => {
+			const { lng, lat } = e.lngLat
+			executeOsmQuery(lat, lng, e.point.x, e.point.y)
+		}
+
+		// Change cursor to crosshair when in click mode
+		mapInstance.getCanvas().style.cursor = 'crosshair'
+		mapInstance.once('click', handleMapClick)
+
+		return () => {
+			mapInstance.getCanvas().style.cursor = ''
+			mapInstance.off('click', handleMapClick)
+		}
+	}, [osmQueryMode, executeOsmQuery])
 
 	// Pan lock and magnifier
 	const togglePanLock = useCallback(() => {
@@ -1279,6 +1399,9 @@ export function GeoEditorView() {
 							onInspectorDeactivate={disableInspector}
 							onStartNewDataset={startNewDataset}
 							onCancelEditing={cancelEditing}
+							onOsmQueryClick={handleOsmQueryClick}
+							onOsmQueryView={handleOsmQueryView}
+							onOsmAdvanced={() => setImportOsmDialogOpen(true)}
 						/>
 					</div>
 				</div>
@@ -1605,6 +1728,46 @@ export function GeoEditorView() {
 			{debugEvent && (
 				<DebugDialog event={debugEvent} open={debugDialogOpen} onOpenChange={setDebugDialogOpen} />
 			)}
+
+			{/* Import OSM Dialog */}
+			<ImportOsmDialog
+				open={importOsmDialogOpen}
+				onOpenChange={setImportOsmDialogOpen}
+				mapCenter={map.current ? (() => {
+					const center = map.current.getCenter()
+					return { lat: center.lat, lon: center.lng }
+				})() : undefined}
+				mapBounds={map.current ? (() => {
+					const bounds = map.current.getBounds()
+					return {
+						west: bounds.getWest(),
+						south: bounds.getSouth(),
+						east: bounds.getEast(),
+						north: bounds.getNorth(),
+					}
+				})() : undefined}
+				onImport={(features) => {
+					if (!editor) return
+					features.forEach((feature) => {
+						const newFeature = {
+							...feature,
+							id: feature.id?.toString() || crypto.randomUUID(),
+							properties: {
+								...feature.properties,
+								meta: 'feature',
+								featureId: feature.id?.toString() || crypto.randomUUID(),
+							},
+						}
+						editor.addFeature(newFeature as EditorFeature)
+					})
+				}}
+			/>
+
+			{/* OSM Query Results Panel (cursor-oriented) */}
+			<OsmResultsPanel
+				onImport={handleOsmImport}
+				onClose={clearOsmQuery}
+			/>
 		</div>
 	)
 }

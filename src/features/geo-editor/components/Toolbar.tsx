@@ -10,6 +10,7 @@ import {
 	Link2,
 	Magnet,
 	MapPin,
+	MapPinned,
 	Merge,
 	Minus,
 	MousePointer2,
@@ -48,6 +49,7 @@ import type { EditorMode } from '../core'
 import { useEditorStore } from '../store'
 import type { GeoSearchResult } from '../types'
 import { MapSettingsPanel } from './MapSettingsPanel'
+import { OsmQueryPopover } from './OsmQueryPopover'
 
 type ToolbarButton = {
 	key: string
@@ -134,6 +136,9 @@ interface ToolbarProps {
 	onInspectorDeactivate?: () => void
 	onStartNewDataset?: () => void
 	onCancelEditing?: () => void
+	onOsmQueryClick?: () => void
+	onOsmQueryView?: () => void
+	onOsmAdvanced?: () => void
 }
 
 export function Toolbar({
@@ -144,6 +149,9 @@ export function Toolbar({
 	onInspectorDeactivate,
 	onStartNewDataset,
 	onCancelEditing,
+	onOsmQueryClick,
+	onOsmQueryView,
+	onOsmAdvanced,
 }: ToolbarProps) {
 	const editor = useEditorStore((state) => state.editor)
 	const mode = useEditorStore((state) => state.mode)
@@ -533,6 +541,7 @@ export function Toolbar({
 			ariaLabel: 'Import',
 			description: 'Import GeoJSON file',
 		},
+		// OSM import moved to OsmQueryPopover
 		{
 			key: 'export',
 			icon: Download,
@@ -771,8 +780,13 @@ export function Toolbar({
 				<IconButtonRow buttons={lookupButtons} />
 				<Divider />
 
-				{/* File & Publish */}
+					{/* File & Publish */}
 				<IconButtonRow buttons={fileButtons} />
+				<OsmQueryPopover
+					onQueryClick={onOsmQueryClick ?? (() => {})}
+					onQueryView={onOsmQueryView ?? (() => {})}
+					onAdvanced={onOsmAdvanced ?? (() => {})}
+				/>
 				<IconButtonRow buttons={publishButtons} />
 
 				<input
