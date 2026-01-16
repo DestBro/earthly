@@ -178,7 +178,8 @@ const result = await Bun.build({
 	plugins: [plugin],
 	minify: true,
 	target: "browser",
-	sourcemap: "linked",
+	sourcemap: "none", // Disable for production (saves 17MB)
+	splitting: true,   // Enable code splitting
 	define,
 	...cliConfig,
 });
