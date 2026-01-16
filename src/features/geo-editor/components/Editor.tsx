@@ -123,5 +123,33 @@ export const Editor: React.FC<EditorProps> = ({ snapping = true }) => {
 		}
 	}, [storeSnapping, editor])
 
+	// Sync selection from store to editor (for sidebar → map sync)
+	const storeSelectedFeatureIds = useEditorStore((state) => state.selectedFeatureIds)
+	
+	useEffect(() => {
+		if (!editorRef.current) return
+		
+		const currentSelection = editorRef.current.selection.getSelected()
+		const storeSet = new Set(storeSelectedFeatureIds)
+		const currentSet = new Set(currentSelection)
+		
+		// Check if selections are different
+		if (storeSet.size !== currentSet.size || ![...storeSet].every(id => currentSet.has(id))) {
+			// Use selectFeature for the first one (clears) then additive for the rest
+			if (storeSelectedFeatureIds.length === 0) {
+				editorRef.current.selection.clearSelection()
+				// Manually trigger render through setFeatures which is public
+				// We need to force a re-render - setting the same features triggers it
+				const features = editorRef.current.getAllFeatures()
+				editorRef.current.setFeatures(features)
+			} else {
+				// Use public selectFeature API
+				storeSelectedFeatureIds.forEach((id, index) => {
+					editorRef.current!.selectFeature(id, index > 0)
+				})
+			}
+		}
+	}, [storeSelectedFeatureIds, editor])
+
 	return null
 }

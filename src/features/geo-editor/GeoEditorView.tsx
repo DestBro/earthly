@@ -556,15 +556,25 @@ export function GeoEditorView() {
 			try {
 				const json = JSON.parse(text)
 				const collection = ensureFeatureCollection(json)
-				const newFeatures = collection.features.map((f: any) => ({
-					...f,
-					id: f.id || crypto.randomUUID(),
-					properties: {
-						...f.properties,
-						meta: 'feature',
-						featureId: f.id || crypto.randomUUID(),
-					},
-				}))
+				const newFeatures = collection.features.map((f: any) => {
+					// Ensure ID is a string
+					const featureId = f.id != null ? String(f.id) : crypto.randomUUID()
+					
+					// Extract known properties, rest go to customProperties
+					const { name, description, meta, featureId: _, ...restProperties } = f.properties || {}
+					
+					return {
+						...f,
+						id: featureId,
+						properties: {
+							name: name ?? f.properties?.name,
+							description: description ?? f.properties?.description,
+							meta: 'feature',
+							featureId,
+							customProperties: Object.keys(restProperties).length > 0 ? restProperties : undefined,
+						},
+					}
+				})
 				newFeatures.forEach((f) => editor.addFeature(f as EditorFeature))
 			} catch (error) {
 				console.error('Failed to paste GeoJSON:', error)
@@ -630,15 +640,25 @@ export function GeoEditorView() {
 			try {
 				const json = JSON.parse(text)
 				const collection = ensureFeatureCollection(json)
-				const newFeatures = collection.features.map((f: any) => ({
-					...f,
-					id: f.id || crypto.randomUUID(),
-					properties: {
-						...f.properties,
-						meta: 'feature',
-						featureId: f.id || crypto.randomUUID(),
-					},
-				}))
+				const newFeatures = collection.features.map((f: any) => {
+					// Ensure ID is a string
+					const featureId = f.id != null ? String(f.id) : crypto.randomUUID()
+					
+					// Extract known properties, rest go to customProperties
+					const { name, description, meta, featureId: _, ...restProperties } = f.properties || {}
+					
+					return {
+						...f,
+						id: featureId,
+						properties: {
+							name: name ?? f.properties?.name,
+							description: description ?? f.properties?.description,
+							meta: 'feature',
+							featureId,
+							customProperties: Object.keys(restProperties).length > 0 ? restProperties : undefined,
+						},
+					}
+				})
 
 				newFeatures.forEach((f) => editor.addFeature(f as EditorFeature))
 
@@ -1112,6 +1132,21 @@ export function GeoEditorView() {
 		)
 	}, [])
 
+	// Zoom to a single editor feature
+	const handleZoomToFeature = useCallback((feature: EditorFeature) => {
+		if (!map.current || !feature.geometry) return
+		import('@turf/turf')
+			.then((turf) => {
+				const bbox = turf.bbox(feature as GeoJSON.Feature) as [number, number, number, number]
+				if (bbox.every((v) => Number.isFinite(v))) {
+					handleZoomToBounds(bbox)
+				}
+			})
+			.catch((err) => {
+				console.warn('Failed to zoom to feature:', err)
+			})
+	}, [handleZoomToBounds])
+
 	// Resolve naddr to dataset
 	const resolveNaddrToDataset = useCallback(
 		(address: string): NDKGeoEvent | null => {
@@ -1482,6 +1517,7 @@ export function GeoEditorView() {
 								editingCollection={editingCollection}
 								onSaveCollection={handleSaveCollection}
 								onCloseCollectionEditor={handleCloseCollectionEditor}
+								onZoomToFeature={handleZoomToFeature}
 							/>
 						</div>
 					</div>
@@ -1561,6 +1597,7 @@ export function GeoEditorView() {
 									editingCollection={editingCollection}
 									onSaveCollection={handleSaveCollection}
 									onCloseCollectionEditor={handleCloseCollectionEditor}
+									onZoomToFeature={handleZoomToFeature}
 								/>
 							</div>
 						</SheetContent>

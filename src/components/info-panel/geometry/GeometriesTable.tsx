@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Locate, Plus, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { EditorFeature } from '../../../features/geo-editor/core'
 import { useEditorStore } from '../../../features/geo-editor/store'
@@ -14,8 +14,9 @@ interface FeatureRowProps {
 	isSelected: boolean
 	isExpanded: boolean
 	onToggleExpand: () => void
-	onSelect: () => void
+	onSelect: (event: React.MouseEvent) => void
 	onDelete: () => void
+	onZoomTo: () => void
 }
 
 function FeatureRow({
@@ -26,6 +27,7 @@ function FeatureRow({
 	onToggleExpand,
 	onSelect,
 	onDelete,
+	onZoomTo,
 }: FeatureRowProps) {
 	const editor = useEditorStore((state) => state.editor)
 
@@ -133,11 +135,21 @@ function FeatureRow({
 
 				<button
 					type="button"
-					onClick={onSelect}
+					onClick={(e) => onSelect(e)}
 					className="flex-1 text-left truncate text-gray-700 hover:text-gray-900"
 				>
 					{name}
 				</button>
+
+				<Button
+					size="icon-xs"
+					variant="ghost"
+					className="text-blue-500 hover:text-blue-700"
+					onClick={onZoomTo}
+					aria-label="Zoom to feature"
+				>
+					<Locate className="h-3 w-3" />
+				</Button>
 
 				<Button
 					size="icon-xs"
@@ -280,9 +292,10 @@ function FeatureRow({
 
 interface GeometriesTableProps {
 	className?: string
+	onZoomToFeature?: (feature: EditorFeature) => void
 }
 
-export function GeometriesTable({ className }: GeometriesTableProps) {
+export function GeometriesTable({ className, onZoomToFeature }: GeometriesTableProps) {
 	const features = useEditorStore((state) => state.features)
 	const selectedFeatureIds = useEditorStore((state) => state.selectedFeatureIds)
 	const setSelectedFeatureIds = useEditorStore((state) => state.setSelectedFeatureIds)
@@ -302,8 +315,21 @@ export function GeometriesTable({ className }: GeometriesTableProps) {
 		})
 	}
 
-	const handleSelect = (featureId: string) => {
-		setSelectedFeatureIds([featureId])
+	const handleSelect = (featureId: string, event: React.MouseEvent) => {
+		const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+		const isMultiSelect = isMac ? event.metaKey : event.ctrlKey
+		
+		if (isMultiSelect) {
+			// Toggle selection
+			if (selectedFeatureIds.includes(featureId)) {
+				setSelectedFeatureIds(selectedFeatureIds.filter(id => id !== featureId))
+			} else {
+				setSelectedFeatureIds([...selectedFeatureIds, featureId])
+			}
+		} else {
+			// Single select
+			setSelectedFeatureIds([featureId])
+		}
 	}
 
 	const handleDelete = (featureId: string) => {
@@ -352,8 +378,9 @@ export function GeometriesTable({ className }: GeometriesTableProps) {
 					isSelected={row.isSelected}
 					isExpanded={expandedIds.has(row.feature.id)}
 					onToggleExpand={() => toggleExpand(row.feature.id)}
-					onSelect={() => handleSelect(row.feature.id)}
+					onSelect={(e) => handleSelect(row.feature.id, e)}
 					onDelete={() => handleDelete(row.feature.id)}
+					onZoomTo={() => onZoomToFeature?.(row.feature)}
 				/>
 			))}
 		</div>

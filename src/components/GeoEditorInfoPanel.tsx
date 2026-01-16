@@ -14,6 +14,7 @@ import { GeoCollectionEditorPanel } from './GeoCollectionEditorPanel'
 import { Button } from './ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
 import type { GeoFeatureItem } from './editor/GeoRichTextEditor'
+import type { EditorFeature } from '../features/geo-editor/core'
 
 export interface GeoEditorInfoPanelProps {
 	currentUserPubkey?: string
@@ -50,6 +51,8 @@ export interface GeoEditorInfoPanelProps {
 	onSaveCollection?: (collection: NDKGeoCollectionEvent) => void
 	/** Callback to close collection editor */
 	onCloseCollectionEditor?: () => void
+	/** Callback when a feature is zoomed to from the geometries list */
+	onZoomToFeature?: (feature: EditorFeature) => void
 }
 
 export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
@@ -75,6 +78,7 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 		editingCollection,
 		onSaveCollection,
 		onCloseCollectionEditor,
+		onZoomToFeature,
 	} = props
 
 	// Store state
@@ -207,7 +211,7 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 			{/* Geometries table */}
 			<div className="flex flex-col min-h-0">
 				<div className="text-xs font-medium text-gray-700 py-1">Geometries ({features.length})</div>
-				<GeometriesTable className="max-h-[50vh] overflow-y-auto" />
+				<GeometriesTable className="max-h-[50vh] overflow-y-auto" onZoomToFeature={onZoomToFeature} />
 			</div>
 
 			{/* Publishing Status */}
