@@ -1,5 +1,5 @@
 import NDK, { NDKEvent, NDKKind, type NDKSigner, registerEventClass } from '@nostr-dev-kit/react'
-import * as turf from '@turf/turf'
+import { bbox, centroid } from '@turf/turf'
 import type { FeatureCollection, Position } from 'geojson'
 
 export type GeoBoundingBox = [number, number, number, number]
@@ -219,7 +219,7 @@ export class NDKGeoEvent extends NDKEvent {
 		const collection = this.featureCollection
 
 		try {
-			const computedBbox = turf.bbox(collection) as GeoBoundingBox
+			const computedBbox = bbox(collection) as GeoBoundingBox
 			if (computedBbox.every((value) => Number.isFinite(value))) {
 				this.boundingBox = computedBbox
 			}
@@ -228,8 +228,8 @@ export class NDKGeoEvent extends NDKEvent {
 		}
 
 		try {
-			const centroid = turf.centroid(collection)
-			const coordinates = centroid.geometry?.coordinates as Position | undefined
+			const computedCentroid = centroid(collection)
+			const coordinates = computedCentroid.geometry?.coordinates as Position | undefined
 			if (coordinates) {
 				this.geohash = encodeGeohash(coordinates[1], coordinates[0], geohashPrecision)
 			}

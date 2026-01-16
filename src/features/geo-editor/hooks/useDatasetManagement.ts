@@ -1,4 +1,4 @@
-import * as turf from '@turf/turf'
+import { coordAll } from '@turf/turf'
 import type { FeatureCollection } from 'geojson'
 import maplibregl from 'maplibre-gl'
 import { useCallback, useRef } from 'react'
@@ -135,7 +135,7 @@ export function useDatasetManagement(
 			}
 
 			const collection = convertGeoEventsToFeatureCollection([event], resolvedCollectionResolver)
-			const coords = turf.coordAll(collection)
+			const coords = coordAll(collection)
 			// Filter out invalid coordinates (NaN, undefined, or out of valid lng/lat range)
 			const validCoords = coords.filter(
 				(coord): coord is [number, number] =>
@@ -193,7 +193,7 @@ export function useDatasetManagement(
 				eventsToUse,
 				resolvedCollectionResolver,
 			)
-			const coords = turf.coordAll(collectionFc)
+			const coords = coordAll(collectionFc)
 			// Filter out invalid coordinates (NaN, undefined, or out of valid lng/lat range)
 			const validCoords = coords.filter(
 				(coord): coord is [number, number] =>

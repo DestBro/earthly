@@ -1,4 +1,15 @@
-import * as turf from '@turf/turf'
+import {
+	point,
+	distance,
+	bearing,
+	transformScale,
+	transformTranslate,
+	union,
+	difference,
+	buffer,
+	simplify,
+	featureCollection,
+} from '@turf/turf'
 import type { Position } from 'geojson'
 import type { Map } from 'maplibre-gl'
 import type { EditorFeature, IManager, TransformOptions } from '../types'
@@ -33,7 +44,7 @@ export class TransformManager implements IManager {
 	scale(feature: EditorFeature, options: TransformOptions): EditorFeature {
 		if (!options.scale || options.scale === 1) return feature
 
-		const scaled = turf.transformScale(feature, options.scale, {
+		const scaled = transformScale(feature, options.scale, {
 			origin: options.center,
 		})
 
@@ -48,7 +59,7 @@ export class TransformManager implements IManager {
 	}
 
 	translate(feature: EditorFeature, distance: number, direction: number): EditorFeature {
-		const translated = turf.transformTranslate(feature, distance, direction, {
+		const translated = transformTranslate(feature, distance, direction, {
 			units: 'meters',
 		})
 
@@ -59,12 +70,12 @@ export class TransformManager implements IManager {
 	}
 
 	move(feature: EditorFeature, fromPoint: Position, toPoint: Position): EditorFeature {
-		const from = turf.point(fromPoint)
-		const to = turf.point(toPoint)
-		const distance = turf.distance(from, to, { units: 'meters' })
-		const bearing = turf.bearing(from, to)
+		const from = point(fromPoint)
+		const to = point(toPoint)
+		const dist = distance(from, to, { units: 'meters' })
+		const dir = bearing(from, to)
 
-		return this.translate(feature, distance, bearing)
+		return this.translate(feature, dist, dir)
 	}
 
 	splitLine(feature: EditorFeature, splitPoint: Position): [EditorFeature, EditorFeature] | null {
@@ -103,7 +114,7 @@ export class TransformManager implements IManager {
 			let result = features[0]
 
 			for (let i = 1; i < features.length; i++) {
-				const unioned = turf.union(turf.featureCollection([result, features[i]]))
+				const unioned = union(featureCollection([result, features[i]]))
 				if (unioned) {
 					result = {
 						...result,
@@ -121,7 +132,7 @@ export class TransformManager implements IManager {
 
 	difference(feature1: EditorFeature, feature2: EditorFeature): EditorFeature | null {
 		try {
-			const diff = turf.difference(turf.featureCollection([feature1, feature2]))
+			const diff = difference(featureCollection([feature1, feature2]))
 			if (!diff) return null
 
 			return {
@@ -139,7 +150,7 @@ export class TransformManager implements IManager {
 		radius: number,
 		units: 'meters' | 'kilometers' = 'meters',
 	): EditorFeature {
-		const buffered = turf.buffer(feature, radius, { units })
+		const buffered = buffer(feature, radius, { units })
 
 		return {
 			...feature,
@@ -148,7 +159,7 @@ export class TransformManager implements IManager {
 	}
 
 	simplify(feature: EditorFeature, tolerance: number = 0.01): EditorFeature {
-		const simplified = turf.simplify(feature, { tolerance, highQuality: true })
+		const simplified = simplify(feature, { tolerance, highQuality: true })
 
 		return {
 			...feature,

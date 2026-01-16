@@ -1,4 +1,11 @@
-import * as turf from '@turf/turf'
+import {
+	bearing,
+	polygon,
+	union,
+	difference,
+	featureCollection,
+	centerOfMass,
+} from '@turf/turf'
 import type { Feature, FeatureCollection, Geometry, Position } from 'geojson'
 import type {
 	MapGeoJSONFeature,
@@ -782,7 +789,7 @@ export class GeoEditor {
 			type,
 			center,
 			startPointer: pointer,
-			startBearing: type === 'rotate' ? turf.bearing(center, pointer) : undefined,
+			startBearing: type === 'rotate' ? bearing(center, pointer) : undefined,
 			baseFeatures,
 			dragPanWasEnabled,
 		}
@@ -803,8 +810,8 @@ export class GeoEditor {
 		let updatedFeatures: EditorFeature[] = []
 
 		if (state.type === 'rotate') {
-			const startBearing = state.startBearing ?? turf.bearing(state.center, state.startPointer)
-			const currentBearing = turf.bearing(state.center, pointer)
+			const startBearing = state.startBearing ?? bearing(state.center, state.startPointer)
+			const currentBearing = bearing(state.center, pointer)
 			const angleDelta = currentBearing - startBearing
 			updatedFeatures = state.baseFeatures.map((feature) =>
 				this.transform.rotate(feature, { center: state.center, angle: angleDelta }),
@@ -1270,13 +1277,13 @@ export class GeoEditor {
 			let result: Feature | null = null
 
 			// Cast to proper polygon types for turf
-			const poly1 = turf.polygon((firstFeature.geometry as any).coordinates)
-			const poly2 = turf.polygon((secondFeature.geometry as any).coordinates)
+			const poly1 = polygon((firstFeature.geometry as any).coordinates)
+			const poly2 = polygon((secondFeature.geometry as any).coordinates)
 
 			if (this.booleanOperation.type === 'union') {
-				result = turf.union(turf.featureCollection([poly1, poly2]))
+				result = union(featureCollection([poly1, poly2]))
 			} else {
-				result = turf.difference(turf.featureCollection([poly1, poly2]))
+				result = difference(featureCollection([poly1, poly2]))
 			}
 
 			if (!result || !result.geometry) {
@@ -1596,8 +1603,8 @@ export class GeoEditor {
 	): Position | null {
 		if (!features.length) return null
 		try {
-			const fc = turf.featureCollection(features as Feature[])
-			const centroid = turf.centerOfMass(fc)
+			const fc = featureCollection(features as Feature[])
+			const centroid = centerOfMass(fc)
 			return centroid.geometry?.coordinates as Position
 		} catch {
 			return null

@@ -1,4 +1,17 @@
-import * as turf from '@turf/turf'
+import {
+	point as turfPoint,
+	distance as turfDistance,
+	bearing as turfBearing,
+	midpoint as turfMidpoint,
+	lineString as turfLineString,
+	pointToLineDistance as turfPointToLineDistance,
+	nearestPointOnLine as turfNearestPointOnLine,
+	transformRotate,
+	lineSlice,
+	polygon as turfPolygon,
+	booleanPointInPolygon,
+	buffer as turfBuffer,
+} from '@turf/turf'
 import type { Position } from 'geojson'
 
 const isCoordinateNumber = (value: unknown): value is number =>
@@ -11,21 +24,21 @@ export const isValidPosition = (position: any): position is Position =>
 	isCoordinateNumber(position[1])
 
 export function distance(point1: Position, point2: Position): number {
-	const from = turf.point(point1)
-	const to = turf.point(point2)
-	return turf.distance(from, to, { units: 'meters' })
+	const from = turfPoint(point1)
+	const to = turfPoint(point2)
+	return turfDistance(from, to, { units: 'meters' })
 }
 
 export function bearing(point1: Position, point2: Position): number {
-	const from = turf.point(point1)
-	const to = turf.point(point2)
-	return turf.bearing(from, to)
+	const from = turfPoint(point1)
+	const to = turfPoint(point2)
+	return turfBearing(from, to)
 }
 
 export function midpoint(point1: Position, point2: Position): Position {
-	const from = turf.point(point1)
-	const to = turf.point(point2)
-	const mid = turf.midpoint(from, to)
+	const from = turfPoint(point1)
+	const to = turfPoint(point2)
+	const mid = turfMidpoint(from, to)
 	return mid.geometry.coordinates as Position
 }
 
@@ -39,9 +52,9 @@ export function pointToLineDistance(point: Position, line: Position[]): number {
 		return Infinity
 	}
 
-	const pt = turf.point(point)
-	const lineFeature = turf.lineString(sanitizedLine)
-	return turf.pointToLineDistance(pt, lineFeature, { units: 'meters' })
+	const pt = turfPoint(point)
+	const lineFeature = turfLineString(sanitizedLine)
+	return turfPointToLineDistance(pt, lineFeature, { units: 'meters' })
 }
 
 export function nearestPointOnLine(point: Position, line: Position[]): Position {
@@ -55,9 +68,9 @@ export function nearestPointOnLine(point: Position, line: Position[]): Position 
 	}
 
 	try {
-		const pt = turf.point(point)
-		const lineFeature = turf.lineString(sanitizedLine)
-		const nearest = turf.nearestPointOnLine(lineFeature, pt)
+		const pt = turfPoint(point)
+		const lineFeature = turfLineString(sanitizedLine)
+		const nearest = turfNearestPointOnLine(lineFeature, pt)
 		return nearest.geometry.coordinates as Position
 	} catch {
 		return point
@@ -99,29 +112,29 @@ export function pixelDistance(map: any, point1: Position, point2: Position): num
 }
 
 export function rotatePoint(point: Position, center: Position, angle: number): Position {
-	const pt = turf.point(point)
-	const rotated = turf.transformRotate(pt, angle, { pivot: center })
+	const pt = turfPoint(point)
+	const rotated = transformRotate(pt, angle, { pivot: center })
 	return rotated.geometry.coordinates as Position
 }
 
 export function rotateGeometry(geometry: any, center: Position, angle: number): any {
-	return turf.transformRotate(geometry, angle, { pivot: center })
+	return transformRotate(geometry, angle, { pivot: center })
 }
 
 export function splitLineAtPoint(line: Position[], point: Position): [Position[], Position[]] {
-	const lineFeature = turf.lineString(line)
-	const pt = turf.point(point)
-	const nearest = turf.nearestPointOnLine(lineFeature, pt)
-	const sliced = turf.lineSlice(turf.point(line[0]), nearest, lineFeature)
-	const remaining = turf.lineSlice(nearest, turf.point(line[line.length - 1]), lineFeature)
+	const lineFeature = turfLineString(line)
+	const pt = turfPoint(point)
+	const nearest = turfNearestPointOnLine(lineFeature, pt)
+	const sliced = lineSlice(turfPoint(line[0]), nearest, lineFeature)
+	const remaining = lineSlice(nearest, turfPoint(line[line.length - 1]), lineFeature)
 
 	return [sliced.geometry.coordinates as Position[], remaining.geometry.coordinates as Position[]]
 }
 
 export function isPointInPolygon(point: Position, polygon: Position[][]): boolean {
-	const pt = turf.point(point)
-	const poly = turf.polygon(polygon)
-	return turf.booleanPointInPolygon(pt, poly)
+	const pt = turfPoint(point)
+	const poly = turfPolygon(polygon)
+	return booleanPointInPolygon(pt, poly)
 }
 
 export function bufferPoint(
@@ -129,8 +142,8 @@ export function bufferPoint(
 	radius: number,
 	units: 'meters' | 'kilometers' = 'meters',
 ): Position[][] {
-	const pt = turf.point(point)
-	const buffered = turf.buffer(pt, radius, { units })
+	const pt = turfPoint(point)
+	const buffered = turfBuffer(pt, radius, { units })
 	return buffered?.geometry.coordinates as Position[][]
 }
 
