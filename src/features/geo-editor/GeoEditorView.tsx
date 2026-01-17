@@ -10,11 +10,13 @@ import {
 	useState,
 	type PointerEvent as ReactPointerEvent,
 } from 'react'
+import { AppSidebar } from '../../components/AppSidebar'
 import { DebugDialog } from '../../components/DebugDialog'
 import { GeoDatasetsPanelContent } from '../../components/GeoDatasetsPanel'
 import { GeoEditorInfoPanelContent } from '../../components/GeoEditorInfoPanel'
 import { Button } from '../../components/ui/button'
 import { Sheet, SheetContent } from '../../components/ui/sheet'
+import { SidebarInset, SidebarProvider, useSidebar } from '../../components/ui/sidebar'
 import { earthlyGeoServer, type ReverseLookupOutput } from '../../ctxcn'
 import { useAvailableGeoFeatures } from '../../lib/hooks/useAvailableGeoFeatures'
 import { useIsMobile } from '../../lib/hooks/useIsMobile'
@@ -50,6 +52,21 @@ const MAGNIFIER_OFFSET = { x: 80, y: -80 }
 const POINTER_OFFSET = { x: 0, y: -48 }
 
 type ReverseLookupResult = ReverseLookupOutput['result']
+
+/** Mobile button to toggle the sidebar (uses sidebar context) */
+function MobileSidebarButton() {
+	const { openMobile, setOpenMobile } = useSidebar()
+	return (
+		<Button
+			size="icon"
+			className="shadow-lg h-10 w-10 rounded-full"
+			variant={openMobile ? 'default' : 'outline'}
+			onClick={() => setOpenMobile(!openMobile)}
+		>
+			<Layers className="h-5 w-5" />
+		</Button>
+	)
+}
 
 export function GeoEditorView() {
 	const map = useRef<maplibregl.Map | null>(null)
@@ -1354,11 +1371,44 @@ export function GeoEditorView() {
 	const multiSelectModifierLabel = editor?.getMultiSelectModifierLabel() ?? 'Shift'
 
 	return (
-		<div
-			ref={mapContainerRef}
-			className="relative h-screen w-full"
-			style={{ height: '100dvh', minHeight: '100svh' }}
-		>
+		<SidebarProvider>
+			{/* Sidebar - renders as Sheet on mobile, sidebar on desktop */}
+			<AppSidebar
+				geoEvents={geoEvents}
+				collectionEvents={collectionEvents}
+				activeDataset={activeDataset}
+				currentUserPubkey={currentUser?.pubkey}
+				datasetVisibility={effectiveVisibility}
+				collectionVisibility={collectionVisibility}
+				isPublishing={isPublishing}
+				deletingKey={deletingKey}
+				onClearEditing={clearEditingSession}
+				onLoadDataset={handleDatasetSelect}
+				onToggleVisibility={handleToggleVisibilityWithExitFocus}
+				onToggleAllVisibility={handleToggleAllVisibilityWithExitFocus}
+				onToggleCollectionVisibility={handleToggleCollectionVisibility}
+				onToggleAllCollectionVisibility={handleToggleAllCollectionVisibility}
+				onZoomToDataset={zoomToDataset}
+				onDeleteDataset={onDeleteDataset}
+				getDatasetKey={getDatasetKey}
+				getDatasetName={getDatasetName}
+				onZoomToCollection={zoomToCollection}
+				onInspectDataset={handleInspectDatasetWithModeSwitch}
+				onInspectCollection={handleInspectCollectionWithModeSwitch}
+				onOpenDebug={handleOpenDebug}
+				onCreateCollection={handleCreateCollection}
+				onEditCollection={handleEditCollection}
+				isFocused={isFocused}
+				onExitFocus={navigateHome}
+				multiSelectModifier={multiSelectModifierLabel}
+			/>
+
+			<SidebarInset>
+				<div
+					ref={mapContainerRef}
+					className="relative h-screen w-full"
+					style={{ height: '100dvh', minHeight: '100svh' }}
+				>
 			<MapComponent
 				className="w-full h-full touch-none"
 				onLoad={(m) => {
@@ -1442,43 +1492,7 @@ export function GeoEditorView() {
 				</div>
 			)}
 
-			{!isMobile && mounted && showDatasetsPanel && (
-				<div className="pointer-events-auto absolute left-4 top-[88px] bottom-4 z-40 hidden md:flex w-[25vw]">
-					<div className="glass-panel flex-1 overflow-hidden rounded-lg">
-						<div className="h-full overflow-y-auto p-4">
-								<GeoDatasetsPanelContent
-								geoEvents={geoEvents}
-								collectionEvents={collectionEvents}
-								activeDataset={activeDataset}
-								currentUserPubkey={currentUser?.pubkey}
-								datasetVisibility={effectiveVisibility}
-								collectionVisibility={collectionVisibility}
-								isPublishing={isPublishing}
-								deletingKey={deletingKey}
-								onClearEditing={clearEditingSession}
-								onLoadDataset={handleDatasetSelect}
-								onToggleVisibility={handleToggleVisibilityWithExitFocus}
-								onToggleAllVisibility={handleToggleAllVisibilityWithExitFocus}
-								onToggleCollectionVisibility={handleToggleCollectionVisibility}
-								onToggleAllCollectionVisibility={handleToggleAllCollectionVisibility}
-								onZoomToDataset={zoomToDataset}
-								onDeleteDataset={onDeleteDataset}
-								getDatasetKey={getDatasetKey}
-								getDatasetName={getDatasetName}
-								onZoomToCollection={zoomToCollection}
-								onInspectDataset={handleInspectDatasetWithModeSwitch}
-								onInspectCollection={handleInspectCollectionWithModeSwitch}
-								onOpenDebug={handleOpenDebug}
-								onClose={() => setShowDatasetsPanel(false)}
-								onCreateCollection={handleCreateCollection}
-								onEditCollection={handleEditCollection}
-								isFocused={isFocused}
-								onExitFocus={navigateHome}
-							/>
-						</div>
-					</div>
-				</div>
-			)}
+
 
 			{!isMobile && mounted && showInfoPanel && (
 				<div className="pointer-events-auto absolute right-4 top-[88px] bottom-4 z-40 hidden md:flex w-[25vw]">
@@ -1526,47 +1540,7 @@ export function GeoEditorView() {
 
 			{isMobile && (
 				<>
-					<Sheet open={mobileDatasetsOpen} onOpenChange={setMobileDatasetsOpen} modal={false}>
-						<SheetContent
-							side="bottom"
-							className="p-0 h-[40vh] sm:hidden"
-							onPointerDownOutside={(e) => e.preventDefault()}
-							onInteractOutside={(e) => e.preventDefault()}
-						>
-							<div className="h-full w-full overflow-y-auto px-4 pb-6 pt-3">
-								<GeoDatasetsPanelContent
-									geoEvents={geoEvents}
-									collectionEvents={collectionEvents}
-									activeDataset={activeDataset}
-									currentUserPubkey={currentUser?.pubkey}
-									datasetVisibility={effectiveVisibility}
-									collectionVisibility={collectionVisibility}
-									isPublishing={isPublishing}
-									deletingKey={deletingKey}
-									onClearEditing={clearEditingSession}
-									onLoadDataset={loadDatasetForEditing}
-									onToggleVisibility={handleToggleVisibilityWithExitFocus}
-									onToggleAllVisibility={handleToggleAllVisibilityWithExitFocus}
-									onToggleCollectionVisibility={handleToggleCollectionVisibility}
-									onToggleAllCollectionVisibility={handleToggleAllCollectionVisibility}
-									onZoomToDataset={zoomToDataset}
-									onDeleteDataset={onDeleteDataset}
-									getDatasetKey={getDatasetKey}
-									getDatasetName={getDatasetName}
-									onZoomToCollection={zoomToCollection}
-									onInspectDataset={handleInspectDatasetWithModeSwitch}
-									onInspectCollection={handleInspectCollectionWithModeSwitch}
-									onOpenDebug={handleOpenDebug}
-									onClose={() => setMobileDatasetsOpen(false)}
-									onCreateCollection={handleCreateCollection}
-									onEditCollection={handleEditCollection}
-									isFocused={isFocused}
-									onExitFocus={navigateHome}
-								/>
-							</div>
-						</SheetContent>
-					</Sheet>
-
+					{/* Info/Editor Sheet - bottom drawer for viewing/editing */}
 					<Sheet open={mobileInfoOpen} onOpenChange={setMobileInfoOpen} modal={false}>
 						<SheetContent
 							side="bottom"
@@ -1732,33 +1706,21 @@ export function GeoEditorView() {
 						>
 							<UploadCloud className="h-5 w-5" />
 						</Button>
-						{/* Drawer 1 (datasets) */}
-						<Button
-							size="icon"
-							className="shadow-lg h-10 w-10 rounded-full"
-							variant={mobileDatasetsOpen ? 'default' : 'outline'}
-							onClick={() => {
-								// Close other drawer, keep toolbars
-								setMobileInfoOpen(false)
-								setMobileDatasetsOpen(!mobileDatasetsOpen)
-							}}
-						>
-							<Layers className="h-5 w-5" />
-						</Button>
-						{/* Drawer 2 (editor) */}
+						{/* Sidebar (datasets) - uses MobileSidebarButton for sidebar context */}
+						<MobileSidebarButton />
+						{/* Drawer (editor) - independent of sidebar */}
 						<Button
 							size="icon"
 							className="shadow-lg h-10 w-10 rounded-full"
 							variant={mobileInfoOpen ? 'default' : 'outline'}
 							onClick={() => {
-								// Close other drawer, keep toolbars
-								setMobileDatasetsOpen(false)
+								// Toggle info drawer independently (sidebar and info can be open together)
 								setMobileInfoOpen(!mobileInfoOpen)
 							}}
 						>
 							<FilePenLine className="h-5 w-5" />
-						</Button>
-					</div>
+							</Button>
+						</div>
 				</>
 			)}
 
@@ -1805,6 +1767,8 @@ export function GeoEditorView() {
 				onImport={handleOsmImport}
 				onClose={clearOsmQuery}
 			/>
-		</div>
+				</div>
+			</SidebarInset>
+		</SidebarProvider>
 	)
 }

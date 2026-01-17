@@ -43,13 +43,13 @@
 
 :root {
   --radius: 0.2rem;
-  
+
   /* Glass panel variables */
   --panel-bg: oklch(1 0 0 / 70%);
   --panel-border: oklch(0.2 0 0 / 20%);
   --panel-blur: 24px;
   --panel-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  
+
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);

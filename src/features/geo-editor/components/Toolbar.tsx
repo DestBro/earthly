@@ -39,6 +39,7 @@ import { LoginSessionButtons } from '../../../components/LoginSessionButtom'
 import { Button } from '../../../components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '../../../components/ui/popover'
 import { SearchBar } from '../../../components/ui/search-bar'
+import { SidebarTrigger } from '../../../components/ui/sidebar'
 import {
 	Tooltip,
 	TooltipContent,
@@ -580,16 +581,8 @@ export function Toolbar({
 		},
 	]
 
-	// Section 8: Panel toggles
+	// Section 8: Panel toggles (info panel only - datasets uses SidebarTrigger)
 	const panelButtons: ToolbarButton[] = [
-		{
-			key: 'datasets',
-			icon: Layers,
-			onClick: handleToggleDatasets,
-			variant: datasetsOpen ? 'default' : 'outline',
-			ariaLabel: 'Datasets',
-			description: 'Toggle datasets panel',
-		},
 		{
 			key: 'info',
 			icon: FilePenLine,
@@ -716,6 +709,10 @@ export function Toolbar({
 	return (
 		<div className="flex flex-col gap-2 pointer-events-auto">
 			<div className="glass-panel flex items-center gap-1 rounded-lg p-1.5">
+				{/* Sidebar toggle */}
+				<SidebarTrigger className="h-9 w-9" />
+				<Divider />
+
 				{/* Session control (New Dataset / Cancel) */}
 				<IconButtonRow buttons={sessionButtons} />
 				<Divider />
@@ -868,35 +865,6 @@ export function Toolbar({
 				)}
 
 				<div className="flex-1" />
-
-				{/* Settings Popover */}
-				<TooltipProvider delayDuration={500}>
-					<Popover open={showMapSettings} onOpenChange={setShowMapSettings}>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<PopoverTrigger asChild>
-									<Button
-										variant={showMapSettings ? 'default' : 'outline'}
-										size="icon"
-										aria-label="Settings"
-									>
-										<Settings2 className="h-4 w-4" />
-									</Button>
-								</PopoverTrigger>
-							</TooltipTrigger>
-							<TooltipContent side="bottom" sideOffset={8}>
-								<p>Map settings</p>
-							</TooltipContent>
-						</Tooltip>
-						<PopoverContent className="w-80" side="bottom" align="end">
-							<MapSettingsPanel />
-						</PopoverContent>
-					</Popover>
-				</TooltipProvider>
-
-				<HelpPopover multiSelectModifier={editor?.getMultiSelectModifierLabel() ?? 'Shift'} />
-
-				{showLogin && <LoginSessionButtons />}
 			</div>
 
 			{searchError && (
