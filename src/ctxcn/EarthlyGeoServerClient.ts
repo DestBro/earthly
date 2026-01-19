@@ -187,17 +187,108 @@ export interface QueryOsmBboxOutput {
   };
 }
 
+export interface CreateMapExtractInput {
+  /**
+   * Western longitude of bounding box
+   */
+  west: number;
+  /**
+   * Southern latitude of bounding box
+   */
+  south: number;
+  /**
+   * Eastern longitude of bounding box
+   */
+  east: number;
+  /**
+   * Northern latitude of bounding box
+   */
+  north: number;
+  /**
+   * Maximum zoom level (0-16, default 14)
+   */
+  maxZoom?: number;
+  /**
+   * Blossom server URL for upload
+   */
+  blossomServer: string;
+}
+
+export interface CreateMapExtractOutput {
+  result: {
+    /**
+     * Unique ID to reference this extraction
+     */
+    requestId: string;
+    /**
+     * SHA-256 hash of the extracted PMTiles file
+     */
+    sha256: string;
+    /**
+     * Size of the extracted file in bytes
+     */
+    fileSizeBytes: number;
+    /**
+     * Area of the bounding box in square kilometers
+     */
+    areaSqKm: number;
+    /**
+     * Unsigned Blossom auth event (kind 24242) for client to sign
+     */
+    unsignedEvent: {
+      kind: number;
+      created_at: number;
+      tags: string[][];
+      content: string;
+    };
+  };
+}
+
+export interface CreateMapUploadInput {
+  /**
+   * Request ID from create_map_extract
+   */
+  requestId: string;
+  /**
+   * Signed Blossom auth event from client
+   */
+  signedEvent: {
+    id: string;
+    pubkey: string;
+    kind: number;
+    created_at: number;
+    tags: string[][];
+    content: string;
+    sig: string;
+  };
+}
+
+export interface CreateMapUploadOutput {
+  result: {
+    /**
+     * URL of the uploaded PMTiles file
+     */
+    blobUrl: string;
+    /**
+     * SHA-256 hash of the uploaded file
+     */
+    sha256: string;
+  };
+}
+
 export type EarthlyGeoServer = {
   SearchLocation: (query: string, limit?: number) => Promise<SearchLocationOutput>;
   ReverseLookup: (lat: number, lon: number, zoom?: number) => Promise<ReverseLookupOutput>;
   QueryOsmById: (osmType: string, osmId: number) => Promise<QueryOsmByIdOutput>;
   QueryOsmNearby: (lat: number, lon: number, radius?: number, filters?: object, limit?: number) => Promise<QueryOsmNearbyOutput>;
   QueryOsmBbox: (west: number, south: number, east: number, north: number, filters?: object, limit?: number) => Promise<QueryOsmBboxOutput>;
+  CreateMapExtract: (west: number, south: number, east: number, north: number, maxZoom?: number, blossomServer: string) => Promise<CreateMapExtractOutput>;
+  CreateMapUpload: (requestId: string, signedEvent: object) => Promise<CreateMapUploadOutput>;
 };
 
 export class EarthlyGeoServerClient implements EarthlyGeoServer {
   static readonly SERVER_PUBKEY = "ceadb7d5b739189fb3ecb7023a0c3f55d8995404d7750f5068865decf8b304cc";
-  static readonly DEFAULT_RELAYS = ["wss://relay.contextvm.org/"];
+  static readonly DEFAULT_RELAYS = ["ws://localhost:3334"];
   private client: Client;
   private transport: Transport;
 
@@ -317,5 +408,33 @@ export class EarthlyGeoServerClient implements EarthlyGeoServer {
     west: number, south: number, east: number, north: number, filters?: object, limit?: number
   ): Promise<QueryOsmBboxOutput> {
     return this.call("query_osm_bbox", { west, south, east, north, filters, limit });
+  }
+
+    /**
+   * Extract a PMTiles map excerpt for a bounding box. Returns an unsigned Blossom auth event for the client to sign, then call create_map_upload with the signed event.
+   * @param {number} west Western longitude of bounding box
+   * @param {number} south Southern latitude of bounding box
+   * @param {number} east Eastern longitude of bounding box
+   * @param {number} north Northern latitude of bounding box
+   * @param {number} maxZoom [optional] Maximum zoom level (0-16, default 14)
+   * @param {string} blossomServer Blossom server URL for upload
+   * @returns {Promise<CreateMapExtractOutput>} The result of the create_map_extract operation
+   */
+  async CreateMapExtract(
+    west: number, south: number, east: number, north: number, maxZoom?: number, blossomServer: string
+  ): Promise<CreateMapExtractOutput> {
+    return this.call("create_map_extract", { west, south, east, north, maxZoom, blossomServer });
+  }
+
+    /**
+   * Upload the extracted PMTiles file to Blossom using a signed auth event. Call create_map_extract first to get the unsigned event.
+   * @param {string} requestId Request ID from create_map_extract
+   * @param {object} signedEvent Signed Blossom auth event from client
+   * @returns {Promise<CreateMapUploadOutput>} The result of the create_map_upload operation
+   */
+  async CreateMapUpload(
+    requestId: string, signedEvent: object
+  ): Promise<CreateMapUploadOutput> {
+    return this.call("create_map_upload", { requestId, signedEvent });
   }
 }

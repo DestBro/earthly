@@ -51,6 +51,7 @@ import { useEditorStore } from '../store'
 import type { GeoSearchResult } from '../types'
 import { MapSettingsPanel } from './MapSettingsPanel'
 import { OsmQueryPopover } from './OsmQueryPopover'
+import { CreateMapPopover } from './CreateMapPopover'
 
 type ToolbarButton = {
 	key: string
@@ -784,6 +785,7 @@ export function Toolbar({
 					onQueryView={onOsmQueryView ?? (() => {})}
 					onAdvanced={onOsmAdvanced ?? (() => {})}
 				/>
+				<CreateMapPopover />
 				<IconButtonRow buttons={publishButtons} />
 
 				<input

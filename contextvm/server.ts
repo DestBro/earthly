@@ -15,9 +15,23 @@ import {
 	queryNearbyInputSchema,
 	queryBboxInputSchema,
 	queryFeaturesOutputSchema,
+	createMapExtractInputSchema,
+	createMapExtractOutputSchema,
+	createMapUploadInputSchema,
+	createMapUploadOutputSchema,
 } from "./geo-schemas.ts";
 import { reverseLookup, searchLocation } from "./tools/nominatim.ts";
 import { queryById, queryNearby, queryBbox } from "./tools/overpass.ts";
+import {
+	extractPmtiles,
+	getPendingExtraction,
+	removePendingExtraction,
+	calculateBBoxAreaSqKm,
+} from "./tools/pmtiles.ts";
+import {
+	checkBlossomServer,
+	uploadToBlossomWithAuth,
+} from "./tools/blossom.ts";
 
 // Configuration from validated environment
 const SERVER_PRIVATE_KEY =
@@ -25,7 +39,7 @@ const SERVER_PRIVATE_KEY =
 	"0000000000000000000000000000000000000000000000000000000000000001"; // Dev fallback
 const RELAYS = [
 	serverConfig.relayUrl || "ws://localhost:3334",
-	"wss://relay.contextvm.org/",
+	// "wss://relay.contextvm.org/",
 ];
 
 async function main() {
@@ -207,7 +221,118 @@ async function main() {
 		},
 	);
 
-	// 14. Configure the Nostr Server Transport
+	// 14. Register Tool: Create Map Extract (PMTiles)
+	mcpServer.registerTool(
+		"create_map_extract",
+		{
+			title: "Extract PMTiles Map Excerpt",
+			description:
+				"Extract a PMTiles map excerpt for a bounding box. Returns an unsigned Blossom auth event for the client to sign, then call create_map_upload with the signed event.",
+			inputSchema: createMapExtractInputSchema,
+			outputSchema: createMapExtractOutputSchema,
+		},
+		async ({ west, south, east, north, maxZoom, blossomServer }) => {
+			try {
+				console.log(
+					`🗺️ Create map extract: bbox=[${west},${south},${east},${north}] maxZoom=${maxZoom ?? 14}`,
+				);
+
+				// Check Blossom server reachability first (without auth for now)
+				try {
+					const testUrl = new URL(blossomServer);
+					const healthCheck = await fetch(testUrl.toString(), { method: "HEAD" }).catch(() => null);
+					if (!healthCheck) {
+						throw new Error(`Cannot reach Blossom server at ${blossomServer}`);
+					}
+				} catch (err: any) {
+					throw new Error(`Invalid or unreachable Blossom server: ${err.message}`);
+				}
+
+				const extractResult = await extractPmtiles(
+					{ west, south, east, north },
+					maxZoom ?? 14,
+					blossomServer,
+				);
+
+				const areaSqKm = calculateBBoxAreaSqKm({ west, south, east, north });
+
+				return {
+					content: [],
+					structuredContent: {
+						result: {
+							...extractResult,
+							areaSqKm,
+						},
+					},
+				};
+			} catch (error: any) {
+				console.error(`❌ Create map extract failed: ${error.message}`);
+				return {
+					content: [],
+					structuredContent: { error: error.message },
+					isError: true,
+				};
+			}
+		},
+	);
+
+	// 15. Register Tool: Create Map Upload (Blossom)
+	mcpServer.registerTool(
+		"create_map_upload",
+		{
+			title: "Upload PMTiles to Blossom",
+			description:
+				"Upload the extracted PMTiles file to Blossom using a signed auth event. Call create_map_extract first to get the unsigned event.",
+			inputSchema: createMapUploadInputSchema,
+			outputSchema: createMapUploadOutputSchema,
+		},
+		async ({ requestId, signedEvent }) => {
+			try {
+				console.log(`📤 Create map upload: requestId=${requestId}`);
+
+				const pending = getPendingExtraction(requestId);
+				if (!pending) {
+					throw new Error(
+						`No pending extraction found for requestId: ${requestId}. It may have expired (10 min TTL).`,
+					);
+				}
+
+				// Verify signed event matches expected hash
+				const hashTag = signedEvent.tags.find((t) => t[0] === "x");
+				if (!hashTag || hashTag[1] !== pending.sha256) {
+					throw new Error(
+						`Signed event hash mismatch. Expected: ${pending.sha256}, Got: ${hashTag?.[1] ?? "none"}`,
+					);
+				}
+
+				// Upload to Blossom
+				const uploadResult = await uploadToBlossomWithAuth(
+					pending.blossomServer,
+					pending.filePath,
+					signedEvent,
+				);
+
+				// Cleanup
+				await removePendingExtraction(requestId);
+
+				return {
+					content: [],
+					structuredContent: {
+						result: uploadResult,
+					},
+				};
+			} catch (error: any) {
+				console.error(`❌ Create map upload failed: ${error.message}`);
+				return {
+					content: [],
+					structuredContent: { error: error.message },
+					isError: true,
+				};
+			}
+		},
+	);
+
+	// 16. Configure the Nostr Server Transport
 	const serverTransport = new NostrServerTransport({
 		signer,
 		relayHandler: relayPool,
@@ -232,6 +357,8 @@ async function main() {
 	console.log("   - query_osm_by_id");
 	console.log("   - query_osm_nearby");
 	console.log("   - query_osm_bbox");
+	console.log("   - create_map_extract");
+	console.log("   - create_map_upload");
 	console.log(`\n🔑 Client should use server pubkey: ${serverPubkey}`);
 	console.log("💡 Press Ctrl+C to exit.\n");
 

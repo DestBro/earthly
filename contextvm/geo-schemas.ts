@@ -166,3 +166,99 @@ export type QueryBboxInput = {
 	filters?: Record<string, string>;
 	limit?: number;
 };
+
+// ==========================================
+// Create Map (PMTiles) Schemas
+// ==========================================
+
+export const createMapExtractInputSchema = {
+	west: z.number().min(-180).max(180).describe("Western longitude of bounding box"),
+	south: z.number().min(-90).max(90).describe("Southern latitude of bounding box"),
+	east: z.number().min(-180).max(180).describe("Eastern longitude of bounding box"),
+	north: z.number().min(-90).max(90).describe("Northern latitude of bounding box"),
+	maxZoom: z.number().int().min(0).max(16).default(14).describe("Maximum zoom level (0-16, default 14)"),
+	blossomServer: z.string().url().describe("Blossom server URL for upload"),
+};
+
+export const unsignedEventSchema = z.object({
+	kind: z.number(),
+	created_at: z.number(),
+	tags: z.array(z.array(z.string())),
+	content: z.string(),
+});
+
+export const createMapExtractOutputSchema = {
+	result: z.object({
+		requestId: z.string().describe("Unique ID to reference this extraction"),
+		sha256: z.string().describe("SHA-256 hash of the extracted PMTiles file"),
+		fileSizeBytes: z.number().describe("Size of the extracted file in bytes"),
+		areaSqKm: z.number().describe("Area of the bounding box in square kilometers"),
+		unsignedEvent: unsignedEventSchema.describe("Unsigned Blossom auth event (kind 24242) for client to sign"),
+	}),
+};
+
+export type CreateMapExtractInput = {
+	west: number;
+	south: number;
+	east: number;
+	north: number;
+	maxZoom?: number;
+	blossomServer: string;
+};
+
+export type CreateMapExtractOutput = {
+	result: {
+		requestId: string;
+		sha256: string;
+		fileSizeBytes: number;
+		areaSqKm: number;
+		unsignedEvent: {
+			kind: number;
+			created_at: number;
+			tags: string[][];
+			content: string;
+		};
+	};
+};
+
+export const signedEventSchema = z.object({
+	id: z.string(),
+	pubkey: z.string(),
+	kind: z.number(),
+	created_at: z.number(),
+	tags: z.array(z.array(z.string())),
+	content: z.string(),
+	sig: z.string(),
+});
+
+export const createMapUploadInputSchema = {
+	requestId: z.string().describe("Request ID from create_map_extract"),
+	signedEvent: signedEventSchema.describe("Signed Blossom auth event from client"),
+};
+
+export const createMapUploadOutputSchema = {
+	result: z.object({
+		blobUrl: z.string().describe("URL of the uploaded PMTiles file"),
+		sha256: z.string().describe("SHA-256 hash of the uploaded file"),
+	}),
+};
+
+export type CreateMapUploadInput = {
+	requestId: string;
+	signedEvent: {
+		id: string;
+		pubkey: string;
+		kind: number;
+		created_at: number;
+		tags: string[][];
+		content: string;
+		sig: string;
+	};
+};
+
+export type CreateMapUploadOutput = {
+	result: {
+		blobUrl: string;
+		sha256: string;
+	};
+};

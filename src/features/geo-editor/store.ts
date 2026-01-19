@@ -102,6 +102,9 @@ interface EditorState {
 	osmQueryError: string | null
 	osmQuerySelectedIds: Set<string>
 
+	// Current Map Viewport Bounds (for Create Map)
+	currentBbox: [number, number, number, number] | null // [west, south, east, north]
+
 	// Actions
 	setEditor: (editor: GeoEditor | null) => void
 	setFeatures: (features: EditorFeature[]) => void
@@ -175,6 +178,9 @@ interface EditorState {
 	setOsmQueryError: (error: string | null) => void
 	toggleOsmQuerySelection: (id: string) => void
 	clearOsmQuery: () => void
+
+	// Current Bbox Action
+	setCurrentBbox: (bbox: [number, number, number, number] | null) => void
 
 	setMapSource: (source: EditorState['mapSource']) => void
 	setShowMapSettings: (show: boolean) => void
@@ -267,6 +273,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	osmQueryResults: [],
 	osmQueryError: null,
 	osmQuerySelectedIds: new Set(),
+
+	// Current Map Viewport Bounds
+	currentBbox: null,
 
 	setEditor: (editor) => set({ editor }),
 
@@ -531,6 +540,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 		osmQueryError: null,
 		osmQuerySelectedIds: new Set(),
 	}),
+
+	// Current Bbox Action
+	setCurrentBbox: (bbox) => set({ currentBbox: bbox }),
 
 	mapSource: {
 		type: 'default',
