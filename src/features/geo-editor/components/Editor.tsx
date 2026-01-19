@@ -75,6 +75,53 @@ export const Editor: React.FC<EditorProps> = ({ snapping = true }) => {
 		editor.on('update', updateHistory)
 		editor.on('delete', updateHistory)
 
+		// Map Area polygon capture - when drawing for map area, capture bbox and remove the polygon
+		editor.on('create', (e: any) => {
+			const store = useEditorStore.getState()
+			if (!store.isDrawingMapArea) return
+			
+			const features = e.features as any[] | undefined
+			if (!features || features.length === 0) return
+			
+			const polygon = features.find(f => f.geometry?.type === 'Polygon')
+			if (!polygon) return
+			
+			// Compute bbox from polygon coordinates
+			const coords = polygon.geometry.coordinates[0] as [number, number][]
+			if (!coords || coords.length < 4) return
+			
+			let west = Infinity, south = Infinity, east = -Infinity, north = -Infinity
+			for (const [lon, lat] of coords) {
+				if (lon < west) west = lon
+				if (lon > east) east = lon
+				if (lat < south) south = lat
+				if (lat > north) north = lat
+			}
+			
+			// Calculate area in sqkm
+			const R = 6371 // Earth radius in km
+			const lat1 = (south * Math.PI) / 180
+			const lat2 = (north * Math.PI) / 180
+			const lon1 = (west * Math.PI) / 180
+			const lon2 = (east * Math.PI) / 180
+			const width = R * Math.cos((lat1 + lat2) / 2) * Math.abs(lon2 - lon1)
+			const height = R * Math.abs(lat2 - lat1)
+			const areaSqKm = width * height
+			
+			// Store the map area rect
+			store.setMapAreaRect({
+				bbox: [west, south, east, north],
+				areaSqKm,
+			})
+			
+			// Remove the polygon from the editor (it's just for visualization)
+			setTimeout(() => {
+				editor.deleteFeatures([polygon.id])
+				store.setIsDrawingMapArea(false)
+				store.setMode('select')
+			}, 100)
+		})
+
 		return () => {
 			setEditor(null)
 			editor.destroy()

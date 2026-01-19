@@ -105,6 +105,15 @@ interface EditorState {
 	// Current Map Viewport Bounds (for Create Map)
 	currentBbox: [number, number, number, number] | null // [west, south, east, north]
 
+	// Drawn Map Area Rectangle (for Create Map extraction)
+	mapAreaRect: {
+		bbox: [number, number, number, number] // [west, south, east, north]
+		areaSqKm: number
+	} | null
+	
+	// Flag to indicate we're drawing a polygon for map area
+	isDrawingMapArea: boolean
+
 	// Actions
 	setEditor: (editor: GeoEditor | null) => void
 	setFeatures: (features: EditorFeature[]) => void
@@ -182,6 +191,11 @@ interface EditorState {
 	// Current Bbox Action
 	setCurrentBbox: (bbox: [number, number, number, number] | null) => void
 
+	// Map Area Rectangle Actions
+	setMapAreaRect: (rect: EditorState['mapAreaRect']) => void
+	clearMapAreaRect: () => void
+	setIsDrawingMapArea: (drawing: boolean) => void
+
 	setMapSource: (source: EditorState['mapSource']) => void
 	setShowMapSettings: (show: boolean) => void
 
@@ -193,6 +207,8 @@ interface EditorState {
 		file?: File
 		/** Base URL for fetching PMTiles chunks (used with blossom) */
 		blossomServer?: string
+		/** Lock map zoom/pan to the bounds of the PMTiles source */
+		boundsLocked?: boolean
 	}
 	showMapSettings: boolean
 
@@ -277,7 +293,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	// Current Map Viewport Bounds
 	currentBbox: null,
 
+	// Drawn Map Area Rectangle
+	mapAreaRect: null,
+	isDrawingMapArea: false,
+
 	setEditor: (editor) => set({ editor }),
+
+	setMapAreaRect: (rect) => set({ mapAreaRect: rect }),
+	clearMapAreaRect: () => set({ mapAreaRect: null, isDrawingMapArea: false }),
+	setIsDrawingMapArea: (drawing) => set({ isDrawingMapArea: drawing }),
 
 	setFeatures: (features) => {
 		set({ features })

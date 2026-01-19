@@ -471,6 +471,20 @@ export function GeoEditorView() {
 		setShowInfoPanel,
 	])
 
+	// Handle pmtiles URL param on app load
+	const setMapSource = useEditorStore((state) => state.setMapSource)
+	useEffect(() => {
+		const url = new URL(window.location.href)
+		const pmtilesUrl = url.searchParams.get('pmtiles')
+		if (pmtilesUrl) {
+			setMapSource({
+				type: 'pmtiles',
+				location: 'remote',
+				url: pmtilesUrl,
+			})
+		}
+	}, [setMapSource])
+
 	// Handle initial route on page load (direct URL navigation)
 	useEffect(() => {
 		// Only perform initial zoom if we're on the home route

@@ -41,6 +41,8 @@ export interface MapSource {
 	file?: File
 	/** Base URL for fetching PMTiles chunks (used with blossom map discovery) */
 	blossomServer?: string
+	/** Lock map zoom/pan to the bounds of the PMTiles source */
+	boundsLocked?: boolean
 }
 
 interface MapProps {
@@ -741,6 +743,92 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 			}
 		}
 	}, [isLoaded])
+
+	// Handle bounds locking for PMTiles sources
+	useEffect(() => {
+		const map = mapRef.current
+		if (!map) return
+		if (!isLoaded) return
+
+		// Only apply bounds lock for pmtiles type when enabled (default: true)
+		const shouldLock = mapSource.type === 'pmtiles' && (mapSource.boundsLocked ?? true)
+
+		if (!shouldLock) {
+			// Clear any existing bounds constraint
+			try {
+				map.setMaxBounds(null)
+				map.setMinZoom(0)
+			} catch {
+				// ignore
+			}
+			return
+		}
+
+		// Get the PMTiles URL
+		let pmtilesUrl = mapSource.url
+		if (mapSource.location === 'local' && mapSource.file) {
+			pmtilesUrl = URL.createObjectURL(mapSource.file)
+		}
+		if (!pmtilesUrl) return
+
+		let cancelled = false
+		;(async () => {
+			try {
+				// Get or create PMTiles instance
+				let pm = pmtilesCache[pmtilesUrl]
+				if (!pm) {
+					pm = new PMTiles(pmtilesUrl)
+					pmtilesCache[pmtilesUrl] = pm
+				}
+
+				const header = await pm.getHeader()
+				if (cancelled) return
+
+				// Extract bounds from header
+				const { minLon, minLat, maxLon, maxLat, minZoom } = header
+
+				// Validate bounds
+				if (
+					!Number.isFinite(minLon) ||
+					!Number.isFinite(minLat) ||
+					!Number.isFinite(maxLon) ||
+					!Number.isFinite(maxLat)
+				) {
+					return
+				}
+
+				// Apply bounds constraint with generous padding (50% of bbox size) to allow zoom out
+				const lonRange = maxLon - minLon
+				const latRange = maxLat - minLat
+				const lonPadding = lonRange * 0.5
+				const latPadding = latRange * 0.5
+				const bounds: maplibregl.LngLatBoundsLike = [
+					[minLon - lonPadding, minLat - latPadding],
+					[maxLon + lonPadding, maxLat + latPadding],
+				]
+
+				console.log(`🔒 Locking map to PMTiles bounds: [${minLon.toFixed(3)}, ${minLat.toFixed(3)}] - [${maxLon.toFixed(3)}, ${maxLat.toFixed(3)}] (with 50% padding)`)
+
+				try {
+					map.setMaxBounds(bounds)
+					// Don't set minZoom - let maxBounds naturally limit zoom-out
+					// Fit to the actual PMTiles bounds (not the padded ones)
+					map.fitBounds([
+						[minLon, minLat],
+						[maxLon, maxLat],
+					], { padding: 40, duration: 500 })
+				} catch (err) {
+					console.warn('Failed to set map bounds:', err)
+				}
+			} catch (err) {
+				console.warn('Failed to read PMTiles header for bounds:', err)
+			}
+		})()
+
+		return () => {
+			cancelled = true
+		}
+	}, [isLoaded, mapSource.type, mapSource.url, mapSource.file, mapSource.location, mapSource.boundsLocked])
 
 	return (
 		<MapContext.Provider value={{ map: mapRef.current, isLoaded }}>

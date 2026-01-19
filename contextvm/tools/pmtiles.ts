@@ -112,7 +112,7 @@ export function calculateBBoxAreaSqKm(bbox: BBox): number {
  */
 export function validateBBoxSize(
 	bbox: BBox,
-	maxAreaSqKm: number = 100,
+	maxAreaSqKm: number = 3000,
 ): { valid: boolean; areaSqKm: number; error?: string } {
 	const areaSqKm = calculateBBoxAreaSqKm(bbox);
 
@@ -134,7 +134,7 @@ export async function extractPmtiles(
 	bbox: BBox,
 	maxZoom: number,
 	blossomServer: string,
-	maxAreaSqKm: number = 100,
+	maxAreaSqKm: number = 3000,
 ): Promise<ExtractResult> {
 	// Validate size first
 	const validation = validateBBoxSize(bbox, maxAreaSqKm);

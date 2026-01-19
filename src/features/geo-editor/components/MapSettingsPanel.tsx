@@ -1,4 +1,4 @@
-import { Eye, EyeOff, GripVertical, Layers, Map } from 'lucide-react'
+import { Download, Eye, EyeOff, GripVertical, Layers, Map } from 'lucide-react'
 import type React from 'react'
 import { useRef, useState } from 'react'
 import { Button } from '../../../components/ui/button'
@@ -158,11 +158,34 @@ export function MapSettingsPanel() {
 					{mapSource.location === 'remote' ? (
 						<div className="space-y-2">
 							<Label>URL</Label>
-							<Input
-								value={mapSource.url || ''}
-								onChange={handleUrlChange}
-								placeholder="https://example.com/map.pmtiles"
-							/>
+							<div className="flex gap-2">
+								<Input
+									value={mapSource.url || ''}
+									onChange={handleUrlChange}
+									placeholder="https://example.com/map.pmtiles"
+									className="flex-1"
+								/>
+								{mapSource.url && (
+									<Button
+										variant="outline"
+										size="icon"
+										onClick={() => {
+											const url = mapSource.url!
+											const filename = url.split('/').pop() || 'map.pmtiles'
+											const a = document.createElement('a')
+											a.href = url
+											a.download = filename
+											a.target = '_blank'
+											document.body.appendChild(a)
+											a.click()
+											document.body.removeChild(a)
+										}}
+										title="Download for offline use"
+									>
+										<Download className="h-4 w-4" />
+									</Button>
+								)}
+							</div>
 							<p className="text-xs text-gray-500">Enter the URL to a remote PMTiles file.</p>
 						</div>
 					) : (
@@ -189,6 +212,29 @@ export function MapSettingsPanel() {
 							</p>
 						</div>
 					)}
+
+					{/* Bounds Lock Option */}
+					<div className="flex items-center gap-2 pt-2">
+						<Checkbox
+							id="bounds-lock"
+							checked={mapSource.boundsLocked ?? true}
+							onCheckedChange={(checked: boolean | 'indeterminate') =>
+								setMapSource({
+									...mapSource,
+									boundsLocked: checked === true,
+								})
+							}
+						/>
+						<label
+							htmlFor="bounds-lock"
+							className="text-sm cursor-pointer"
+						>
+							Lock to map bounds
+						</label>
+					</div>
+					<p className="text-xs text-gray-500">
+						Prevents zooming/panning beyond the PMTiles extent.
+					</p>
 				</>
 			)}
 

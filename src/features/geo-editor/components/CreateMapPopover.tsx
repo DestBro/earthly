@@ -8,7 +8,7 @@
  * 4. Extract, sign, and upload the map
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Map, Loader2, Check, Copy, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,6 +28,7 @@ import {
 import { useEditorStore } from '../store'
 import { useNDK, useNDKCurrentUser } from '@nostr-dev-kit/react'
 import { EarthlyGeoServerClient } from '@/ctxcn/EarthlyGeoServerClient'
+import { config } from '@/config'
 
 // Area calculation helpers
 function calculateBBoxAreaSqKm(bbox: { west: number; south: number; east: number; north: number }): number {
@@ -50,7 +51,7 @@ function calculateBBoxAreaSqKm(bbox: { west: number; south: number; east: number
 }
 
 // Max area in sqkm (configurable)
-const MAX_AREA_SQKM = 100
+const MAX_AREA_SQKM = 3000
 
 interface BBox {
 	west: number
@@ -65,8 +66,10 @@ type FlowState = 'idle' | 'extracting' | 'signing' | 'uploading' | 'done' | 'err
 export function CreateMapPopover() {
 	const [open, setOpen] = useState(false)
 	const [sourceType, setSourceType] = useState<SourceType>('dataset')
-	const [blossomUrl, setBlossomUrl] = useState('http://localhost:3001')
-	const [maxZoom, setMaxZoom] = useState(14)
+	const [blossomUrl, setBlossomUrl] = useState(
+		config.isDevelopment ? 'http://localhost:3001' : 'https://blossom.earthly.city'
+	)
+	const [maxZoom, setMaxZoom] = useState(16)
 	const [flowState, setFlowState] = useState<FlowState>('idle')
 	const [error, setError] = useState<string | null>(null)
 	const [resultUrl, setResultUrl] = useState<string | null>(null)
@@ -78,6 +81,9 @@ export function CreateMapPopover() {
 	const currentBbox = useEditorStore((state) => state.currentBbox)
 	const mode = useEditorStore((state) => state.mode)
 	const setMode = useEditorStore((state) => state.setMode)
+	const setMapSource = useEditorStore((state) => state.setMapSource)
+	const mapAreaRect = useEditorStore((state) => state.mapAreaRect)
+	const clearMapAreaRect = useEditorStore((state) => state.clearMapAreaRect)
 
 	// Compute bbox from dataset or selection
 	const bbox = useMemo((): BBox | null => {
@@ -101,34 +107,45 @@ export function CreateMapPopover() {
 			if (!isFinite(west)) return null
 			return { west, south, east, north }
 		} else {
-			// From selection - use current map view bounds
-			// This requires the editor to track selection bbox
-			// For now, fall back to current map viewport
-			if (currentBbox) {
+			// From drawn rectangle
+			if (mapAreaRect) {
 				return {
-					west: currentBbox[0],
-					south: currentBbox[1],
-					east: currentBbox[2],
-					north: currentBbox[3],
+					west: mapAreaRect.bbox[0],
+					south: mapAreaRect.bbox[1],
+					east: mapAreaRect.bbox[2],
+					north: mapAreaRect.bbox[3],
 				}
 			}
 			return null
 		}
-	}, [sourceType, editor, currentBbox])
+	}, [sourceType, editor, mapAreaRect])
 
 	// Handle source type change - activates appropriate tool
+	const setIsDrawingMapArea = useEditorStore((state) => state.setIsDrawingMapArea)
 	const handleSourceChange = (newSource: SourceType) => {
 		setSourceType(newSource)
 		if (newSource === 'dataset') {
 			// Activate select tool for dataset selection
 			setMode('select')
+			// Clear any drawn rectangle
+			clearMapAreaRect()
 		} else {
-			// Activate box_select for rectangle drawing
-			setMode('box_select')
+			// Set flag before activating draw mode
+			setIsDrawingMapArea(true)
+			// Activate polygon drawing for rectangle
+			setMode('draw_polygon')
 		}
 		// Close the popover to let user interact with map
 		setOpen(false)
 	}
+
+	// Auto-reopen popover when mapAreaRect is captured after drawing
+	useEffect(() => {
+		if (mapAreaRect && !open) {
+			setSourceType('selection')
+			setOpen(true)
+		}
+	}, [mapAreaRect])
 
 	// Calculate area
 	const areaSqKm = bbox ? calculateBBoxAreaSqKm(bbox) : 0
@@ -231,6 +248,26 @@ export function CreateMapPopover() {
 		setFlowState('idle')
 		setError(null)
 		setResultUrl(null)
+	}
+
+	const handleUseAsMapSource = () => {
+		if (!resultUrl) return
+
+		// Set as current map source
+		setMapSource({
+			type: 'pmtiles',
+			location: 'remote',
+			url: resultUrl,
+		})
+
+		// Update browser URL with shareable param
+		const url = new URL(window.location.href)
+		url.searchParams.set('pmtiles', resultUrl)
+		window.history.replaceState({}, '', url.toString())
+
+		// Close the popover
+		setOpen(false)
+		handleReset()
 	}
 
 	return (
@@ -397,6 +434,9 @@ export function CreateMapPopover() {
 										</Button>
 									</div>
 								</div>
+								<Button onClick={handleUseAsMapSource} className="w-full">
+									Use as Map Source
+								</Button>
 								<Button variant="outline" onClick={handleReset} className="w-full">
 									Create another
 								</Button>

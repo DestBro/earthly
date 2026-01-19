@@ -234,7 +234,7 @@ async function main() {
 		async ({ west, south, east, north, maxZoom, blossomServer }) => {
 			try {
 				console.log(
-					`🗺️ Create map extract: bbox=[${west},${south},${east},${north}] maxZoom=${maxZoom ?? 14}`,
+					`🗺️ Create map extract: bbox=[${west},${south},${east},${north}] maxZoom=${maxZoom ?? 16}`,
 				);
 
 				// Check Blossom server reachability first (without auth for now)
@@ -250,7 +250,7 @@ async function main() {
 
 				const extractResult = await extractPmtiles(
 					{ west, south, east, north },
-					maxZoom ?? 14,
+					maxZoom ?? 16,
 					blossomServer,
 				);
 
