@@ -52,6 +52,29 @@ function calculateBBoxAreaSqKm(bbox: { west: number; south: number; east: number
 
 // Max area in sqkm (configurable)
 const MAX_AREA_SQKM = 3000
+const DATASET_EXCERPT_PADDING_METERS = 5000
+const WEB_MERCATOR_MAX_LAT = 85.05112878
+
+function clamp(value: number, min: number, max: number): number {
+	return Math.max(min, Math.min(max, value))
+}
+
+function padBBoxMeters(bbox: BBox, paddingMeters: number): BBox {
+	const midLat = (bbox.south + bbox.north) / 2
+	const latRad = (midLat * Math.PI) / 180
+	const metersPerDegreeLat = 111_320
+	const metersPerDegreeLon = Math.max(1e-6, metersPerDegreeLat * Math.cos(latRad))
+
+	const padLat = paddingMeters / metersPerDegreeLat
+	const padLon = paddingMeters / metersPerDegreeLon
+
+	return {
+		west: clamp(bbox.west - padLon, -180, 180),
+		south: clamp(bbox.south - padLat, -WEB_MERCATOR_MAX_LAT, WEB_MERCATOR_MAX_LAT),
+		east: clamp(bbox.east + padLon, -180, 180),
+		north: clamp(bbox.north + padLat, -WEB_MERCATOR_MAX_LAT, WEB_MERCATOR_MAX_LAT),
+	}
+}
 
 interface BBox {
 	west: number
@@ -89,7 +112,7 @@ export function CreateMapPopover() {
 	const focusedMapGeometry = useEditorStore((state) => state.focusedMapGeometry)
 	const clearFocusedMapGeometry = useEditorStore((state) => state.clearFocusedMapGeometry)
 
-	// Compute bbox based on source type
+	// Compute bbox based on source type (used for extraction)
 	const bbox = useMemo((): BBox | null => {
 		console.log('CreateMapPopover: computing bbox', { sourceType, editor: !!editor, open })
 		if (sourceType === 'viewport') {
@@ -108,12 +131,13 @@ export function CreateMapPopover() {
 		} else if (sourceType === 'dataset') {
 			// Use bbox from last clicked remote geometry (external datasets)
 			if (focusedMapGeometry) {
-				return {
+				const baseBbox = {
 					west: focusedMapGeometry.bbox[0],
 					south: focusedMapGeometry.bbox[1],
 					east: focusedMapGeometry.bbox[2],
 					north: focusedMapGeometry.bbox[3],
 				}
+				return padBBoxMeters(baseBbox, DATASET_EXCERPT_PADDING_METERS)
 			}
 
 			// Get bbox from selected features on the map (clicked geometries)
@@ -134,19 +158,19 @@ export function CreateMapPopover() {
 				}
 
 				if (isFinite(west)) {
-					return { west, south, east, north }
+					return padBBoxMeters({ west, south, east, north }, DATASET_EXCERPT_PADDING_METERS)
 				}
 			}
 			
 			// Fallback to activeDataset bbox if available
 			if (activeDataset?.boundingBox?.length === 4) {
 				const datasetBbox = activeDataset.boundingBox
-				return {
+				return padBBoxMeters({
 					west: datasetBbox[0],
 					south: datasetBbox[1],
 					east: datasetBbox[2],
 					north: datasetBbox[3],
-				}
+				}, DATASET_EXCERPT_PADDING_METERS)
 			}
 			return null
 		} else {
