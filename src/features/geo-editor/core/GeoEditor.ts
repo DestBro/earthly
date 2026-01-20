@@ -236,6 +236,26 @@ export class GeoEditor {
 		this.map.on('mouseleave', this.layers.LAYER_GIZMO_MOVE, () => {
 			this.map.getCanvas().style.cursor = ''
 		})
+
+		// Cursor feedback for selectable features in select mode
+		const selectableLayers = [
+			this.layers.LAYER_FILL,
+			this.layers.LAYER_LINE,
+			this.layers.LAYER_POINT,
+			this.layers.LAYER_ANNOTATION_ANCHOR,
+		]
+		for (const layer of selectableLayers) {
+			this.map.on('mouseenter', layer, () => {
+				if (this.mode === 'select' || this.mode === 'box_select') {
+					this.map.getCanvas().style.cursor = 'pointer'
+				}
+			})
+			this.map.on('mouseleave', layer, () => {
+				if (this.mode === 'select' || this.mode === 'box_select') {
+					this.map.getCanvas().style.cursor = ''
+				}
+			})
+		}
 	}
 
 	// ==============================
@@ -1378,6 +1398,15 @@ export class GeoEditor {
 
 	getAllFeatures(): EditorFeature[] {
 		return Array.from(this.features.values())
+	}
+
+	/**
+	 * Get the current map viewport bounds as [west, south, east, north]
+	 */
+	getMapBounds(): [number, number, number, number] | null {
+		const bounds = this.map.getBounds()
+		if (!bounds) return null
+		return [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()]
 	}
 
 	selectFeature(featureId: string, additive: boolean = false): void {

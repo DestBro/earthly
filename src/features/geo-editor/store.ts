@@ -73,6 +73,14 @@ interface EditorState {
 	focusedNaddr: string | null
 	focusedType: 'geoevent' | 'collection' | null
 
+	// Focused map geometry (e.g. last clicked remote feature)
+	focusedMapGeometry: {
+		bbox: [number, number, number, number] // [west, south, east, north]
+		datasetId?: string
+		sourceEventId?: string
+		featureId?: string
+	} | null
+
 	// UI Input State (moved from view)
 	newCollectionProp: { key: string; value: string }
 	newFeatureProp: { key: string; value: string }
@@ -155,6 +163,10 @@ interface EditorState {
 	// Focus Actions
 	setFocused: (type: 'geoevent' | 'collection', naddr: string) => void
 	clearFocused: () => void
+
+	// Focused map geometry actions
+	setFocusedMapGeometry: (focused: EditorState['focusedMapGeometry']) => void
+	clearFocusedMapGeometry: () => void
 
 	setNewCollectionProp: (prop: { key: string; value: string }) => void
 	setNewFeatureProp: (prop: { key: string; value: string }) => void
@@ -261,6 +273,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	// Focus State
 	focusedNaddr: null,
 	focusedType: null,
+	focusedMapGeometry: null,
 
 	newCollectionProp: { key: '', value: '' },
 	newFeatureProp: { key: '', value: '' },
@@ -479,6 +492,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	// Focus Actions
 	setFocused: (type, naddr) => set({ focusedType: type, focusedNaddr: naddr }),
 	clearFocused: () => set({ focusedType: null, focusedNaddr: null }),
+
+	// Focused map geometry actions
+	setFocusedMapGeometry: (focusedMapGeometry) => set({ focusedMapGeometry }),
+	clearFocusedMapGeometry: () => set({ focusedMapGeometry: null }),
 
 	setNewCollectionProp: (newCollectionProp) => set({ newCollectionProp }),
 	setNewFeatureProp: (newFeatureProp) => set({ newFeatureProp }),

@@ -16,6 +16,7 @@ export const Editor: React.FC<EditorProps> = ({ snapping = true }) => {
 	const setFeatures = useEditorStore((state) => state.setFeatures)
 	const setMode = useEditorStore((state) => state.setMode)
 	const setSelectedFeatureIds = useEditorStore((state) => state.setSelectedFeatureIds)
+	const clearFocusedMapGeometry = useEditorStore((state) => state.clearFocusedMapGeometry)
 	const setCanFinishDrawing = useEditorStore((state) => state.setCanFinishDrawing)
 	const setHistoryState = useEditorStore((state) => state.setHistoryState)
 	const editor = useEditorStore((state) => state.editor)
@@ -44,6 +45,7 @@ export const Editor: React.FC<EditorProps> = ({ snapping = true }) => {
 		}
 
 		const updateSelection = () => {
+			clearFocusedMapGeometry()
 			setSelectedFeatureIds(editor.selection.getSelected())
 		}
 

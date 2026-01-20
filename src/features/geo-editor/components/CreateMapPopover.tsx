@@ -9,7 +9,7 @@
  */
 
 import { useState, useMemo, useEffect } from 'react'
-import { Map, Loader2, Check, Copy, AlertTriangle } from 'lucide-react'
+import { Map, Loader2, Check, Copy, AlertTriangle, Maximize, MousePointer2, PenTool } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -60,12 +60,12 @@ interface BBox {
 	north: number
 }
 
-type SourceType = 'dataset' | 'selection'
+type SourceType = 'viewport' | 'dataset' | 'selection'
 type FlowState = 'idle' | 'extracting' | 'signing' | 'uploading' | 'done' | 'error'
 
 export function CreateMapPopover() {
 	const [open, setOpen] = useState(false)
-	const [sourceType, setSourceType] = useState<SourceType>('dataset')
+	const [sourceType, setSourceType] = useState<SourceType>('viewport')
 	const [blossomUrl, setBlossomUrl] = useState(
 		config.isDevelopment ? 'http://localhost:3001' : 'https://blossom.earthly.city'
 	)
@@ -84,28 +84,71 @@ export function CreateMapPopover() {
 	const setMapSource = useEditorStore((state) => state.setMapSource)
 	const mapAreaRect = useEditorStore((state) => state.mapAreaRect)
 	const clearMapAreaRect = useEditorStore((state) => state.clearMapAreaRect)
+	const selectedFeatureIds = useEditorStore((state) => state.selectedFeatureIds)
+	const activeDataset = useEditorStore((state) => state.activeDataset)
+	const focusedMapGeometry = useEditorStore((state) => state.focusedMapGeometry)
+	const clearFocusedMapGeometry = useEditorStore((state) => state.clearFocusedMapGeometry)
 
-	// Compute bbox from dataset or selection
+	// Compute bbox based on source type
 	const bbox = useMemo((): BBox | null => {
-		if (sourceType === 'dataset') {
-			// Get bbox from all features in editor
-			const features = editor?.getAllFeatures() ?? []
-			if (features.length === 0) return null
-
-			let west = Infinity, south = Infinity, east = -Infinity, north = -Infinity
-
-			for (const feature of features) {
-				const coords = getAllCoordinates(feature.geometry)
-				for (const [lon, lat] of coords) {
-					if (lon < west) west = lon
-					if (lon > east) east = lon
-					if (lat < south) south = lat
-					if (lat > north) north = lat
+		console.log('CreateMapPopover: computing bbox', { sourceType, editor: !!editor, open })
+		if (sourceType === 'viewport') {
+			// Use current map viewport from editor
+			const mapBounds = editor?.getMapBounds()
+			console.log('CreateMapPopover: viewport mode', { mapBounds, editorExists: !!editor })
+			if (mapBounds) {
+				return {
+					west: mapBounds[0],
+					south: mapBounds[1],
+					east: mapBounds[2],
+					north: mapBounds[3],
+				}
+			}
+			return null
+		} else if (sourceType === 'dataset') {
+			// Use bbox from last clicked remote geometry (external datasets)
+			if (focusedMapGeometry) {
+				return {
+					west: focusedMapGeometry.bbox[0],
+					south: focusedMapGeometry.bbox[1],
+					east: focusedMapGeometry.bbox[2],
+					north: focusedMapGeometry.bbox[3],
 				}
 			}
 
-			if (!isFinite(west)) return null
-			return { west, south, east, north }
+			// Get bbox from selected features on the map (clicked geometries)
+			const selectedFeatures = editor?.getSelectedFeatures() ?? []
+			console.log('CreateMapPopover: dataset mode', { selectedCount: selectedFeatures.length, selectedFeatureIds })
+			
+			if (selectedFeatures.length > 0) {
+				let west = Infinity, south = Infinity, east = -Infinity, north = -Infinity
+
+				for (const feature of selectedFeatures) {
+					const coords = getAllCoordinates(feature.geometry)
+					for (const [lon, lat] of coords) {
+						if (lon < west) west = lon
+						if (lon > east) east = lon
+						if (lat < south) south = lat
+						if (lat > north) north = lat
+					}
+				}
+
+				if (isFinite(west)) {
+					return { west, south, east, north }
+				}
+			}
+			
+			// Fallback to activeDataset bbox if available
+			if (activeDataset?.boundingBox?.length === 4) {
+				const datasetBbox = activeDataset.boundingBox
+				return {
+					west: datasetBbox[0],
+					south: datasetBbox[1],
+					east: datasetBbox[2],
+					north: datasetBbox[3],
+				}
+			}
+			return null
 		} else {
 			// From drawn rectangle
 			if (mapAreaRect) {
@@ -118,26 +161,36 @@ export function CreateMapPopover() {
 			}
 			return null
 		}
-	}, [sourceType, editor, mapAreaRect])
+	}, [sourceType, editor, mapAreaRect, selectedFeatureIds, open, activeDataset, focusedMapGeometry])
 
 	// Handle source type change - activates appropriate tool
 	const setIsDrawingMapArea = useEditorStore((state) => state.setIsDrawingMapArea)
+	const [waitingForSelection, setWaitingForSelection] = useState(false)
 	const handleSourceChange = (newSource: SourceType) => {
 		setSourceType(newSource)
-		if (newSource === 'dataset') {
-			// Activate select tool for dataset selection
+		clearMapAreaRect()
+		setWaitingForSelection(false)
+		
+		if (newSource === 'viewport') {
+			// Viewport uses current bounds, no need to close popover
+			// Keep popover open
+		} else if (newSource === 'dataset') {
+			clearFocusedMapGeometry()
+			// Activate select tool for clicking geometry
 			setMode('select')
-			// Clear any drawn rectangle
-			clearMapAreaRect()
+			// Track that we're waiting for selection (like draw area)
+			setWaitingForSelection(true)
+			// Close popover to let user click on geometry
+			setOpen(false)
 		} else {
-			// Set flag before activating draw mode
+			// selection - draw area
 			setIsDrawingMapArea(true)
-			// Activate polygon drawing for rectangle
 			setMode('draw_polygon')
+			// Close popover to let user draw
+			setOpen(false)
 		}
-		// Close the popover to let user interact with map
-		setOpen(false)
 	}
+
 
 	// Auto-reopen popover when mapAreaRect is captured after drawing
 	useEffect(() => {
@@ -146,6 +199,14 @@ export function CreateMapPopover() {
 			setOpen(true)
 		}
 	}, [mapAreaRect])
+
+	// Auto-reopen popover when geometry is selected in 'dataset' mode
+	useEffect(() => {
+		if (waitingForSelection && (selectedFeatureIds.length > 0 || focusedMapGeometry) && !open) {
+			setWaitingForSelection(false)
+			setOpen(true)
+		}
+	}, [waitingForSelection, selectedFeatureIds, focusedMapGeometry, open])
 
 	// Calculate area
 	const areaSqKm = bbox ? calculateBBoxAreaSqKm(bbox) : 0
@@ -301,31 +362,61 @@ export function CreateMapPopover() {
 
 						{flowState === 'idle' && (
 							<>
-								{/* Source selection - now as buttons that activate tools */}
+								{/* Source selection - icon buttons with tooltips */}
 								<div className="space-y-2">
 									<Label>Source</Label>
-									<div className="flex gap-2">
-										<Button
-											variant={sourceType === 'dataset' ? 'default' : 'outline'}
-											size="sm"
-											className="flex-1"
-											onClick={() => handleSourceChange('dataset')}
-										>
-											From Dataset
-										</Button>
-										<Button
-											variant={sourceType === 'selection' ? 'default' : 'outline'}
-											size="sm"
-											className="flex-1"
-											onClick={() => handleSourceChange('selection')}
-										>
-											Draw Rectangle
-										</Button>
-									</div>
+									<TooltipProvider delayDuration={300}>
+										<div className="flex gap-1">
+											<Tooltip>
+												<TooltipTrigger asChild>
+													<Button
+														variant={sourceType === 'viewport' ? 'default' : 'outline'}
+														size="icon"
+														onClick={() => handleSourceChange('viewport')}
+													>
+														<Maximize className="h-4 w-4" />
+													</Button>
+												</TooltipTrigger>
+												<TooltipContent side="bottom">
+													<p>Current View</p>
+												</TooltipContent>
+											</Tooltip>
+											<Tooltip>
+												<TooltipTrigger asChild>
+													<Button
+														variant={sourceType === 'dataset' ? 'default' : 'outline'}
+														size="icon"
+														onClick={() => handleSourceChange('dataset')}
+													>
+														<MousePointer2 className="h-4 w-4" />
+													</Button>
+												</TooltipTrigger>
+												<TooltipContent side="bottom">
+													<p>From Geometry</p>
+												</TooltipContent>
+											</Tooltip>
+											<Tooltip>
+												<TooltipTrigger asChild>
+													<Button
+														variant={sourceType === 'selection' ? 'default' : 'outline'}
+														size="icon"
+														onClick={() => handleSourceChange('selection')}
+													>
+														<PenTool className="h-4 w-4" />
+													</Button>
+												</TooltipTrigger>
+												<TooltipContent side="bottom">
+													<p>Draw Area</p>
+												</TooltipContent>
+											</Tooltip>
+										</div>
+									</TooltipProvider>
 									<p className="text-xs text-muted-foreground">
-										{sourceType === 'dataset'
-											? 'Uses bounding box of current dataset features'
-											: 'Draw a rectangle on the map to select area'}
+										{sourceType === 'viewport'
+											? 'Uses current map viewport bounds'
+											: sourceType === 'dataset'
+												? 'Click geometry to select, or all if none'
+												: 'Draw a polygon to define area'}
 									</p>
 								</div>
 
