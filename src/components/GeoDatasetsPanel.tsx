@@ -19,6 +19,8 @@ import { Input } from './ui/input'
 import type { GeoFeatureItem } from './editor/GeoRichTextEditor'
 
 export interface GeoDatasetsPanelProps {
+	/** Which content to display: 'datasets' or 'collections' */
+	mode: 'datasets' | 'collections'
 	geoEvents: NDKGeoEvent[]
 	collectionEvents: NDKGeoCollectionEvent[]
 	activeDataset: NDKGeoEvent | null
@@ -74,6 +76,7 @@ const getCollectionDisplayName = (collection: NDKGeoCollectionEvent): string => 
 }
 
 export function GeoDatasetsPanelContent({
+	mode,
 	geoEvents,
 	collectionEvents,
 	activeDataset,
@@ -103,7 +106,6 @@ export function GeoDatasetsPanelContent({
 	isFocused = false,
 	onExitFocus,
 }: GeoDatasetsPanelProps) {
-	const [activeTab, setActiveTab] = useState<'datasets' | 'collections'>('datasets')
 	const [searchQuery, setSearchQuery] = useState('')
 	const [ownedOnly, setOwnedOnly] = useState(false)
 
@@ -307,12 +309,16 @@ export function GeoDatasetsPanelContent({
 		<div className="space-y-3">
 			<div className="flex items-center justify-between gap-2">
 				<div>
-					<h3 className="text-base font-semibold text-gray-800">Datasets</h3>
+					<h3 className="text-base font-semibold text-gray-800">
+						{mode === 'datasets' ? 'Datasets' : 'Collections'}
+					</h3>
 					{isFocused ? (
-						<p className="text-xs text-amber-600">Focused view — other datasets hidden</p>
+						<p className="text-xs text-amber-600">Focused view — others hidden</p>
 					) : (
 						<p className="text-xs text-gray-500">
-							Remote GeoJSON datasets and collections available to load.
+							{mode === 'datasets'
+								? 'Remote GeoJSON datasets available to load.'
+								: 'Curated collections of datasets.'}
 						</p>
 					)}
 				</div>
@@ -328,7 +334,7 @@ export function GeoDatasetsPanelContent({
 							Show all
 						</Button>
 					)}
-					{activeTab === 'collections' && onCreateCollection && (
+					{mode === 'collections' && onCreateCollection && (
 						<Button
 							size="icon"
 							variant="outline"
@@ -346,34 +352,16 @@ export function GeoDatasetsPanelContent({
 					)}
 				</div>
 			</div>
-			<div className="flex gap-2">
-				<Button
-					size="sm"
-					variant={activeTab === 'datasets' ? 'default' : 'outline'}
-					className="flex-1"
-					onClick={() => setActiveTab('datasets')}
-				>
-					Geo events
-				</Button>
-				<Button
-					size="sm"
-					variant={activeTab === 'collections' ? 'default' : 'outline'}
-					className="flex-1"
-					onClick={() => setActiveTab('collections')}
-				>
-					Collections
-				</Button>
-			</div>
+
 			<div className="flex flex-wrap gap-2">
 				<Input
-					size="xs"
 					value={searchQuery}
 					onChange={(event) => setSearchQuery(event.target.value)}
 					placeholder="Search name or description…"
-					className="flex-1 min-w-0"
+					className="flex-1 min-w-0 h-8 text-sm"
 				/>
 				<Button
-					size="xs"
+					size="sm"
 					variant={ownedOnly ? 'default' : 'outline'}
 					onClick={() => setOwnedOnly((value) => !value)}
 					aria-pressed={ownedOnly}
@@ -385,7 +373,7 @@ export function GeoDatasetsPanelContent({
 				</Button>
 			</div>
 
-			{activeTab === 'datasets' ? (
+			{mode === 'datasets' ? (
 				<>
 					{geoEvents.length === 0 ? (
 						<p className="text-xs text-gray-500">Listening for GeoJSON datasets…</p>

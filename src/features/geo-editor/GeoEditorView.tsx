@@ -1482,6 +1482,18 @@ export function GeoEditorView() {
 					isFocused={isFocused}
 					onExitFocus={navigateHome}
 					multiSelectModifier={multiSelectModifierLabel}
+					// Editor panel props
+					onCommentGeometryVisibility={handleCommentGeometryVisibility}
+					onZoomToBounds={handleZoomToBounds}
+					availableFeatures={availableFeatures}
+					onMentionVisibilityToggle={handleMentionVisibilityToggle}
+					onMentionZoomTo={handleMentionZoomTo}
+					collectionEditorMode={collectionEditorMode}
+					editingCollection={editingCollection}
+					onSaveCollection={handleSaveCollection}
+					onCloseCollectionEditor={handleCloseCollectionEditor}
+					onZoomToFeature={handleZoomToFeature}
+					onExitViewMode={exitViewMode}
 				/>
 			)}
 
@@ -1576,49 +1588,8 @@ export function GeoEditorView() {
 
 
 
-			{!isMobile && mounted && showInfoPanel && (
-				<div className="pointer-events-auto absolute right-4 top-[88px] bottom-4 z-40 hidden md:flex w-[25vw]">
-					<div className="glass-panel flex-1 overflow-hidden rounded-lg">
-						{editor && (
-							<div className="pointer-events-none absolute bottom-8 left-1/2 -translate-x-1/2 rounded-full bg-black/75 px-4 py-1 text-xs text-white backdrop-blur">
-								{editor.getMode() === 'select' && 'Select features to edit'}
-								{editor.getMode() === 'draw_point' && 'Click to place point'}
-								{editor.getMode() === 'draw_linestring' &&
-									'Click to add points, double-click to finish'}
-								{editor.getMode() === 'draw_polygon' &&
-									'Click to add points, double-click to finish'}
-								{editor.getMode() === 'edit' && 'Drag vertices to edit'}
-							</div>
-						)}
-						<div className="h-full overflow-y-auto p-4">
-							<GeoEditorInfoPanelContent
-								currentUserPubkey={currentUser?.pubkey}
-								onLoadDataset={handleLoadDatasetForEditing}
-								onToggleVisibility={toggleDatasetVisibility}
-								onZoomToDataset={zoomToDataset}
-								onDeleteDataset={onDeleteDataset}
-								onZoomToCollection={zoomToCollection}
-								deletingKey={deletingKey}
-								onExitViewMode={exitViewMode}
-								onClose={() => setShowInfoPanel(false)}
-								getDatasetKey={getDatasetKey}
-								getDatasetName={getDatasetName}
-								onCommentGeometryVisibility={handleCommentGeometryVisibility}
-								onZoomToBounds={handleZoomToBounds}
-								availableFeatures={availableFeatures}
-								onMentionVisibilityToggle={handleMentionVisibilityToggle}
-								onMentionZoomTo={handleMentionZoomTo}
-								onEditCollection={handleEditCollection}
-								collectionEditorMode={collectionEditorMode}
-								editingCollection={editingCollection}
-								onSaveCollection={handleSaveCollection}
-								onCloseCollectionEditor={handleCloseCollectionEditor}
-								onZoomToFeature={handleZoomToFeature}
-							/>
-						</div>
-					</div>
-				</div>
-			)}
+
+
 
 			{isMobile && (
 				<>
@@ -1632,6 +1603,7 @@ export function GeoEditorView() {
 						>
 							<div className="h-full w-full overflow-y-auto px-4 pb-6 pt-3">
 								<GeoDatasetsPanelContent
+									mode="datasets"
 									geoEvents={geoEvents}
 									collectionEvents={collectionEvents}
 									activeDataset={activeDataset}

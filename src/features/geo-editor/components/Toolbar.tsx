@@ -658,6 +658,12 @@ export function Toolbar({
 						<div className="glass-panel rounded-lg p-1.5">
 							<div className="flex items-center justify-center gap-1 flex-wrap">
 								<IconButtonRow buttons={fileButtons} small />
+								<OsmQueryPopover
+									onQueryClick={onOsmQueryClick ?? (() => {})}
+									onQueryView={onOsmQueryView ?? (() => {})}
+									onAdvanced={onOsmAdvanced ?? (() => {})}
+								/>
+								<CreateMapPopover />
 								<Divider />
 								<IconButtonRow buttons={publishButtons} small />
 								<Divider />
@@ -797,9 +803,7 @@ export function Toolbar({
 				/>
 				<Divider />
 
-				{/* Panels */}
-				<IconButtonRow buttons={panelButtons} />
-
+	
 				{/* Share button - only visible when focused on a route */}
 				{isFocused && (
 					<>
