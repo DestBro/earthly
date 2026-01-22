@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
 	Popover,
 	PopoverContent,
@@ -97,6 +98,7 @@ export function CreateMapPopover() {
 	const [error, setError] = useState<string | null>(null)
 	const [resultUrl, setResultUrl] = useState<string | null>(null)
 	const [copiedUrl, setCopiedUrl] = useState(false)
+	const [includeRoute, setIncludeRoute] = useState(true)
 
 	const { ndk } = useNDK()
 	const currentUser = useNDKCurrentUser()
@@ -111,6 +113,11 @@ export function CreateMapPopover() {
 	const activeDataset = useEditorStore((state) => state.activeDataset)
 	const focusedMapGeometry = useEditorStore((state) => state.focusedMapGeometry)
 	const clearFocusedMapGeometry = useEditorStore((state) => state.clearFocusedMapGeometry)
+	const focusedNaddr = useEditorStore((state) => state.focusedNaddr)
+	const focusedType = useEditorStore((state) => state.focusedType)
+
+	// Check if we have a focused dataset that could be added as a route
+	const canIncludeRoute = sourceType === 'dataset' && focusedNaddr && focusedType === 'geoevent'
 
 	// Compute bbox based on source type (used for extraction)
 	const bbox = useMemo((): BBox | null => {
@@ -262,6 +269,8 @@ export function CreateMapPopover() {
 
 			// Step 1: Extract PMTiles
 			// Note: CreateMapExtract method will be available after client regeneration
+			// If includeRoute is checked and we have a focused dataset, pass its naddr
+			const routeNaddr = (canIncludeRoute && includeRoute) ? focusedNaddr : undefined
 			const extractResult = await (client as any).CreateMapExtract(
 				bbox.west,
 				bbox.south,
@@ -269,6 +278,7 @@ export function CreateMapPopover() {
 				bbox.north,
 				maxZoom,
 				blossomUrl,
+				routeNaddr, // Optional: dataset naddr to include as route
 			)
 
 			if (!extractResult?.result) {
@@ -472,6 +482,20 @@ export function CreateMapPopover() {
 										step={1}
 									/>
 								</div>
+
+								{/* Include Route checkbox - only when using dataset source with focused geometry */}
+								{canIncludeRoute && (
+									<div className="flex items-center space-x-2">
+										<Checkbox
+											id="include-route"
+											checked={includeRoute}
+											onCheckedChange={(checked) => setIncludeRoute(checked === true)}
+										/>
+										<Label htmlFor="include-route" className="text-sm cursor-pointer">
+											Include dataset as route
+										</Label>
+									</div>
+								)}
 
 								{/* Area display */}
 								{bbox && (

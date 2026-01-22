@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { Database, FolderOpen, Globe, PanelTop, Pencil, Settings2 } from 'lucide-react'
 import type { FeatureCollection } from 'geojson'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
@@ -128,7 +127,8 @@ export function AppSidebar({
 	const { state, setOpen } = useSidebar()
 	const showMapSettings = useEditorStore((state) => state.showMapSettings)
 	const setShowMapSettings = useEditorStore((state) => state.setShowMapSettings)
-	const [viewMode, setViewMode] = useState<SidebarViewMode>('datasets')
+	const viewMode = useEditorStore((state) => state.sidebarViewMode)
+	const setViewMode = useEditorStore((state) => state.setSidebarViewMode)
 
 	/** Common props for GeoDatasetsPanelContent */
 	const datasetsPanelProps = {

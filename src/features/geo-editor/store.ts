@@ -95,6 +95,7 @@ interface EditorState {
 	mobileSearchOpen: boolean
 	mobileActionsOpen: boolean
 	inspectorActive: boolean
+	sidebarViewMode: 'datasets' | 'collections' | 'combined' | 'edit'
 
 	// Search State
 	searchQuery: string
@@ -182,6 +183,7 @@ interface EditorState {
 	setMobileActionsOpen: (open: boolean) => void
 	setMobileActiveState: (state: 'datasets' | 'info' | 'tools' | 'search' | 'actions' | null) => void
 	setInspectorActive: (active: boolean) => void
+	setSidebarViewMode: (mode: 'datasets' | 'collections' | 'combined' | 'edit') => void
 
 	// Search Actions
 	setSearchQuery: (query: string) => void
@@ -288,6 +290,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	mobileSearchOpen: false,
 	mobileActionsOpen: false,
 	inspectorActive: false,
+	sidebarViewMode: 'datasets',
 
 	// Search State
 	searchQuery: '',
@@ -484,7 +487,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 		})
 	},
 
-	setViewMode: (viewMode) => set({ viewMode }),
+	setViewMode: (viewMode) => {
+		set({ viewMode })
+		// Auto-switch sidebar to combined view when entering edit mode
+		if (viewMode === 'edit') {
+			set({ sidebarViewMode: 'combined' })
+		}
+	},
 	setViewDataset: (viewDataset) => set({ viewDataset }),
 	setViewCollection: (viewCollection) => set({ viewCollection }),
 	setViewCollectionEvents: (viewCollectionEvents) => set({ viewCollectionEvents }),
@@ -527,6 +536,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 			mobileActionsOpen: state === 'actions',
 		}),
 	setInspectorActive: (active) => set({ inspectorActive: active }),
+	setSidebarViewMode: (mode) => set({ sidebarViewMode: mode }),
 
 	// Search Actions
 	setSearchQuery: (searchQuery) => set({ searchQuery }),
