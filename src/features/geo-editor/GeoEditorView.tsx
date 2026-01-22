@@ -25,8 +25,10 @@ import type { NDKGeoCollectionEvent } from '../../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
 import { Editor } from './components/Editor'
 import { ImportOsmDialog } from './components/ImportOsmDialog'
+import { LocateButton } from './components/LocateButton'
 import { LocationInspectorPopup } from './components/LocationInspectorPopup'
 import { Magnifier } from './components/Magnifier'
+import { UserLocationMarker } from './components/UserLocationMarker'
 import { GeoEditorMap as MapComponent } from './components/Map'
 import { OsmResultsPanel } from './components/OsmResultsPanel'
 import { Toolbar } from './components/Toolbar'
@@ -156,6 +158,14 @@ export function GeoEditorView() {
 
 	// Import OSM dialog state
 	const [importOsmDialogOpen, setImportOsmDialogOpen] = useState(false)
+
+	// User location tracking state
+	const [userLocation, setUserLocation] = useState<{
+		lat: number
+		lon: number
+		accuracy?: number
+	} | null>(null)
+	const isFirstLocationUpdate = useRef(true)
 
 	// Store state
 	const editor = useEditorStore((state) => state.editor)
@@ -1115,6 +1125,29 @@ export function GeoEditorView() {
 		})
 	}, [])
 
+	// Handle locate button - zoom to user's current location and show marker
+	const handleLocate = useCallback(
+		(coords: { lat: number; lon: number; accuracy?: number } | null) => {
+			setUserLocation(coords)
+
+			// Only fly to location on first update (when tracking starts)
+			if (coords && isFirstLocationUpdate.current && map.current) {
+				map.current.flyTo({
+					center: [coords.lon, coords.lat],
+					zoom: 15,
+					duration: 1000,
+				})
+				isFirstLocationUpdate.current = false
+			}
+
+			// Reset flag when tracking stops
+			if (!coords) {
+				isFirstLocationUpdate.current = true
+			}
+		},
+		[]
+	)
+
 	const handleSearchResultSelect = useCallback(
 		(result: GeoSearchResult) => {
 			zoomToSearchResult(result)
@@ -1514,6 +1547,13 @@ export function GeoEditorView() {
 				<Editor />
 			</MapComponent>
 
+			{/* User location marker - pulsating blue dot */}
+			<UserLocationMarker
+				map={map.current}
+				coordinates={userLocation}
+				accuracy={userLocation?.accuracy}
+			/>
+
 			<Magnifier
 				enabled={magnifierEnabled}
 				visible={magnifierVisible}
@@ -1543,6 +1583,13 @@ export function GeoEditorView() {
 				<div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded z-50">
 					<p className="font-bold">Map Error</p>
 					<p>{mapError}</p>
+				</div>
+			)}
+
+			{/* Desktop: Floating locate button */}
+			{!isMobile && (
+				<div className="absolute bottom-12 right-4 z-10">
+					<LocateButton onLocate={handleLocate} />
 				</div>
 			)}
 
@@ -1679,9 +1726,10 @@ export function GeoEditorView() {
 				<>
 					<div className="fixed bottom-2 left-2 z-50 md:hidden">
 						<div className="flex gap-2">
+							<LocateButton onLocate={handleLocate} />
 							<Button
 								variant={panLocked ? 'default' : 'outline'}
-								className="shadow-lg h-10 w-10 p-0 rounded-full"
+								className="shadow-lg h-10 w-10 p-0 rounded-full bg-white/95 backdrop-blur hover:bg-white"
 								onClick={togglePanLock}
 								aria-label="Toggle pan lock while drawing"
 								disabled={isDrawingMode}
