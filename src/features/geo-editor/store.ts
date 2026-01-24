@@ -95,7 +95,7 @@ interface EditorState {
 	mobileSearchOpen: boolean
 	mobileActionsOpen: boolean
 	inspectorActive: boolean
-	sidebarViewMode: 'datasets' | 'collections' | 'combined' | 'edit'
+	sidebarViewMode: 'datasets' | 'collections' | 'combined' | 'edit' | 'posts' | 'settings' | 'help'
 
 	// Search State
 	searchQuery: string
@@ -119,7 +119,7 @@ interface EditorState {
 		bbox: [number, number, number, number] // [west, south, east, north]
 		areaSqKm: number
 	} | null
-	
+
 	// Flag to indicate we're drawing a polygon for map area
 	isDrawingMapArea: boolean
 
@@ -183,7 +183,9 @@ interface EditorState {
 	setMobileActionsOpen: (open: boolean) => void
 	setMobileActiveState: (state: 'datasets' | 'info' | 'tools' | 'search' | 'actions' | null) => void
 	setInspectorActive: (active: boolean) => void
-	setSidebarViewMode: (mode: 'datasets' | 'collections' | 'combined' | 'edit') => void
+	setSidebarViewMode: (
+		mode: 'datasets' | 'collections' | 'combined' | 'edit' | 'posts' | 'settings' | 'help',
+	) => void
 
 	// Search Actions
 	setSearchQuery: (query: string) => void
@@ -229,7 +231,10 @@ interface EditorState {
 	// Map Layers State (from Nostr announcements)
 	mapLayers: MapLayerState[]
 	setMapLayers: (layers: MapLayerState[]) => void
-	updateMapLayerState: (id: string, updates: Partial<Pick<MapLayerState, 'enabled' | 'opacity'>>) => void
+	updateMapLayerState: (
+		id: string,
+		updates: Partial<Pick<MapLayerState, 'enabled' | 'opacity'>>,
+	) => void
 	reorderMapLayers: (fromIndex: number, toIndex: number) => void
 
 	// Computed/Helpers
@@ -552,7 +557,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 			return
 		}
 
-		set({ searchLoading: true, searchError:  null })
+		set({ searchLoading: true, searchError: null })
 
 		try {
 			const response = await earthlyGeoServer.SearchLocation(trimmed, 8)
@@ -575,22 +580,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	setOsmQueryPosition: (position) => set({ osmQueryPosition: position }),
 	setOsmQueryResults: (results) => set({ osmQueryResults: results }),
 	setOsmQueryError: (error) => set({ osmQueryError: error }),
-	toggleOsmQuerySelection: (id) => set((state) => {
-		const newSet = new Set(state.osmQuerySelectedIds)
-		if (newSet.has(id)) {
-			newSet.delete(id)
-		} else {
-			newSet.add(id)
-		}
-		return { osmQuerySelectedIds: newSet }
-	}),
-	clearOsmQuery: () => set({
-		osmQueryMode: 'idle',
-		osmQueryPosition: null,
-		osmQueryResults: [],
-		osmQueryError: null,
-		osmQuerySelectedIds: new Set(),
-	}),
+	toggleOsmQuerySelection: (id) =>
+		set((state) => {
+			const newSet = new Set(state.osmQuerySelectedIds)
+			if (newSet.has(id)) {
+				newSet.delete(id)
+			} else {
+				newSet.add(id)
+			}
+			return { osmQuerySelectedIds: newSet }
+		}),
+	clearOsmQuery: () =>
+		set({
+			osmQueryMode: 'idle',
+			osmQueryPosition: null,
+			osmQueryResults: [],
+			osmQueryError: null,
+			osmQuerySelectedIds: new Set(),
+		}),
 
 	// Current Bbox Action
 	setCurrentBbox: (bbox) => set({ currentBbox: bbox }),

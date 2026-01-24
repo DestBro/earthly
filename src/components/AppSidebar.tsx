@@ -1,13 +1,21 @@
-import { Database, FolderOpen, Globe, PanelTop, Pencil, Settings2 } from 'lucide-react'
+import {
+	Database,
+	FolderOpen,
+	Globe,
+	HelpCircle,
+	Newspaper,
+	PanelTop,
+	Pencil,
+	Settings2,
+} from 'lucide-react'
 import type { FeatureCollection } from 'geojson'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
+import { CityPostsPanel } from './CityPostsPanel'
 import { GeoDatasetsPanelContent } from './GeoDatasetsPanel'
 import { GeoEditorInfoPanelContent } from './GeoEditorInfoPanel'
-import { HelpPopover } from './HelpPopover'
+import { HelpPanel } from './HelpPanel'
 import { LoginSessionButtons } from './LoginSessionButtom'
-import { Button } from './ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import {
 	Sidebar,
 	SidebarContent,
@@ -27,10 +35,17 @@ import type { GeoFeatureItem } from './editor/GeoRichTextEditor'
 import type { EditorFeature } from '../features/geo-editor/core'
 
 /** Sidebar view modes */
-type SidebarViewMode = 'datasets' | 'collections' | 'combined' | 'edit'
+type SidebarViewMode =
+	| 'datasets'
+	| 'collections'
+	| 'combined'
+	| 'edit'
+	| 'posts'
+	| 'settings'
+	| 'help'
 
-/** Navigation items for view modes */
-const viewModeNavItems: {
+/** Navigation items for main view modes (shown in the main icon list) */
+const mainNavItems: {
 	mode: SidebarViewMode
 	title: string
 	icon: typeof Database
@@ -40,6 +55,20 @@ const viewModeNavItems: {
 	{ mode: 'combined', title: 'List & Editor', icon: PanelTop },
 	{ mode: 'edit', title: 'Editor', icon: Pencil },
 ]
+
+/** Navigation items for footer (settings and help) */
+const footerNavItems: {
+	mode: SidebarViewMode
+	title: string
+	icon: typeof Settings2
+}[] = [
+	{ mode: 'posts', title: 'City Posts', icon: Newspaper },
+	{ mode: 'settings', title: 'Settings', icon: Settings2 },
+	{ mode: 'help', title: 'Help', icon: HelpCircle },
+]
+
+/** All view mode items for header title lookup */
+const allViewModeItems = [...mainNavItems, ...footerNavItems]
 
 interface AppSidebarProps {
 	geoEvents: NDKGeoEvent[]
@@ -73,7 +102,11 @@ interface AppSidebarProps {
 	onCommentGeometryVisibility?: (commentId: string, geojson: FeatureCollection | null) => void
 	onZoomToBounds?: (bounds: [number, number, number, number]) => void
 	availableFeatures?: GeoFeatureItem[]
-	onMentionVisibilityToggle?: (address: string, featureId: string | undefined, visible: boolean) => void
+	onMentionVisibilityToggle?: (
+		address: string,
+		featureId: string | undefined,
+		visible: boolean,
+	) => void
 	onMentionZoomTo?: (address: string, featureId: string | undefined) => void
 	collectionEditorMode?: 'none' | 'create' | 'edit'
 	editingCollection?: NDKGeoCollectionEvent | null
@@ -124,9 +157,7 @@ export function AppSidebar({
 	onZoomToFeature,
 	onExitViewMode,
 }: AppSidebarProps) {
-	const { state, setOpen } = useSidebar()
-	const showMapSettings = useEditorStore((state) => state.showMapSettings)
-	const setShowMapSettings = useEditorStore((state) => state.setShowMapSettings)
+	const { setOpen } = useSidebar()
 	const viewMode = useEditorStore((state) => state.sidebarViewMode)
 	const setViewMode = useEditorStore((state) => state.setSidebarViewMode)
 
@@ -216,21 +247,28 @@ export function AppSidebar({
 			case 'edit':
 				return <GeoEditorInfoPanelContent {...editorPanelProps} />
 
+			case 'posts':
+				return <CityPostsPanel />
+
+			case 'settings':
+				return (
+					<div className="p-4">
+						<MapSettingsPanel />
+					</div>
+				)
+
+			case 'help':
+				return <HelpPanel multiSelectModifier={multiSelectModifier} />
+
 			default:
 				return null
 		}
 	}
 
 	return (
-		<Sidebar
-			collapsible="icon"
-			className="overflow-hidden *:data-[sidebar=sidebar]:flex-row"
-		>
+		<Sidebar collapsible="icon" className="overflow-hidden *:data-[sidebar=sidebar]:flex-row">
 			{/* Icon sidebar (first nested sidebar) */}
-			<Sidebar
-				collapsible="none"
-				className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r"
-			>
+			<Sidebar collapsible="none" className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r">
 				<SidebarHeader>
 					<SidebarMenu>
 						<SidebarMenuItem>
@@ -253,7 +291,7 @@ export function AppSidebar({
 					<SidebarGroup>
 						<SidebarGroupContent className="px-1.5 md:px-0">
 							<SidebarMenu>
-								{viewModeNavItems.map((item) => (
+								{mainNavItems.map((item) => (
 									<SidebarMenuItem key={item.mode}>
 										<SidebarMenuButton
 											tooltip={{ children: item.title, hidden: false }}
@@ -275,24 +313,24 @@ export function AppSidebar({
 				</SidebarContent>
 
 				<SidebarFooter className="border-t border-sidebar-border">
-					<div className="flex flex-col items-center gap-1 py-1">
-						<Popover open={showMapSettings} onOpenChange={setShowMapSettings}>
-							<PopoverTrigger asChild>
-								<Button
-									variant={showMapSettings ? 'default' : 'ghost'}
-									size="icon"
-									className="h-8 w-8"
-									aria-label="Map settings"
+					<SidebarMenu>
+						{footerNavItems.map((item) => (
+							<SidebarMenuItem key={item.mode}>
+								<SidebarMenuButton
+									tooltip={{ children: item.title, hidden: false }}
+									onClick={() => {
+										setViewMode(item.mode)
+										setOpen(true)
+									}}
+									isActive={viewMode === item.mode}
+									className="px-2.5 md:px-2"
 								>
-									<Settings2 className="h-4 w-4" />
-								</Button>
-							</PopoverTrigger>
-							<PopoverContent className="w-80" side="right" align="end">
-								<MapSettingsPanel />
-							</PopoverContent>
-						</Popover>
-						<HelpPopover multiSelectModifier={multiSelectModifier} />
-					</div>
+									<item.icon />
+									<span>{item.title}</span>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+						))}
+					</SidebarMenu>
 				</SidebarFooter>
 			</Sidebar>
 
@@ -301,7 +339,7 @@ export function AppSidebar({
 				<SidebarHeader className="gap-3.5 border-b p-4">
 					<div className="flex w-full items-center justify-between">
 						<div className="text-foreground text-base font-medium">
-							{viewModeNavItems.find((i) => i.mode === viewMode)?.title}
+							{allViewModeItems.find((i) => i.mode === viewMode)?.title}
 						</div>
 						<LoginSessionButtons />
 					</div>
@@ -309,9 +347,7 @@ export function AppSidebar({
 
 				<SidebarContent className="p-2">
 					<SidebarGroup className="p-0 h-full">
-						<SidebarGroupContent className="h-full">
-							{renderContent()}
-						</SidebarGroupContent>
+						<SidebarGroupContent className="h-full">{renderContent()}</SidebarGroupContent>
 					</SidebarGroup>
 				</SidebarContent>
 			</Sidebar>
