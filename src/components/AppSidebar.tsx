@@ -11,7 +11,7 @@ import {
 import type { FeatureCollection } from 'geojson'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
-import { CityPostsPanel } from './CityPostsPanel'
+import { ShoutboxPanel } from './shoutbox'
 import { GeoDatasetsPanelContent } from './GeoDatasetsPanel'
 import { GeoEditorInfoPanelContent } from './GeoEditorInfoPanel'
 import { HelpPanel } from './HelpPanel'
@@ -248,7 +248,7 @@ export function AppSidebar({
 				return <GeoEditorInfoPanelContent {...editorPanelProps} />
 
 			case 'posts':
-				return <CityPostsPanel />
+				return <ShoutboxPanel />
 
 			case 'settings':
 				return (
