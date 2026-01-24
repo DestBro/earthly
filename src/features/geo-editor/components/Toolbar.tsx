@@ -1,26 +1,28 @@
 import {
+	ChevronDown,
 	Combine,
 	Copy,
 	CopyPlus,
 	Crosshair,
 	Download,
 	Edit3,
-	FilePenLine,
-	Layers,
+	FileUp,
 	Link2,
 	Magnet,
 	MapPin,
-	MapPinned,
 	Merge,
 	Minus,
 	MousePointer2,
+	MousePointerClick,
 	Pentagon,
 	PlusCircle,
 	Redo2,
 	RefreshCw,
 	Route,
+	Scan,
 	Settings2,
 	Share2,
+	Sparkles,
 	Split as SplitIcon,
 	SquareDashedMousePointer,
 	Trash2,
@@ -37,8 +39,23 @@ import { useRef, useState } from 'react'
 import { HelpPopover } from '../../../components/HelpPopover'
 import { LoginSessionButtons } from '../../../components/LoginSessionButtom'
 import { Button } from '../../../components/ui/button'
+import { ButtonGroup } from '../../../components/ui/button-group'
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from '../../../components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '../../../components/ui/popover'
 import { SearchBar } from '../../../components/ui/search-bar'
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '../../../components/ui/select'
 import { SidebarTrigger } from '../../../components/ui/sidebar'
 import {
 	Tooltip,
@@ -49,9 +66,20 @@ import {
 import type { EditorMode } from '../core'
 import { useEditorStore } from '../store'
 import type { GeoSearchResult } from '../types'
-import { MapSettingsPanel } from './MapSettingsPanel'
-import { OsmQueryPopover } from './OsmQueryPopover'
 import { CreateMapPopover } from './CreateMapPopover'
+import { MapSettingsPanel } from './MapSettingsPanel'
+
+// OSM Feature filter presets
+const OSM_FILTER_PRESETS = [
+	{ label: 'Highways', value: 'highway' },
+	{ label: 'Railways', value: 'railway' },
+	{ label: 'Waterways', value: 'waterway' },
+	{ label: 'Buildings', value: 'building' },
+	{ label: 'Natural', value: 'natural' },
+	{ label: 'Landuse', value: 'landuse' },
+	{ label: 'Amenities', value: 'amenity' },
+	{ label: 'All', value: 'all' },
+] as const
 
 type ToolbarButton = {
 	key: string
@@ -115,6 +143,451 @@ function Divider({ className = '' }: { className?: string }) {
 	return <div className={`h-5 w-px bg-gray-300 mx-0.5 ${className}`} />
 }
 
+/** Draw tools as a compact button group */
+interface DrawButtonGroupProps {
+	mode: EditorMode
+	onModeChange: (mode: EditorMode) => void
+	disabled?: boolean
+	small?: boolean
+}
+
+function DrawButtonGroup({ mode, onModeChange, disabled, small }: DrawButtonGroupProps) {
+	const iconSize = small ? 'h-3.5 w-3.5' : 'h-4 w-4'
+	const buttonSize = small ? 'h-8 w-8' : 'h-9 w-9'
+
+	const drawModes = [
+		{ key: 'draw_point', icon: MapPin, label: 'Draw point' },
+		{ key: 'draw_linestring', icon: Route, label: 'Draw line' },
+		{ key: 'draw_polygon', icon: Pentagon, label: 'Draw polygon' },
+		{ key: 'draw_annotation', icon: Type, label: 'Add annotation' },
+	] as const
+
+	return (
+		<TooltipProvider delayDuration={500}>
+			<ButtonGroup>
+				{drawModes.map(({ key, icon: Icon, label }) => (
+					<Tooltip key={key}>
+						<TooltipTrigger asChild>
+							<Button
+								size="icon"
+								variant={mode === key ? 'default' : 'outline'}
+								disabled={disabled}
+								onClick={() => onModeChange(key)}
+								className={buttonSize}
+								aria-label={label}
+							>
+								<Icon className={iconSize} />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent side="bottom" sideOffset={8}>
+							<p>{label}</p>
+						</TooltipContent>
+					</Tooltip>
+				))}
+			</ButtonGroup>
+		</TooltipProvider>
+	)
+}
+
+/** File import/export dropdown */
+interface FileDropdownProps {
+	onImportClick: () => void
+	onExport: () => void
+	canExport?: boolean
+	disabled?: boolean
+	small?: boolean
+}
+
+function FileDropdown({ onImportClick, onExport, canExport, disabled, small }: FileDropdownProps) {
+	const iconSize = small ? 'h-3.5 w-3.5' : 'h-4 w-4'
+	const buttonSize = small ? 'h-8' : 'h-9'
+
+	return (
+		<TooltipProvider delayDuration={500}>
+			<DropdownMenu>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<DropdownMenuTrigger asChild>
+							<Button variant="outline" size="sm" className={`${buttonSize} gap-1 px-2`} disabled={disabled}>
+								<FileUp className={iconSize} />
+								<ChevronDown className="h-3 w-3" />
+							</Button>
+						</DropdownMenuTrigger>
+					</TooltipTrigger>
+					<TooltipContent side="bottom" sideOffset={8}>
+						<p>Import / Export GeoJSON</p>
+					</TooltipContent>
+				</Tooltip>
+				<DropdownMenuContent align="start">
+					<DropdownMenuItem onClick={onImportClick}>
+						<Upload className="h-4 w-4" />
+						Import GeoJSON
+					</DropdownMenuItem>
+					<DropdownMenuItem onClick={onExport} disabled={!canExport}>
+						<Download className="h-4 w-4" />
+						Export GeoJSON
+					</DropdownMenuItem>
+				</DropdownMenuContent>
+			</DropdownMenu>
+		</TooltipProvider>
+	)
+}
+
+/** Geometry operations dropdown (merge, split, connect, boolean) */
+interface GeometryOpsDropdownProps {
+	disabled?: boolean
+	onMerge: () => void
+	onSplit: () => void
+	onConnect: () => void
+	onUnion: () => void
+	onDifference: () => void
+	canConnect?: boolean
+	canBooleanOps?: boolean
+	booleanOpActive?: { type: 'union' | 'difference' }
+	small?: boolean
+}
+
+function GeometryOpsDropdown({
+	disabled,
+	onMerge,
+	onSplit,
+	onConnect,
+	onUnion,
+	onDifference,
+	canConnect,
+	canBooleanOps,
+	booleanOpActive,
+	small,
+}: GeometryOpsDropdownProps) {
+	const iconSize = small ? 'h-3.5 w-3.5' : 'h-4 w-4'
+	const buttonSize = small ? 'h-8 w-8' : 'h-9 w-9'
+
+	return (
+		<TooltipProvider delayDuration={500}>
+			<DropdownMenu>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<DropdownMenuTrigger asChild>
+							<Button
+								variant={booleanOpActive ? 'default' : 'outline'}
+								size="icon"
+								className={buttonSize}
+								disabled={disabled}
+								aria-label="Geometry operations"
+							>
+								<Combine className={iconSize} />
+							</Button>
+						</DropdownMenuTrigger>
+					</TooltipTrigger>
+					<TooltipContent side="bottom" sideOffset={8}>
+						<p>Geometry operations</p>
+					</TooltipContent>
+				</Tooltip>
+				<DropdownMenuContent align="start">
+					<DropdownMenuItem onClick={onMerge}>
+						<Merge className="h-4 w-4" />
+						Merge to Multi
+					</DropdownMenuItem>
+					<DropdownMenuItem onClick={onSplit}>
+						<SplitIcon className="h-4 w-4" />
+						Split Multi
+					</DropdownMenuItem>
+					<DropdownMenuItem onClick={onConnect} disabled={!canConnect}>
+						<Link2 className="h-4 w-4" />
+						Connect Lines
+					</DropdownMenuItem>
+					<DropdownMenuSeparator />
+					<DropdownMenuItem onClick={onUnion} disabled={!canBooleanOps}>
+						<Combine className="h-4 w-4" />
+						Boolean Union
+					</DropdownMenuItem>
+					<DropdownMenuItem onClick={onDifference} disabled={!canBooleanOps}>
+						<Minus className="h-4 w-4" />
+						Boolean Difference
+					</DropdownMenuItem>
+				</DropdownMenuContent>
+			</DropdownMenu>
+		</TooltipProvider>
+	)
+}
+
+/** Smart publish button that adapts based on state */
+interface PublishDropdownProps {
+	canPublishNew?: boolean
+	canPublishUpdate?: boolean
+	canPublishCopy?: boolean
+	isPublishing?: boolean
+	onPublishNew?: () => void
+	onPublishUpdate?: () => void
+	onPublishCopy?: () => void
+	small?: boolean
+}
+
+function PublishDropdown({
+	canPublishNew,
+	canPublishUpdate,
+	canPublishCopy,
+	isPublishing,
+	onPublishNew,
+	onPublishUpdate,
+	onPublishCopy,
+	small,
+}: PublishDropdownProps) {
+	const iconSize = small ? 'h-3.5 w-3.5' : 'h-4 w-4'
+	const buttonSize = small ? 'h-8' : 'h-9'
+
+	// Determine primary action based on state
+	const hasPrimaryAction = canPublishUpdate || canPublishNew
+	const primaryIcon = canPublishUpdate ? RefreshCw : UploadCloud
+	const primaryLabel = canPublishUpdate ? 'Update' : 'Publish'
+	const primaryAction = canPublishUpdate ? onPublishUpdate : onPublishNew
+	const PrimaryIcon = primaryIcon
+
+	// If no actions available, show disabled button
+	if (!hasPrimaryAction && !canPublishCopy) {
+		return (
+			<TooltipProvider delayDuration={500}>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							variant="default"
+							size="sm"
+							disabled
+							className={`${buttonSize} gap-1 px-2 bg-emerald-600 hover:bg-emerald-700`}
+						>
+							<UploadCloud className={iconSize} />
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent side="bottom" sideOffset={8}>
+						<p>Publish dataset</p>
+					</TooltipContent>
+				</Tooltip>
+			</TooltipProvider>
+		)
+	}
+
+	// Show dropdown if fork is also available
+	const showDropdown = canPublishCopy || (canPublishUpdate && canPublishNew)
+
+	if (!showDropdown) {
+		return (
+			<TooltipProvider delayDuration={500}>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							variant="default"
+							size="sm"
+							disabled={isPublishing}
+							onClick={primaryAction}
+							className={`${buttonSize} gap-1 px-2 bg-emerald-600 hover:bg-emerald-700`}
+						>
+							<PrimaryIcon className={iconSize} />
+							{!small && <span className="text-xs">{primaryLabel}</span>}
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent side="bottom" sideOffset={8}>
+						<p>{primaryLabel} dataset</p>
+					</TooltipContent>
+				</Tooltip>
+			</TooltipProvider>
+		)
+	}
+
+	return (
+		<TooltipProvider delayDuration={500}>
+			<DropdownMenu>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<DropdownMenuTrigger asChild>
+							<Button
+								variant="default"
+								size="sm"
+								disabled={isPublishing}
+								className={`${buttonSize} gap-1 px-2 bg-emerald-600 hover:bg-emerald-700`}
+							>
+								<PrimaryIcon className={iconSize} />
+								{!small && <span className="text-xs">{primaryLabel}</span>}
+								<ChevronDown className="h-3 w-3" />
+							</Button>
+						</DropdownMenuTrigger>
+					</TooltipTrigger>
+					<TooltipContent side="bottom" sideOffset={8}>
+						<p>Publish options</p>
+					</TooltipContent>
+				</Tooltip>
+				<DropdownMenuContent align="end">
+					{canPublishNew && (
+						<DropdownMenuItem onClick={onPublishNew}>
+							<UploadCloud className="h-4 w-4" />
+							Publish new dataset
+						</DropdownMenuItem>
+					)}
+					{canPublishUpdate && (
+						<DropdownMenuItem onClick={onPublishUpdate}>
+							<RefreshCw className="h-4 w-4" />
+							Update existing
+						</DropdownMenuItem>
+					)}
+					{canPublishCopy && (
+						<>
+							<DropdownMenuSeparator />
+							<DropdownMenuItem onClick={onPublishCopy}>
+								<CopyPlus className="h-4 w-4" />
+								Fork as new dataset
+							</DropdownMenuItem>
+						</>
+					)}
+				</DropdownMenuContent>
+			</DropdownMenu>
+		</TooltipProvider>
+	)
+}
+
+/** OSM Import popover */
+interface OsmImportPopoverProps {
+	open: boolean
+	onOpenChange: (open: boolean) => void
+	osmQueryFilter: string
+	onOsmFilterChange: (filter: string) => void
+	onOsmClickMode: () => void
+	onOsmQueryView: () => void
+	onOsmAdvanced?: () => void
+	isClickMode?: boolean
+	small?: boolean
+}
+
+function OsmImportPopover({
+	open,
+	onOpenChange,
+	osmQueryFilter,
+	onOsmFilterChange,
+	onOsmClickMode,
+	onOsmQueryView,
+	onOsmAdvanced,
+	isClickMode,
+	small,
+}: OsmImportPopoverProps) {
+	const iconSize = small ? 'h-3.5 w-3.5' : 'h-4 w-4'
+	const buttonSize = small ? 'h-8 w-8' : 'h-9 w-9'
+
+	return (
+		<TooltipProvider delayDuration={500}>
+			<Popover open={open} onOpenChange={onOpenChange}>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<PopoverTrigger asChild>
+							<Button
+								size="icon"
+								variant={isClickMode ? 'default' : 'outline'}
+								className={buttonSize}
+								aria-label="OSM Import"
+							>
+								<Sparkles className={iconSize} />
+							</Button>
+						</PopoverTrigger>
+					</TooltipTrigger>
+					<TooltipContent side="bottom" sideOffset={8}>
+						<p>OSM Import</p>
+					</TooltipContent>
+				</Tooltip>
+
+				<PopoverContent className="w-64 p-3" side="bottom" align="start">
+					<div className="space-y-3">
+						<div className="text-sm font-medium">Import from OpenStreetMap</div>
+
+						<div className="space-y-2">
+							<div className="text-xs text-muted-foreground font-medium">Feature Type</div>
+							<Select value={osmQueryFilter} onValueChange={onOsmFilterChange}>
+								<SelectTrigger className="h-8 text-sm">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{OSM_FILTER_PRESETS.map((preset) => (
+										<SelectItem key={preset.value} value={preset.value}>
+											{preset.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+							<div className="flex gap-1">
+								<Button
+									variant="outline"
+									size="sm"
+									className="flex-1 gap-1.5 text-xs"
+									onClick={onOsmClickMode}
+								>
+									<MousePointerClick className="h-3.5 w-3.5" />
+									Click on Map
+								</Button>
+								<Button
+									variant="outline"
+									size="sm"
+									className="flex-1 gap-1.5 text-xs"
+									onClick={onOsmQueryView}
+								>
+									<Scan className="h-3.5 w-3.5" />
+									Query View
+								</Button>
+							</div>
+							{onOsmAdvanced && (
+								<Button
+									variant="ghost"
+									size="sm"
+									className="w-full justify-start gap-2 text-xs text-muted-foreground"
+									onClick={onOsmAdvanced}
+								>
+									<Settings2 className="h-3.5 w-3.5" />
+									Advanced...
+								</Button>
+							)}
+						</div>
+					</div>
+				</PopoverContent>
+			</Popover>
+		</TooltipProvider>
+	)
+}
+
+/** Session button with accent color for create/cancel */
+interface SessionButtonProps {
+	viewMode: 'edit' | 'view'
+	onStartNew?: () => void
+	onCancel?: () => void
+	small?: boolean
+}
+
+function SessionButton({ viewMode, onStartNew, onCancel, small }: SessionButtonProps) {
+	const iconSize = small ? 'h-3.5 w-3.5' : 'h-4 w-4'
+	const buttonSize = small ? 'h-8 w-8' : 'h-9 w-9'
+
+	const isEditing = viewMode === 'edit'
+
+	return (
+		<TooltipProvider delayDuration={500}>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Button
+						size="icon"
+						variant={isEditing ? 'destructive' : 'default'}
+						onClick={isEditing ? onCancel : onStartNew}
+						className={`${buttonSize} ${!isEditing ? 'bg-violet-600 hover:bg-violet-700' : ''}`}
+						aria-label={isEditing ? 'Cancel editing' : 'New dataset'}
+					>
+						{isEditing ? (
+							<XCircle className={iconSize} />
+						) : (
+							<PlusCircle className={iconSize} />
+						)}
+					</Button>
+				</TooltipTrigger>
+				<TooltipContent side="bottom" sideOffset={8}>
+					<p>{isEditing ? 'Discard changes and exit' : 'Start a new dataset'}</p>
+				</TooltipContent>
+			</Tooltip>
+		</TooltipProvider>
+	)
+}
+
 interface DatasetActionsProps {
 	onExport?: () => void
 	canExport?: boolean
@@ -165,15 +638,6 @@ export function Toolbar({
 	const setHistoryState = useEditorStore((state) => state.setHistoryState)
 
 	// UI State
-	const showDatasetsPanel = useEditorStore((state) => state.showDatasetsPanel)
-	const setShowDatasetsPanel = useEditorStore((state) => state.setShowDatasetsPanel)
-	const showInfoPanel = useEditorStore((state) => state.showInfoPanel)
-	const setShowInfoPanel = useEditorStore((state) => state.setShowInfoPanel)
-	const setMobileActiveState = useEditorStore((state) => state.setMobileActiveState)
-	const mobileDatasetsOpen = useEditorStore((state) => state.mobileDatasetsOpen)
-	const setMobileDatasetsOpen = useEditorStore((state) => state.setMobileDatasetsOpen)
-	const mobileInfoOpen = useEditorStore((state) => state.mobileInfoOpen)
-	const setMobileInfoOpen = useEditorStore((state) => state.setMobileInfoOpen)
 	const mobileToolsOpen = useEditorStore((state) => state.mobileToolsOpen)
 	const mobileSearchOpen = useEditorStore((state) => state.mobileSearchOpen)
 	const mobileActionsOpen = useEditorStore((state) => state.mobileActionsOpen)
@@ -188,6 +652,12 @@ export function Toolbar({
 	const clearFocused = useEditorStore((state) => state.clearFocused)
 	const isFocused = Boolean(focusedNaddr && focusedType)
 
+	// OSM Query state
+	const osmQueryMode = useEditorStore((state) => state.osmQueryMode)
+	const osmQueryFilter = useEditorStore((state) => state.osmQueryFilter)
+	const setOsmQueryFilter = useEditorStore((state) => state.setOsmQueryFilter)
+	const setOsmQueryMode = useEditorStore((state) => state.setOsmQueryMode)
+
 	// Search State
 	const searchQuery = useEditorStore((state) => state.searchQuery)
 	const searchResults = useEditorStore((state) => state.searchResults)
@@ -200,6 +670,7 @@ export function Toolbar({
 	const fileInputRef = useRef<HTMLInputElement>(null)
 	const [sharePopoverOpen, setSharePopoverOpen] = useState(false)
 	const [copiedUrl, setCopiedUrl] = useState(false)
+	const [magicPopoverOpen, setMagicPopoverOpen] = useState(false)
 
 	// Computed: Is editing disabled (view mode active)?
 	const isEditingDisabled = viewMode !== 'edit'
@@ -226,26 +697,6 @@ export function Toolbar({
 		setSnappingEnabled(!snappingEnabled)
 	}
 
-	const handleToggleDatasets = () => {
-		if (isMobile) {
-			// Only close the other drawer, preserve toolbar state
-			setMobileInfoOpen(false)
-			setMobileDatasetsOpen(!mobileDatasetsOpen)
-		} else {
-			setShowDatasetsPanel(!showDatasetsPanel)
-		}
-	}
-
-	const handleToggleInfo = () => {
-		if (isMobile) {
-			// Only close the other drawer, preserve toolbar state
-			setMobileDatasetsOpen(false)
-			setMobileInfoOpen(!mobileInfoOpen)
-		} else {
-			setShowInfoPanel(!showInfoPanel)
-		}
-	}
-
 	const handleToggleInspector = () => {
 		if (inspectorActive) {
 			setInspectorActive(false)
@@ -256,10 +707,6 @@ export function Toolbar({
 				setMode('select')
 			}
 		}
-	}
-
-	const handleToggleMapSettings = () => {
-		setShowMapSettings(!showMapSettings)
 	}
 
 	const handleSearchSubmit = (e: React.FormEvent) => {
@@ -325,6 +772,17 @@ export function Toolbar({
 		setSharePopoverOpen(false)
 	}
 
+	const handleOsmClickMode = () => {
+		setOsmQueryMode('click')
+		onOsmQueryClick?.()
+		setMagicPopoverOpen(false)
+	}
+
+	const handleOsmQueryView = () => {
+		onOsmQueryView?.()
+		setMagicPopoverOpen(false)
+	}
+
 	// Check if single polygon is selected (required for boolean ops)
 	const selectedFeatures = editor?.getSelectedFeatures() ?? []
 	const singlePolygonSelected = selectedFeatures.length === 1 && 
@@ -332,33 +790,9 @@ export function Toolbar({
 	const booleanOpActive = editor?.getBooleanOperation()
 	const canConnectLines = editor?.canConnectSelectedLines() ?? false
 
-	const datasetsOpen = isMobile ? mobileDatasetsOpen : showDatasetsPanel
-	const infoPanelOpen = isMobile ? mobileInfoOpen : showInfoPanel
-
 	// ============================================
 	// BUTTON SECTIONS - Organized by function
 	// ============================================
-
-	// Section 0: Session control (New Dataset / Cancel)
-	const sessionButtons: ToolbarButton[] = viewMode === 'edit'
-		? [
-			{
-				key: 'cancel',
-				icon: XCircle,
-				onClick: onCancelEditing ?? (() => {}),
-				ariaLabel: 'Cancel editing',
-				description: 'Discard changes and exit',
-			},
-		]
-		: [
-			{
-				key: 'new-dataset',
-				icon: PlusCircle,
-				onClick: onStartNewDataset ?? (() => {}),
-				ariaLabel: 'New dataset',
-				description: 'Start a new dataset',
-			},
-		]
 
 	// Section 1: Select
 	const selectButtons: ToolbarButton[] = [
@@ -382,47 +816,7 @@ export function Toolbar({
 		},
 	]
 
-	// Section 2: Draw tools
-	const drawButtons: ToolbarButton[] = [
-		{
-			key: 'point',
-			icon: MapPin,
-			onClick: () => handleModeChange('draw_point'),
-			variant: mode === 'draw_point' ? 'default' : 'outline',
-			disabled: isEditingDisabled,
-			ariaLabel: 'Draw point',
-			description: 'Draw a point marker',
-		},
-		{
-			key: 'line',
-			icon: Route,
-			onClick: () => handleModeChange('draw_linestring'),
-			variant: mode === 'draw_linestring' ? 'default' : 'outline',
-			disabled: isEditingDisabled,
-			ariaLabel: 'Draw line',
-			description: 'Draw a line or route',
-		},
-		{
-			key: 'polygon',
-			icon: Pentagon,
-			onClick: () => handleModeChange('draw_polygon'),
-			variant: mode === 'draw_polygon' ? 'default' : 'outline',
-			disabled: isEditingDisabled,
-			ariaLabel: 'Draw polygon',
-			description: 'Draw a polygon area',
-		},
-		{
-			key: 'annotation',
-			icon: Type,
-			onClick: () => handleModeChange('draw_annotation'),
-			variant: mode === 'draw_annotation' ? 'default' : 'outline',
-			disabled: isEditingDisabled,
-			ariaLabel: 'Draw annotation',
-			description: 'Add a text annotation',
-		},
-	]
-
-	// Section 3: History (Undo/Redo)
+	// Section 2: History (Undo/Redo)
 	const historyButtons: ToolbarButton[] = [
 		{
 			key: 'undo',
@@ -442,7 +836,7 @@ export function Toolbar({
 		},
 	]
 
-	// Section 4: Edit tools
+	// Section 3: Edit tools (basic operations - geometry ops are in separate dropdown)
 	const editButtons: ToolbarButton[] = [
 		{
 			key: 'snapping',
@@ -471,22 +865,6 @@ export function Toolbar({
 			description: 'Delete selected features',
 		},
 		{
-			key: 'merge',
-			icon: Merge,
-			onClick: handleMergeSelected,
-			disabled: isEditingDisabled,
-			ariaLabel: 'Merge',
-			description: 'Merge selected features',
-		},
-		{
-			key: 'split',
-			icon: SplitIcon,
-			onClick: handleSplitSelected,
-			disabled: isEditingDisabled,
-			ariaLabel: 'Split',
-			description: 'Split feature at vertex',
-		},
-		{
 			key: 'duplicate',
 			icon: Copy,
 			onClick: handleDuplicate,
@@ -494,35 +872,9 @@ export function Toolbar({
 			ariaLabel: 'Duplicate',
 			description: 'Duplicate selected features',
 		},
-		{
-			key: 'connect-lines',
-			icon: Link2,
-			onClick: handleConnectLines,
-			disabled: isEditingDisabled || !canConnectLines,
-			ariaLabel: 'Connect lines',
-			description: 'Connect two lines at overlapping endpoints',
-		},
-		{
-			key: 'union',
-			icon: Combine,
-			onClick: handleBooleanUnion,
-			disabled: isEditingDisabled || !singlePolygonSelected,
-			variant: booleanOpActive?.type === 'union' ? 'default' : 'outline',
-			ariaLabel: 'Union',
-			description: 'Union: combine two polygons',
-		},
-		{
-			key: 'difference',
-			icon: Minus,
-			onClick: handleBooleanDifference,
-			disabled: isEditingDisabled || !singlePolygonSelected,
-			variant: booleanOpActive?.type === 'difference' ? 'default' : 'outline',
-			ariaLabel: 'Difference',
-			description: 'Difference: subtract second polygon',
-		},
 	]
 
-	// Section 5: Lookup/Inspector
+	// Section 4: Lookup/Inspector
 	const lookupButtons: ToolbarButton[] = [
 		{
 			key: 'reverse-lookup',
@@ -531,66 +883,6 @@ export function Toolbar({
 			variant: inspectorActive ? 'default' : 'outline',
 			ariaLabel: 'Location lookup',
 			description: 'Click map to get location info',
-		},
-	]
-
-	// Section 6: File operations
-	const fileButtons: ToolbarButton[] = [
-		{
-			key: 'import',
-			icon: Upload,
-			onClick: () => fileInputRef.current?.click(),
-			ariaLabel: 'Import',
-			description: 'Import GeoJSON file',
-		},
-		// OSM import moved to OsmQueryPopover
-		{
-			key: 'export',
-			icon: Download,
-			onClick: datasetActions?.onExport ?? (() => {}),
-			disabled: !datasetActions?.canExport,
-			ariaLabel: 'Export',
-			description: 'Export as GeoJSON',
-		},
-	]
-
-	// Section 7: Publish actions
-	const publishButtons: ToolbarButton[] = [
-		{
-			key: 'publish-new',
-			icon: UploadCloud,
-			onClick: datasetActions?.onPublishNew ?? (() => {}),
-			disabled: !datasetActions?.canPublishNew || datasetActions?.isPublishing,
-			ariaLabel: 'Publish new',
-			description: 'Publish as new dataset',
-		},
-		{
-			key: 'publish-update',
-			icon: RefreshCw,
-			onClick: datasetActions?.onPublishUpdate ?? (() => {}),
-			disabled: !datasetActions?.canPublishUpdate || datasetActions?.isPublishing,
-			ariaLabel: 'Update',
-			description: 'Update existing dataset',
-		},
-		{
-			key: 'publish-copy',
-			icon: CopyPlus,
-			onClick: datasetActions?.onPublishCopy ?? (() => {}),
-			disabled: !datasetActions?.canPublishCopy || datasetActions?.isPublishing,
-			ariaLabel: 'Fork',
-			description: 'Fork as new dataset',
-		},
-	]
-
-	// Section 8: Panel toggles (info panel only - datasets uses SidebarTrigger)
-	const panelButtons: ToolbarButton[] = [
-		{
-			key: 'info',
-			icon: FilePenLine,
-			onClick: handleToggleInfo,
-			variant: infoPanelOpen ? 'default' : 'outline',
-			ariaLabel: 'Editor',
-			description: 'Toggle editor panel',
 		},
 	]
 
@@ -605,17 +897,39 @@ export function Toolbar({
 						<div className="glass-panel rounded-lg p-1.5">
 							{/* Row 1: Session + Select + Draw */}
 							<div className="flex items-center justify-center gap-1 flex-wrap mb-1">
-								<IconButtonRow buttons={sessionButtons} small />
+								<SessionButton
+									viewMode={viewMode}
+									onStartNew={onStartNewDataset}
+									onCancel={onCancelEditing}
+									small
+								/>
 								<Divider />
 								<IconButtonRow buttons={selectButtons} small />
 								<Divider />
-								<IconButtonRow buttons={drawButtons} small />
+								<DrawButtonGroup
+									mode={mode}
+									onModeChange={handleModeChange}
+									disabled={isEditingDisabled}
+									small
+								/>
 							</div>
-							{/* Row 2: History + Edit tools */}
+							{/* Row 2: History + Edit tools + Geometry ops */}
 							<div className="flex items-center justify-center gap-1 flex-wrap">
 								<IconButtonRow buttons={historyButtons} small />
 								<Divider />
 								<IconButtonRow buttons={editButtons} small />
+								<GeometryOpsDropdown
+									disabled={isEditingDisabled}
+									onMerge={handleMergeSelected}
+									onSplit={handleSplitSelected}
+									onConnect={handleConnectLines}
+									onUnion={handleBooleanUnion}
+									onDifference={handleBooleanDifference}
+									canConnect={canConnectLines}
+									canBooleanOps={singlePolygonSelected}
+									booleanOpActive={booleanOpActive}
+									small
+								/>
 							</div>
 						</div>
 					)}
@@ -657,15 +971,36 @@ export function Toolbar({
 					{mobileActionsOpen && datasetActions && (
 						<div className="glass-panel rounded-lg p-1.5">
 							<div className="flex items-center justify-center gap-1 flex-wrap">
-								<IconButtonRow buttons={fileButtons} small />
-								<OsmQueryPopover
-									onQueryClick={onOsmQueryClick ?? (() => {})}
-									onQueryView={onOsmQueryView ?? (() => {})}
-									onAdvanced={onOsmAdvanced ?? (() => {})}
+								<FileDropdown
+									onImportClick={() => fileInputRef.current?.click()}
+									onExport={datasetActions.onExport ?? (() => {})}
+									canExport={datasetActions.canExport}
+									disabled={isEditingDisabled}
+									small
+								/>
+								<OsmImportPopover
+									open={magicPopoverOpen}
+									onOpenChange={setMagicPopoverOpen}
+									osmQueryFilter={osmQueryFilter}
+									onOsmFilterChange={setOsmQueryFilter}
+									onOsmClickMode={handleOsmClickMode}
+									onOsmQueryView={handleOsmQueryView}
+									onOsmAdvanced={onOsmAdvanced}
+									isClickMode={osmQueryMode === 'click'}
+									small
 								/>
 								<CreateMapPopover />
 								<Divider />
-								<IconButtonRow buttons={publishButtons} small />
+								<PublishDropdown
+									canPublishNew={datasetActions.canPublishNew}
+									canPublishUpdate={datasetActions.canPublishUpdate}
+									canPublishCopy={datasetActions.canPublishCopy}
+									isPublishing={datasetActions.isPublishing}
+									onPublishNew={datasetActions.onPublishNew}
+									onPublishUpdate={datasetActions.onPublishUpdate}
+									onPublishCopy={datasetActions.onPublishCopy}
+									small
+								/>
 								<Divider />
 								<HelpPopover
 									multiSelectModifier={editor?.getMultiSelectModifierLabel() ?? 'Shift'}
@@ -715,84 +1050,195 @@ export function Toolbar({
 	// ============================================
 	return (
 		<div className="flex flex-col gap-2 pointer-events-auto">
-			<div className="glass-panel flex items-center gap-1 rounded-lg p-1.5">
-				{/* Sidebar toggle */}
-				<SidebarTrigger className="h-9 w-9" />
-				<Divider />
+			<div className="glass-panel flex flex-wrap items-center gap-1 rounded-lg p-1.5">
+				{/* Row 1: Core editing tools */}
+				<div className="flex items-center gap-1">
+					{/* Sidebar toggle */}
+					<SidebarTrigger className="h-9 w-9" />
+					<Divider />
 
-				{/* Session control (New Dataset / Cancel) */}
-				<IconButtonRow buttons={sessionButtons} />
-				<Divider />
-
-				{/* Select */}
-				<IconButtonRow buttons={selectButtons} />
-				<Divider />
-
-				{/* Draw */}
-				<IconButtonRow buttons={drawButtons} />
-				<Divider />
-
-				{/* History */}
-				<IconButtonRow buttons={historyButtons} />
-				<Divider />
-
-				{/* Edit */}
-				<IconButtonRow buttons={editButtons} />
-				<Divider />
-
-				{/* Search */}
-				<div className="relative">
-					<SearchBar
-						query={searchQuery}
-						loading={searchLoading}
-						placeholder="Search location..."
-						onSubmit={handleSearchSubmit}
-						onQueryChange={setSearchQuery}
-						onClear={clearSearch}
-						className="w-48"
+					{/* Session control (New Dataset / Cancel) */}
+					<SessionButton
+						viewMode={viewMode}
+						onStartNew={onStartNewDataset}
+						onCancel={onCancelEditing}
 					/>
-					{searchResults && searchResults.length > 0 && (
-						<div className="absolute top-full left-0 mt-2 w-64 rounded-lg bg-white p-2 shadow-lg z-50 border border-gray-100">
-							<div className="flex items-center justify-between border-b border-gray-100 pb-2 mb-2">
-								<span className="text-xs font-medium text-gray-500">Results</span>
-								<Button
-									variant="ghost"
-									size="sm"
-									className="h-auto p-0 text-xs"
-									onClick={clearSearch}
-								>
-									Close
-								</Button>
-							</div>
-							<div className="max-h-60 overflow-y-auto space-y-1">
-								{searchResults.map((result) => (
-									<button
-										type="button"
-										key={result.placeId}
-										className="w-full text-left text-sm p-1.5 hover:bg-gray-50 rounded truncate"
-										onClick={() => onSearchResultSelect?.(result)}
-									>
-										{result.displayName}
-									</button>
-								))}
-							</div>
-						</div>
-					)}
+					<Divider />
+
+					{/* Select */}
+					<IconButtonRow buttons={selectButtons} />
+					<Divider />
+
+					{/* Draw */}
+					<DrawButtonGroup
+						mode={mode}
+						onModeChange={handleModeChange}
+						disabled={isEditingDisabled}
+					/>
+					<Divider />
+
+					{/* History */}
+					<IconButtonRow buttons={historyButtons} />
+					<Divider />
+
+					{/* Edit */}
+					<IconButtonRow buttons={editButtons} />
+					<GeometryOpsDropdown
+						disabled={isEditingDisabled}
+						onMerge={handleMergeSelected}
+						onSplit={handleSplitSelected}
+						onConnect={handleConnectLines}
+						onUnion={handleBooleanUnion}
+						onDifference={handleBooleanDifference}
+						canConnect={canConnectLines}
+						canBooleanOps={singlePolygonSelected}
+						booleanOpActive={booleanOpActive}
+					/>
 				</div>
 
-				{/* Lookup */}
-				<IconButtonRow buttons={lookupButtons} />
-				<Divider />
+				{/* Flexible spacer - grows on wide screens, shrinks/wraps on narrow */}
+				<div className="flex-1 min-w-4" />
 
-					{/* File & Publish */}
-				<IconButtonRow buttons={fileButtons} />
-				<OsmQueryPopover
-					onQueryClick={onOsmQueryClick ?? (() => {})}
-					onQueryView={onOsmQueryView ?? (() => {})}
-					onAdvanced={onOsmAdvanced ?? (() => {})}
-				/>
-				<CreateMapPopover />
-				<IconButtonRow buttons={publishButtons} />
+				{/* Row 2: Search, data & publish tools */}
+				<div className="flex items-center gap-1">
+					{/* Search */}
+					<div className="relative">
+						<SearchBar
+							query={searchQuery}
+							loading={searchLoading}
+							placeholder="Search location..."
+							onSubmit={handleSearchSubmit}
+							onQueryChange={setSearchQuery}
+							onClear={clearSearch}
+							className="w-48"
+						/>
+						{searchResults && searchResults.length > 0 && (
+							<div className="absolute top-full left-0 mt-2 w-64 rounded-lg bg-white p-2 shadow-lg z-50 border border-gray-100">
+								<div className="flex items-center justify-between border-b border-gray-100 pb-2 mb-2">
+									<span className="text-xs font-medium text-gray-500">Results</span>
+									<Button
+										variant="ghost"
+										size="sm"
+										className="h-auto p-0 text-xs"
+										onClick={clearSearch}
+									>
+										Close
+									</Button>
+								</div>
+								<div className="max-h-60 overflow-y-auto space-y-1">
+									{searchResults.map((result) => (
+										<button
+											type="button"
+											key={result.placeId}
+											className="w-full text-left text-sm p-1.5 hover:bg-gray-50 rounded truncate"
+											onClick={() => onSearchResultSelect?.(result)}
+										>
+											{result.displayName}
+										</button>
+									))}
+								</div>
+							</div>
+						)}
+					</div>
+
+					{/* Lookup */}
+					<IconButtonRow buttons={lookupButtons} />
+					<Divider />
+
+					{/* File, OSM, Map & Publish */}
+					<FileDropdown
+						onImportClick={() => fileInputRef.current?.click()}
+						onExport={datasetActions?.onExport ?? (() => {})}
+						canExport={datasetActions?.canExport}
+						disabled={isEditingDisabled}
+					/>
+					<OsmImportPopover
+						open={magicPopoverOpen}
+						onOpenChange={setMagicPopoverOpen}
+						osmQueryFilter={osmQueryFilter}
+						onOsmFilterChange={setOsmQueryFilter}
+						onOsmClickMode={handleOsmClickMode}
+						onOsmQueryView={handleOsmQueryView}
+						onOsmAdvanced={onOsmAdvanced}
+						isClickMode={osmQueryMode === 'click'}
+					/>
+					<CreateMapPopover />
+					<PublishDropdown
+						canPublishNew={datasetActions?.canPublishNew}
+						canPublishUpdate={datasetActions?.canPublishUpdate}
+						canPublishCopy={datasetActions?.canPublishCopy}
+						isPublishing={datasetActions?.isPublishing}
+						onPublishNew={datasetActions?.onPublishNew}
+						onPublishUpdate={datasetActions?.onPublishUpdate}
+						onPublishCopy={datasetActions?.onPublishCopy}
+					/>
+
+					{/* Share button - only visible when focused on a route */}
+					{isFocused && (
+						<>
+							<Divider />
+							<TooltipProvider delayDuration={500}>
+								<Popover open={sharePopoverOpen} onOpenChange={setSharePopoverOpen}>
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<PopoverTrigger asChild>
+												<Button
+													variant="default"
+													size="icon"
+													aria-label="Share"
+												>
+													<Share2 className="h-4 w-4" />
+												</Button>
+											</PopoverTrigger>
+										</TooltipTrigger>
+										<TooltipContent side="bottom" sideOffset={8}>
+											<p>Share this view</p>
+										</TooltipContent>
+									</Tooltip>
+									<PopoverContent className="w-64" side="bottom" align="end">
+										<div className="space-y-3">
+											<div>
+												<h4 className="text-sm font-semibold mb-1">Share this view</h4>
+												<p className="text-xs text-gray-500">
+													Others will see only this {focusedType === 'collection' ? 'collection' : 'dataset'}.
+												</p>
+											</div>
+											<div className="flex flex-col gap-2">
+												<Button
+													size="sm"
+													variant="outline"
+													className="w-full justify-start"
+													onClick={handleCopyShareUrl}
+												>
+													{copiedUrl ? (
+														<>
+															<Check className="h-4 w-4 mr-2 text-green-600" />
+															Copied!
+														</>
+													) : (
+														<>
+															<Copy className="h-4 w-4 mr-2" />
+															Copy link
+														</>
+													)}
+												</Button>
+												<Button
+													size="sm"
+													variant="ghost"
+													className="w-full justify-start text-gray-600"
+													onClick={handleExitFocus}
+												>
+													<X className="h-4 w-4 mr-2" />
+													Exit focus mode
+												</Button>
+											</div>
+										</div>
+									</PopoverContent>
+								</Popover>
+							</TooltipProvider>
+						</>
+					)}
+				</div>
 
 				<input
 					type="file"
@@ -801,76 +1247,6 @@ export function Toolbar({
 					accept=".geojson,.json"
 					onChange={handleFileImport}
 				/>
-				<Divider />
-
-	
-				{/* Share button - only visible when focused on a route */}
-				{isFocused && (
-					<>
-						<Divider />
-						<TooltipProvider delayDuration={500}>
-							<Popover open={sharePopoverOpen} onOpenChange={setSharePopoverOpen}>
-								<Tooltip>
-									<TooltipTrigger asChild>
-										<PopoverTrigger asChild>
-											<Button
-												variant="default"
-												size="icon"
-												aria-label="Share"
-											>
-												<Share2 className="h-4 w-4" />
-											</Button>
-										</PopoverTrigger>
-									</TooltipTrigger>
-									<TooltipContent side="bottom" sideOffset={8}>
-										<p>Share this view</p>
-									</TooltipContent>
-								</Tooltip>
-								<PopoverContent className="w-64" side="bottom" align="end">
-									<div className="space-y-3">
-										<div>
-											<h4 className="text-sm font-semibold mb-1">Share this view</h4>
-											<p className="text-xs text-gray-500">
-												Others will see only this {focusedType === 'collection' ? 'collection' : 'dataset'}.
-											</p>
-										</div>
-										<div className="flex flex-col gap-2">
-											<Button
-												size="sm"
-												variant="outline"
-												className="w-full justify-start"
-												onClick={handleCopyShareUrl}
-											>
-												{copiedUrl ? (
-													<>
-														<Check className="h-4 w-4 mr-2 text-green-600" />
-														Copied!
-													</>
-												) : (
-													<>
-														<Copy className="h-4 w-4 mr-2" />
-														Copy link
-													</>
-												)}
-											</Button>
-											<Button
-												size="sm"
-												variant="ghost"
-												className="w-full justify-start text-gray-600"
-												onClick={handleExitFocus}
-											>
-												<X className="h-4 w-4 mr-2" />
-												Exit focus mode
-											</Button>
-										</div>
-									</div>
-								</PopoverContent>
-							</Popover>
-						</TooltipProvider>
-					</>
-				)}
-
-				<div className="flex-1" />
 			</div>
 
 			{searchError && (

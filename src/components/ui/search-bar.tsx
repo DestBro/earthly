@@ -57,7 +57,7 @@ export function SearchBar({
 				)}
 			</div>
 			{showSubmitButton && (
-				<Button type="submit" size="icon" variant="default" aria-label="Search" disabled={loading}>
+				<Button type="submit" size="icon" variant="ghost" aria-label="Search" disabled={loading}>
 					{loading ? (
 						<RefreshCw className="h-4 w-4 animate-spin" />
 					) : (
