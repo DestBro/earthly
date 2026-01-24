@@ -63,10 +63,10 @@ function CategoryTab({ config, developerPubkey }: CategoryTabProps) {
 
 		const result: NDKFilter[] = []
 
-		// Main filter based on tags
+		// Main filter - use the category-specific filterTag (not all tags, as that uses OR logic)
 		const mainFilter: NDKFilter = {
 			kinds: [1],
-			'#t': config.tags,
+			'#t': [config.filterTag],
 			limit: 50,
 		}
 

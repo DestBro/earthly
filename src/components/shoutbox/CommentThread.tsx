@@ -2,10 +2,11 @@ import { useNDKCurrentUser } from '@nostr-dev-kit/react'
 import type { NDKEvent } from '@nostr-dev-kit/ndk'
 import { useState, useCallback, useRef } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { MessageCircle, Heart, ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '../ui/button'
 import { ContentViewer } from '../editor/ContentViewer'
 import { GeoRichTextEditor, type GeoRichTextEditorRef } from '../editor/GeoRichTextEditor'
+import { GeoSocialActions } from '../comments/GeoSocialActions'
 import type { CommentNode } from './types'
 
 interface CommentThreadProps {
@@ -13,8 +14,6 @@ interface CommentThreadProps {
 	node: CommentNode
 	/** Callback to post a reply */
 	onReply: (parentComment: NDKEvent, content: string) => Promise<void>
-	/** Callback to react to a comment */
-	onReact: (target: NDKEvent) => Promise<void>
 	/** Maximum depth to show inline (deeper comments are collapsed) */
 	collapseDepth?: number
 }
@@ -22,7 +21,7 @@ interface CommentThreadProps {
 /**
  * Recursive component for rendering threaded comments.
  */
-export function CommentThread({ node, onReply, onReact, collapseDepth = 3 }: CommentThreadProps) {
+export function CommentThread({ node, onReply, collapseDepth = 3 }: CommentThreadProps) {
 	const currentUser = useNDKCurrentUser()
 	const [showReplyForm, setShowReplyForm] = useState(false)
 	const [isReplying, setIsReplying] = useState(false)
@@ -52,14 +51,6 @@ export function CommentThread({ node, onReply, onReact, collapseDepth = 3 }: Com
 		}
 	}, [event, replyContent, onReply])
 
-	const handleReact = useCallback(async () => {
-		try {
-			await onReact(event)
-		} catch (error) {
-			console.error('Failed to react:', error)
-		}
-	}, [event, onReact])
-
 	// Calculate indentation (max 4 levels visually)
 	const indentLevel = Math.min(depth, 4)
 	const marginLeft = indentLevel * 16
@@ -82,26 +73,13 @@ export function CommentThread({ node, onReply, onReact, collapseDepth = 3 }: Com
 
 				{/* Actions */}
 				<div className="flex items-center gap-1 mt-2">
-					<Button
-						variant="ghost"
-						size="sm"
-						onClick={handleReact}
-						className="h-6 px-2 text-muted-foreground hover:text-red-500"
-					>
-						<Heart className="h-3 w-3" />
-					</Button>
-
-					{currentUser && (
-						<Button
-							variant="ghost"
-							size="sm"
-							onClick={() => setShowReplyForm(!showReplyForm)}
-							className="h-6 px-2 text-muted-foreground hover:text-primary"
-						>
-							<MessageCircle className="h-3 w-3 mr-1" />
-							<span className="text-xs">Reply</span>
-						</Button>
-					)}
+					<GeoSocialActions
+						target={event}
+						onReplyClick={currentUser ? () => setShowReplyForm(!showReplyForm) : undefined}
+						commentCount={children.length}
+						showCommentButton={!!currentUser}
+						compact
+					/>
 
 					{children.length > 0 && (
 						<Button
@@ -160,7 +138,6 @@ export function CommentThread({ node, onReply, onReact, collapseDepth = 3 }: Com
 							key={child.event.id}
 							node={child}
 							onReply={onReply}
-							onReact={onReact}
 							collapseDepth={collapseDepth}
 						/>
 					))}
@@ -175,8 +152,6 @@ interface CommentsListProps {
 	comments: CommentNode[]
 	/** Callback to post a reply */
 	onReply: (parentComment: NDKEvent, content: string) => Promise<void>
-	/** Callback to react to a comment */
-	onReact: (target: NDKEvent) => Promise<void>
 	/** Whether comments are loading */
 	isLoading?: boolean
 }
@@ -184,7 +159,7 @@ interface CommentsListProps {
 /**
  * List of threaded comments.
  */
-export function CommentsList({ comments, onReply, onReact, isLoading = false }: CommentsListProps) {
+export function CommentsList({ comments, onReply, isLoading = false }: CommentsListProps) {
 	if (isLoading && comments.length === 0) {
 		return <div className="text-center py-4 text-muted-foreground text-sm">Loading comments...</div>
 	}
@@ -200,7 +175,7 @@ export function CommentsList({ comments, onReply, onReact, isLoading = false }: 
 	return (
 		<div className="space-y-2">
 			{comments.map((node) => (
-				<CommentThread key={node.event.id} node={node} onReply={onReply} onReact={onReact} />
+				<CommentThread key={node.event.id} node={node} onReply={onReply} />
 			))}
 		</div>
 	)

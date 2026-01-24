@@ -7,7 +7,7 @@ import { ExternalLink, ChevronDown, ChevronUp, LogIn } from 'lucide-react'
 import { Button } from '../ui/button'
 import { ContentViewer } from '../editor/ContentViewer'
 import { GeoRichTextEditor, type GeoRichTextEditorRef } from '../editor/GeoRichTextEditor'
-import { SocialActions } from './SocialActions'
+import { GeoSocialActions } from '../comments/GeoSocialActions'
 import { CommentsList } from './CommentThread'
 import { useShoutboxComments } from './useShoutboxComments'
 
@@ -29,7 +29,7 @@ export function PostCard({ event, isDeveloperPost = false }: PostCardProps) {
 	const editorRef = useRef<GeoRichTextEditorRef>(null)
 
 	// Always fetch comments when section is open
-	const { comments, count, isLoading, postComment, postReply, react } = useShoutboxComments({
+	const { comments, count, isLoading, postComment, postReply } = useShoutboxComments({
 		rootEvent: showComments ? event : null,
 	})
 
@@ -127,7 +127,12 @@ export function PostCard({ event, isDeveloperPost = false }: PostCardProps) {
 
 			{/* Social Actions */}
 			<div className="flex items-center justify-between pt-2 border-t border-muted">
-				<SocialActions event={event} onCommentClick={handleCommentClick} commentCount={count} />
+				<GeoSocialActions
+					target={event}
+					onReplyClick={handleCommentClick}
+					commentCount={count}
+					compact
+				/>
 
 				<Button
 					variant="ghost"
@@ -193,12 +198,7 @@ export function PostCard({ event, isDeveloperPost = false }: PostCardProps) {
 					)}
 
 					{/* Comments List */}
-					<CommentsList
-						comments={comments}
-						onReply={postReply}
-						onReact={react}
-						isLoading={isLoading}
-					/>
+					<CommentsList comments={comments} onReply={postReply} isLoading={isLoading} />
 				</div>
 			)}
 		</div>

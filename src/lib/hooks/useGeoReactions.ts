@@ -1,12 +1,16 @@
 import { useNDK, useNDKCurrentUser, useSubscribe, NDKEvent } from '@nostr-dev-kit/react'
+import type { NDKEvent as NDKEventType } from '@nostr-dev-kit/ndk'
 import { useMemo, useCallback, useState } from 'react'
 import type { NDKGeoEvent } from '../ndk/NDKGeoEvent'
 import type { NDKGeoCollectionEvent } from '../ndk/NDKGeoCollectionEvent'
 import type { NDKGeoCommentEvent } from '../ndk/NDKGeoCommentEvent'
 
+/** Any Nostr event that can receive reactions */
+export type ReactableEvent = NDKGeoEvent | NDKGeoCollectionEvent | NDKGeoCommentEvent | NDKEventType
+
 export interface UseGeoReactionsOptions {
 	/** The event to fetch reactions for */
-	target: NDKGeoEvent | NDKGeoCollectionEvent | NDKGeoCommentEvent | null
+	target: ReactableEvent | null
 }
 
 export interface UseGeoReactionsResult {
@@ -41,42 +45,77 @@ export function useGeoReactions({ target }: UseGeoReactionsOptions): UseGeoReact
 	const [zapDialogOpen, setZapDialogOpen] = useState(false)
 	const [isReacting, setIsReacting] = useState(false)
 
-	// Build the address for this target
+	// Check if target is an addressable event (has dTag)
+	const isAddressable = useMemo(() => {
+		if (!target) return false
+		return 'dTag' in target && !!target.dTag
+	}, [target])
+
+	// Build the address for addressable events
 	const targetAddress = useMemo(() => {
-		if (!target) return null
+		if (!target || !isAddressable) return null
 
 		const targetKind = target.kind
 		const targetPubkey = target.pubkey
-		const targetDTag = target.dTag
+		const targetDTag = (target as { dTag?: string }).dTag
 
 		if (!targetKind || !targetPubkey || !targetDTag) return null
 
 		return `${targetKind}:${targetPubkey}:${targetDTag}`
-	}, [target])
+	}, [target, isAddressable])
 
 	// Build filter for reactions (kind 7)
+	// Use #a tag for addressable events, #e tag for regular events
 	const reactionFilters = useMemo(() => {
-		if (!targetAddress) return []
+		if (!target?.id && !targetAddress) return []
 
-		return [
-			{
-				kinds: [7 as number],
-				'#a': [targetAddress],
-			},
-		]
-	}, [targetAddress])
+		if (isAddressable && targetAddress) {
+			return [
+				{
+					kinds: [7 as number],
+					'#a': [targetAddress],
+				},
+			]
+		}
+
+		// Regular event - use #e tag
+		if (target?.id) {
+			return [
+				{
+					kinds: [7 as number],
+					'#e': [target.id],
+				},
+			]
+		}
+
+		return []
+	}, [target?.id, targetAddress, isAddressable])
 
 	// Build filter for zaps (kind 9735)
 	const zapFilters = useMemo(() => {
-		if (!targetAddress) return []
+		if (!target?.id && !targetAddress) return []
 
-		return [
-			{
-				kinds: [9735 as number],
-				'#a': [targetAddress],
-			},
-		]
-	}, [targetAddress])
+		if (isAddressable && targetAddress) {
+			return [
+				{
+					kinds: [9735 as number],
+					'#a': [targetAddress],
+				},
+			]
+		}
+
+		// Regular event - use #e tag
+		if (target?.id) {
+			return [
+				{
+					kinds: [9735 as number],
+					'#e': [target.id],
+				},
+			]
+		}
+
+		return []
+	}, [target?.id, targetAddress, isAddressable])
 
 	const { events: reactionEvents, eose: reactionsEose } = useSubscribe(reactionFilters)
 	const { events: zapEvents, eose: zapsEose } = useSubscribe(zapFilters)
@@ -141,25 +180,31 @@ export function useGeoReactions({ target }: UseGeoReactionsOptions): UseGeoReact
 
 		setIsReacting(true)
 		try {
-			const reaction = new NDKEvent(ndk)
-			reaction.kind = 7
-			reaction.content = '❤️'
+			// Check if target has a react method (NDKEvent)
+			if ('react' in target && typeof target.react === 'function') {
+				await target.react('❤️', true)
+			} else {
+				// Manual reaction for geo events
+				const reaction = new NDKEvent(ndk)
+				reaction.kind = 7
+				reaction.content = '❤️'
 
-			// Add 'a' tag for addressable events
-			if (targetAddress) {
-				reaction.tags.push(['a', targetAddress])
+				// Add 'a' tag for addressable events
+				if (targetAddress) {
+					reaction.tags.push(['a', targetAddress])
+				}
+
+				// Add 'e' tag for event ID
+				if (target.id) {
+					reaction.tags.push(['e', target.id])
+				}
+
+				// Add 'p' tag for author
+				reaction.tags.push(['p', target.pubkey])
+
+				await reaction.sign()
+				await reaction.publish()
 			}
-
-			// Add 'e' tag for event ID
-			if (target.id) {
-				reaction.tags.push(['e', target.id])
-			}
-
-			// Add 'p' tag for author
-			reaction.tags.push(['p', target.pubkey])
-
-			await reaction.sign()
-			await reaction.publish()
 		} finally {
 			setIsReacting(false)
 		}

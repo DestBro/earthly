@@ -9,8 +9,10 @@ export interface CategoryConfig {
 	label: string
 	description: string
 	icon: string
-	/** Required hashtags for filtering and auto-adding */
+	/** Required hashtags for auto-adding to posts */
 	tags: string[]
+	/** Category-specific tag used for filtering (must be unique per category) */
+	filterTag: string
 	/** If true, only the developer npub can post */
 	developerOnly?: boolean
 	/** Optional pubkey filter */
@@ -44,6 +46,7 @@ export const SHOUTBOX_CATEGORIES: CategoryConfig[] = [
 		description: 'Official updates from the Earthly team',
 		icon: '📢',
 		tags: ['earthlycity', 'blog'],
+		filterTag: 'blog',
 		developerOnly: true,
 		pinnedEventIds: PINNED_ANNOUNCEMENT_IDS,
 	},
@@ -53,6 +56,7 @@ export const SHOUTBOX_CATEGORIES: CategoryConfig[] = [
 		description: 'Suggest new features and improvements',
 		icon: '✨',
 		tags: ['earthlycity', 'feature'],
+		filterTag: 'feature',
 	},
 	{
 		id: 'greetings',
@@ -60,6 +64,7 @@ export const SHOUTBOX_CATEGORIES: CategoryConfig[] = [
 		description: 'Say hello to the community',
 		icon: '👋',
 		tags: ['earthlycity', 'greetings'],
+		filterTag: 'greetings',
 	},
 	{
 		id: 'bugs',
@@ -67,5 +72,6 @@ export const SHOUTBOX_CATEGORIES: CategoryConfig[] = [
 		description: 'Report issues and bugs',
 		icon: '🐛',
 		tags: ['earthlycity', 'bug'],
+		filterTag: 'bug',
 	},
 ]

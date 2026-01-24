@@ -1,29 +1,32 @@
 import { Heart, MessageCircle, Zap } from 'lucide-react'
 import { useNDKCurrentUser } from '@nostr-dev-kit/react'
+import { toast } from 'sonner'
 import { Button } from '../ui/button'
-import { useGeoReactions } from '../../lib/hooks/useGeoReactions'
-import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
-import type { NDKGeoCollectionEvent } from '../../lib/ndk/NDKGeoCollectionEvent'
-import type { NDKGeoCommentEvent } from '../../lib/ndk/NDKGeoCommentEvent'
+import { useGeoReactions, type ReactableEvent } from '../../lib/hooks/useGeoReactions'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 
 interface GeoSocialActionsProps {
-	target: NDKGeoEvent | NDKGeoCollectionEvent | NDKGeoCommentEvent
+	/** Any Nostr event that can receive reactions */
+	target: ReactableEvent
 	onReplyClick?: () => void
 	commentCount?: number
 	showCommentButton?: boolean
+	/** Whether to show the zap button (default: true for geo events) */
+	showZapButton?: boolean
 	className?: string
 	compact?: boolean
 }
 
 /**
- * Social actions bar for geo events: reactions, zaps, and comments.
+ * Social actions bar for any Nostr event: reactions, zaps, and comments.
+ * Works with geo events (NDKGeoEvent, etc.) and regular events (NDKEvent).
  */
 export function GeoSocialActions({
 	target,
 	onReplyClick,
 	commentCount = 0,
 	showCommentButton = true,
+	showZapButton = true,
 	className = '',
 	compact = false,
 }: GeoSocialActionsProps) {
@@ -46,28 +49,30 @@ export function GeoSocialActions({
 
 	const handleReaction = async () => {
 		if (!currentUser) {
-			// Could show a login prompt here
-			console.log('Please log in to react')
+			toast.info('Please log in to react')
 			return
 		}
 		try {
 			await toggleReaction()
 		} catch (error) {
 			console.error('Failed to react:', error)
+			toast.error('Failed to react')
 		}
 	}
 
 	const handleZap = () => {
 		if (!currentUser) {
-			console.log('Please log in to zap')
+			toast.info('Please log in to zap')
 			return
 		}
-		openZapDialog()
-		// TODO: Implement actual zap dialog
-		console.log('Zap dialog would open here')
+		// Zapping not yet implemented
+		toast.info('Zapping coming soon! ⚡', {
+			description: 'This feature is not yet implemented.',
+		})
+		void openZapDialog // Suppress unused warning
 	}
 
-	const buttonSize = compact ? 'xs' : 'sm'
+	const buttonSize = compact ? 'sm' : 'default'
 	const iconSize = compact ? 'h-3.5 w-3.5' : 'h-4 w-4'
 
 	return (
@@ -98,27 +103,29 @@ export function GeoSocialActions({
 			</Tooltip>
 
 			{/* Lightning/Zap Button */}
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<Button
-						variant="ghost"
-						size={buttonSize}
-						onClick={handleZap}
-						disabled={isLoading || !currentUser}
-						className={`gap-1 ${
-							userHasZapped
-								? 'text-amber-500 hover:text-amber-600'
-								: 'text-gray-500 hover:text-amber-500'
-						}`}
-					>
-						<Zap className={`${iconSize} ${userHasZapped ? 'fill-current' : ''}`} />
-						{zapCount > 0 && <span className="text-xs font-medium">{formatCount(zapCount)}</span>}
-					</Button>
-				</TooltipTrigger>
-				<TooltipContent>
-					{userHasZapped ? 'You zapped this' : currentUser ? 'Zap' : 'Log in to zap'}
-				</TooltipContent>
-			</Tooltip>
+			{showZapButton && (
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							variant="ghost"
+							size={buttonSize}
+							onClick={handleZap}
+							disabled={isLoading || !currentUser}
+							className={`gap-1 ${
+								userHasZapped
+									? 'text-amber-500 hover:text-amber-600'
+									: 'text-gray-500 hover:text-amber-500'
+							}`}
+						>
+							<Zap className={`${iconSize} ${userHasZapped ? 'fill-current' : ''}`} />
+							{zapCount > 0 && <span className="text-xs font-medium">{formatCount(zapCount)}</span>}
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent>
+						{userHasZapped ? 'You zapped this' : currentUser ? 'Zap' : 'Log in to zap'}
+					</TooltipContent>
+				</Tooltip>
+			)}
 
 			{/* Comment/Reply Button */}
 			{showCommentButton && onReplyClick && (
