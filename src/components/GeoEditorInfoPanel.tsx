@@ -101,6 +101,11 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 	const viewMode = useEditorStore((state) => state.viewMode)
 	const setViewMode = useEditorStore((state) => state.setViewMode)
 	const setViewDataset = useEditorStore((state) => state.setViewDataset)
+	const blobReferences = useEditorStore((state) => state.blobReferences)
+
+	const existingCollectionBlob = blobReferences.find(
+		(ref) => ref.scope === 'collection' && Boolean(ref.url),
+	)
 
 	const activeDatasetInfo = activeDataset
 		? {
@@ -204,6 +209,15 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 				<DatasetSizeIndicator
 					featureCollection={featureCollectionForUpload}
 					onUploadComplete={onBlossomUploadComplete}
+					existingBlob={
+						existingCollectionBlob
+							? {
+									url: existingCollectionBlob.url,
+									sha256: existingCollectionBlob.sha256,
+									size: existingCollectionBlob.size,
+								}
+							: null
+					}
 					ndk={ndk}
 				/>
 			)}

@@ -95,7 +95,8 @@ export function useDatasetManagement(
 			references.map((reference) => ({
 				...reference,
 				id: crypto.randomUUID(),
-				status: 'idle' as const,
+				// These references already exist on the event (i.e. already uploaded / externally hosted).
+				status: reference.url ? ('ready' as const) : ('idle' as const),
 			})),
 		[],
 	)

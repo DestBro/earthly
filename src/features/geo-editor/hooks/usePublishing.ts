@@ -148,6 +148,41 @@ export function usePublishing({
 		serializeEditorFeature,
 	])
 
+	const buildCollectionStub = useCallback(
+		(
+			collection: FeatureCollection,
+			collectionBlobUrl: string,
+		): FeatureCollection & { name?: string; description?: string; properties?: Record<string, any> } => {
+			const stubCollection: FeatureCollection & {
+				name?: string
+				description?: string
+				properties?: Record<string, any>
+			} = {
+				type: 'FeatureCollection',
+				features: [
+					{
+						type: 'Feature',
+						id: 'external-geometry-placeholder',
+						geometry: null,
+						properties: {
+							externalPlaceholder: true,
+							blobUrl: collectionBlobUrl,
+							name: 'External geometry',
+						},
+					} as any,
+				],
+			}
+
+			// Copy metadata from original collection for discovery (SPEC.md section 1.5)
+			if ((collection as any).name) stubCollection.name = (collection as any).name
+			if ((collection as any).description) stubCollection.description = (collection as any).description
+			if ((collection as any).properties) stubCollection.properties = (collection as any).properties
+
+			return stubCollection
+		},
+		[],
+	)
+
 	/**
 	 * Calculate the serialized size of a FeatureCollection in bytes.
 	 */
@@ -201,32 +236,7 @@ export function usePublishing({
 				event.updateDerivedMetadata() // Computes bbox, geohash from full geometry
 
 				// Now replace content with stub - keeping the computed metadata tags
-				const stubCollection: FeatureCollection & {
-					name?: string
-					description?: string
-					properties?: Record<string, any>
-				} = {
-					type: 'FeatureCollection',
-					features: [
-						{
-							type: 'Feature',
-							id: 'external-geometry-placeholder',
-							geometry: null,
-							properties: {
-								externalPlaceholder: true,
-								blobUrl: collectionBlobRef.url,
-								name: 'External geometry',
-							},
-						} as any,
-					],
-				}
-
-				// Copy metadata from original collection for discovery
-				if ((collection as any).name) stubCollection.name = (collection as any).name
-				if ((collection as any).description)
-					stubCollection.description = (collection as any).description
-				if ((collection as any).properties)
-					stubCollection.properties = (collection as any).properties
+				const stubCollection = buildCollectionStub(collection, collectionBlobRef.url)
 
 				// Set stub as content (metadata tags already computed above)
 				event.content = JSON.stringify(stubCollection)
@@ -257,6 +267,7 @@ export function usePublishing({
 		buildCollectionFromEditor,
 		ndk,
 		serializeBlobReferences,
+		buildCollectionStub,
 		setActiveDataset,
 		setCollectionMeta,
 		setSelectedFeatureIds,
@@ -264,7 +275,7 @@ export function usePublishing({
 
 	/**
 	 * Complete publishing with blossom blob reference.
-	 * Creates a stub event with centroid and blob reference.
+	 * Creates a stub event with a blob reference (SPEC.md section 1.5).
 	 */
 	const handlePublishWithBlossomUpload = useCallback(
 		async (blobResult: { sha256: string; url: string; size: number }) => {
@@ -281,42 +292,19 @@ export function usePublishing({
 				const collection = buildCollectionFromEditor()
 				if (!collection) throw new Error('No features to publish')
 
-				// Create a stub collection with metadata only
-				// Include a centroid point as preview
-				const stubCollection: FeatureCollection & {
-					name?: string
-					description?: string
-					properties?: Record<string, any>
-				} = {
-					type: 'FeatureCollection',
-					features: [
-						{
-							type: 'Feature',
-							id: 'external-geometry-placeholder',
-							geometry: null,
-							properties: {
-								externalPlaceholder: true,
-								blobUrl: blobResult.url,
-								name: 'External geometry',
-							},
-						} as any,
-					],
-				}
-
-				// Copy metadata from original collection
-				if ((collection as any).name) stubCollection.name = (collection as any).name
-				if ((collection as any).description)
-					stubCollection.description = (collection as any).description
-				if ((collection as any).properties)
-					stubCollection.properties = (collection as any).properties
-
 				const event = new NDKGeoEventClass(ndk)
-				event.featureCollection = stubCollection
+				// Compute discovery metadata (bbox/geohash) from the full geometry first.
+				event.featureCollection = collection
+				event.updateDerivedMetadata()
+
+				// Then publish stub content referencing Blossom.
+				const stubCollection = buildCollectionStub(collection, blobResult.url)
+				event.content = JSON.stringify(stubCollection)
 
 				// Add the blob reference for the full collection
 				const existingRefs = serializeBlobReferences()
 				event.blobReferences = [
-					...existingRefs,
+					...existingRefs.filter((ref) => ref.scope !== 'collection'),
 					{
 						scope: 'collection',
 						url: blobResult.url,
@@ -326,7 +314,7 @@ export function usePublishing({
 					},
 				]
 
-				await event.publishNew()
+				await event.publishNew(undefined, { skipMetadataUpdate: true })
 				setPublishMessage('Dataset published with external reference.')
 				setActiveDataset(event)
 				setCollectionMeta(extractCollectionMeta(collection))
@@ -349,6 +337,7 @@ export function usePublishing({
 			setPublishError,
 			buildCollectionFromEditor,
 			serializeBlobReferences,
+			buildCollectionStub,
 			setActiveDataset,
 			setCollectionMeta,
 			setSelectedFeatureIds,
@@ -377,15 +366,36 @@ export function usePublishing({
 		}
 
 		try {
+			const refs = serializeBlobReferences()
+			const collectionBlobRef = refs.find((ref) => ref.scope === 'collection')
+
 			const event = new NDKGeoEventClass(ndk || undefined)
-			event.featureCollection = collection
 			event.datasetId = activeDataset.datasetId ?? activeDataset.id
 			event.hashtags = activeDataset.hashtags
 			event.collectionReferences = activeDataset.collectionReferences
 			event.relayHints = activeDataset.relayHints
-			event.blobReferences = serializeBlobReferences()
+			event.blobReferences = refs
 
-			await event.publishUpdate(activeDataset)
+			if (collectionBlobRef) {
+				// Publish as STUB with external reference (per SPEC.md section 1.5)
+				// Preserve discovery metadata if we can't compute it (e.g. geometry not loaded)
+				event.boundingBox = activeDataset.boundingBox
+				event.geohash = activeDataset.geohash
+
+				// Compute bbox/geohash from FULL collection first, then set stub content.
+				event.featureCollection = collection
+				event.updateDerivedMetadata()
+
+				const stubCollection = buildCollectionStub(collection, collectionBlobRef.url)
+				event.content = JSON.stringify(stubCollection)
+
+				await event.publishUpdate(activeDataset, undefined, { skipMetadataUpdate: true })
+			} else {
+				// Publish with full geometry inline (standard case)
+				event.featureCollection = collection
+				await event.publishUpdate(activeDataset)
+			}
+
 			setPublishMessage('Dataset update published successfully.')
 			setActiveDataset(event)
 			setCollectionMeta(extractCollectionMeta(collection))
@@ -406,6 +416,7 @@ export function usePublishing({
 		buildCollectionFromEditor,
 		ndk,
 		serializeBlobReferences,
+		buildCollectionStub,
 		setActiveDataset,
 		setCollectionMeta,
 		setSelectedFeatureIds,
@@ -426,10 +437,24 @@ export function usePublishing({
 				return
 			}
 
+			const refs = serializeBlobReferences()
+			const collectionBlobRef = refs.find((ref) => ref.scope === 'collection')
+
 			const event = new NDKGeoEventClass(ndk)
-			event.featureCollection = collection
-			event.blobReferences = serializeBlobReferences()
-			await event.publishNew()
+			event.blobReferences = refs
+
+			if (collectionBlobRef) {
+				event.featureCollection = collection
+				event.updateDerivedMetadata()
+
+				const stubCollection = buildCollectionStub(collection, collectionBlobRef.url)
+				event.content = JSON.stringify(stubCollection)
+				await event.publishNew(undefined, { skipMetadataUpdate: true })
+			} else {
+				event.featureCollection = collection
+				await event.publishNew()
+			}
+
 			setPublishMessage('Dataset copy published successfully.')
 			setActiveDataset(event)
 			setCollectionMeta(extractCollectionMeta(collection))
@@ -448,6 +473,7 @@ export function usePublishing({
 		buildCollectionFromEditor,
 		ndk,
 		serializeBlobReferences,
+		buildCollectionStub,
 		setActiveDataset,
 		setCollectionMeta,
 		setSelectedFeatureIds,
@@ -483,7 +509,7 @@ export function usePublishing({
 
 	// Check if there's a collection blob reference (uploaded to Blossom)
 	const hasCollectionBlob = blobReferences.some(
-		(ref) => ref.scope === 'collection' && ref.url && ref.status === 'ready',
+		(ref) => ref.scope === 'collection' && ref.url,
 	)
 
 	// Computed permissions

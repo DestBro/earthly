@@ -267,9 +267,12 @@ export class NDKGeoEvent extends NDKEvent {
 	): Promise<void> {
 		this.kind = NDKGeoEvent.kinds[0]
 		this.ensureDatasetId()
-		// Allow skipping metadata update if it was pre-computed (e.g., for stub events)
 		if (!options?.skipMetadataUpdate) {
 			this.updateDerivedMetadata()
+		} else {
+			// Even for stub events we still want size to reflect the current content.
+			const encoder = new TextEncoder()
+			this.datasetSize = encoder.encode(this.content ?? '').length
 		}
 		await this.updateChecksum()
 		await this.sign(signer)
@@ -284,7 +287,11 @@ export class NDKGeoEvent extends NDKEvent {
 		return this
 	}
 
-	async publishUpdate(previous: NDKGeoEvent, signer?: NDKSigner): Promise<NDKGeoEvent> {
+	async publishUpdate(
+		previous: NDKGeoEvent,
+		signer?: NDKSigner,
+		options?: { skipMetadataUpdate?: boolean },
+	): Promise<NDKGeoEvent> {
 		this.datasetId = previous.datasetId ?? previous.id
 		if (!this.datasetId) {
 			throw new Error('Dataset identifier is required for updates.')
@@ -298,7 +305,7 @@ export class NDKGeoEvent extends NDKEvent {
 		this.removeTag('p')
 		this.tags.push(['p', previous.id])
 
-		await this.prepareForPublish(signer)
+		await this.prepareForPublish(signer, options)
 		await this.publish()
 		return this
 	}
