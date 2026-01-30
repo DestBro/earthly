@@ -55,6 +55,10 @@ interface EditorState {
 	publishMessage: string | null
 	publishError: string | null
 
+	// Blossom Upload Dialog State
+	blossomUploadDialogOpen: boolean
+	pendingPublishCollection: FeatureCollection | null
+
 	// Blob References State
 	blobReferences: EditorBlobReference[]
 	blobDraftUrl: string
@@ -144,6 +148,10 @@ interface EditorState {
 	setIsPublishing: (isPublishing: boolean) => void
 	setPublishMessage: (message: string | null) => void
 	setPublishError: (error: string | null) => void
+
+	// Blossom Upload Dialog Actions
+	setBlossomUploadDialogOpen: (open: boolean) => void
+	setPendingPublishCollection: (collection: FeatureCollection | null) => void
 
 	setBlobReferences: (refs: EditorBlobReference[]) => void
 	setBlobDraftUrl: (url: string) => void
@@ -265,6 +273,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	publishMessage: null,
 	publishError: null,
 
+	// Blossom Upload Dialog State
+	blossomUploadDialogOpen: false,
+	pendingPublishCollection: null,
+
 	blobReferences: [],
 	blobDraftUrl: '',
 	blobDraftStatus: 'idle',
@@ -365,6 +377,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	setIsPublishing: (isPublishing) => set({ isPublishing }),
 	setPublishMessage: (publishMessage) => set({ publishMessage }),
 	setPublishError: (publishError) => set({ publishError }),
+
+	// Blossom Upload Dialog Actions
+	setBlossomUploadDialogOpen: (blossomUploadDialogOpen) => set({ blossomUploadDialogOpen }),
+	setPendingPublishCollection: (pendingPublishCollection) => set({ pendingPublishCollection }),
 
 	setBlobReferences: (blobReferences) => set({ blobReferences }),
 	setBlobDraftUrl: (blobDraftUrl) => set({ blobDraftUrl }),

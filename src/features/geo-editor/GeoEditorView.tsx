@@ -11,6 +11,7 @@ import {
 	type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { AppSidebar } from '../../components/AppSidebar'
+import { BlossomUploadDialog } from '../../components/BlossomUploadDialog'
 import { DebugDialog } from '../../components/DebugDialog'
 import { GeoDatasetsPanelContent } from '../../components/GeoDatasetsPanel'
 import { GeoEditorInfoPanelContent } from '../../components/GeoEditorInfoPanel'
@@ -264,12 +265,19 @@ export function GeoEditorView() {
 
 	// Store state for viewMode
 	const viewMode = useEditorStore((state) => state.viewMode)
+	
+	// Blossom upload dialog state
+	const blossomUploadDialogOpen = useEditorStore((state) => state.blossomUploadDialogOpen)
+	const setBlossomUploadDialogOpen = useEditorStore((state) => state.setBlossomUploadDialogOpen)
+	const pendingPublishCollection = useEditorStore((state) => state.pendingPublishCollection)
 
 	const {
 		handlePublishNew,
 		handlePublishUpdate,
 		handlePublishCopy,
 		handleDeleteDataset,
+		handlePublishWithBlossomUpload,
+		buildCollectionFromEditor,
 		canPublishNew,
 		canPublishUpdate,
 		canPublishCopy,
@@ -301,7 +309,7 @@ export function GeoEditorView() {
 	})
 
 	// Routing hook for URL-based focus mode
-	const { route, navigateTo, navigateHome, encodeGeoEventNaddr, encodeCollectionNaddr, isFocused } =
+	const { route, navigateTo, clearFocus, navigateHome, encodeGeoEventNaddr, encodeCollectionNaddr, isFocused } =
 		useRouting()
 
 	// Store focus state
@@ -449,8 +457,8 @@ export function GeoEditorView() {
 	useEffect(() => {
 		if (initialZoomPerformed.current || !map.current || !mounted) return
 		
-		// Only perform initial zoom if we're on the home route
-		if (route.type !== 'home') return
+		// Only perform initial zoom if we're on the home route (no focus)
+		if (route.focusType !== 'none') return
 
 		if (geoEvents.length === 0) return
 
@@ -556,13 +564,13 @@ export function GeoEditorView() {
 
 	// Handle initial route on page load (direct URL navigation)
 	useEffect(() => {
-		// Only perform initial zoom if we're on the home route
-		// If there's a specific route (e.g. /geoevent/...), that component handles its own zoom
-		if (route.type === 'home' || !route.naddr) return
+		// Skip if no focus route (just sidebar view change)
+		// If there's a specific focus route (e.g. /datasets/geoevent/...), handle zoom
+		if (route.focusType === 'none' || !route.naddr) return
 		// Wait for data to be available
 		if (geoEvents.length === 0 && collectionEvents.length === 0) return
 
-		if (route.type === 'geoevent') {
+		if (route.focusType === 'geoevent') {
 			// Find the dataset matching the naddr
 			const dataset = geoEvents.find((event) => {
 				const eventNaddr = encodeGeoEventNaddr(event)
@@ -571,7 +579,7 @@ export function GeoEditorView() {
 			if (dataset) {
 				handleInspectDataset(dataset)
 			}
-		} else if (route.type === 'collection') {
+		} else if (route.focusType === 'collection') {
 			// Find the collection matching the naddr
 			const collection = collectionEvents.find((col) => {
 				const colNaddr = encodeCollectionNaddr(col)
@@ -583,7 +591,7 @@ export function GeoEditorView() {
 		}
 		// Only run once when data becomes available
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [route.type, route.naddr, geoEvents.length, collectionEvents.length])
+	}, [route.focusType, route.naddr, geoEvents.length, collectionEvents.length])
 
 	// Lock document scrolling on mobile to prevent address bar jitter during map gestures.
 	useEffect(() => {
@@ -1531,6 +1539,9 @@ export function GeoEditorView() {
 					onCloseCollectionEditor={handleCloseCollectionEditor}
 					onZoomToFeature={handleZoomToFeature}
 					onExitViewMode={exitViewMode}
+					// Blossom upload props
+					featureCollectionForUpload={buildCollectionFromEditor()}
+					onBlossomUploadComplete={handlePublishWithBlossomUpload}
 				/>
 			)}
 
@@ -1719,6 +1730,8 @@ export function GeoEditorView() {
 									onSaveCollection={handleSaveCollection}
 									onCloseCollectionEditor={handleCloseCollectionEditor}
 									onZoomToFeature={handleZoomToFeature}
+									featureCollectionForUpload={buildCollectionFromEditor()}
+									onBlossomUploadComplete={handlePublishWithBlossomUpload}
 								/>
 							</div>
 						</SheetContent>
@@ -1887,6 +1900,21 @@ export function GeoEditorView() {
 			{debugEvent && (
 				<DebugDialog event={debugEvent} open={debugDialogOpen} onOpenChange={setDebugDialogOpen} />
 			)}
+
+			{/* Blossom Upload Dialog */}
+			<BlossomUploadDialog
+				open={blossomUploadDialogOpen}
+				onOpenChange={setBlossomUploadDialogOpen}
+				geojson={pendingPublishCollection ?? buildCollectionFromEditor()}
+				onUploadComplete={(result) => {
+					handlePublishWithBlossomUpload(result)
+				}}
+				onSkip={() => {
+					handlePublishNew({ skipSizeCheck: true })
+				}}
+				allowSkip={false}
+				title="Dataset Size Warning"
+			/>
 
 			{/* Import OSM Dialog */}
 			<ImportOsmDialog

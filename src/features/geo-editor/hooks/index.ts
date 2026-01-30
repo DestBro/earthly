@@ -9,4 +9,4 @@ export {
 } from './useMapLayers'
 export { usePublishing } from './usePublishing'
 export { useViewMode } from './useViewMode'
-export { useRouting } from './useRouting'
+export { useRouting, type SidebarViewMode, type RouteState } from './useRouting'

@@ -7,7 +7,7 @@ import type {
 	MultiLineString,
 	MultiPolygon,
 } from 'geojson'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, Cloud } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 
@@ -285,9 +285,11 @@ export function GeometryDisplay({ geometry }: { geometry: Geometry }) {
 export function GeometryBadge({
 	geometry,
 	isAnnotation,
+	isExternal,
 }: {
-	geometry: Geometry
+	geometry: Geometry | null
 	isAnnotation?: boolean
+	isExternal?: boolean
 }) {
 	const typeShort: Record<string, string> = {
 		Point: 'Pt',
@@ -316,9 +318,24 @@ export function GeometryBadge({
 		)
 	}
 
+	// External placeholder with no geometry
+	if (!geometry || geometry === null) {
+		return (
+			<span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-100 text-sky-700">
+				<Cloud className="h-2.5 w-2.5" />
+				External
+			</span>
+		)
+	}
+
 	return (
-		<span className={cn('px-1.5 py-0.5 rounded text-[10px] font-medium', colors[geometry.type])}>
+		<span className={cn(
+			'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium', 
+			colors[geometry.type]
+		)}>
+			{isExternal && <Cloud className="h-2.5 w-2.5 text-sky-500" />}
 			{typeShort[geometry.type] ?? geometry.type}
 		</span>
 	)
 }
+

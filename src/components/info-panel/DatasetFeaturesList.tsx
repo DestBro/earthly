@@ -1,14 +1,15 @@
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, Cloud } from 'lucide-react'
 import { useState } from 'react'
 import type { Feature, FeatureCollection, Geometry, GeoJsonProperties } from 'geojson'
 import { cn } from '@/lib/utils'
 import { GeometryBadge, GeometryDisplay } from './geometry/GeometryDisplay'
 
 interface ReadOnlyFeatureRowProps {
-	feature: Feature<Geometry, GeoJsonProperties>
+	feature: Feature<Geometry | null, GeoJsonProperties>
 	name: string
 	isExpanded: boolean
 	onToggleExpand: () => void
+	isExternal?: boolean
 }
 
 function ReadOnlyFeatureRow({
@@ -16,28 +17,60 @@ function ReadOnlyFeatureRow({
 	name,
 	isExpanded,
 	onToggleExpand,
+	isExternal,
 }: ReadOnlyFeatureRowProps) {
 	const isAnnotation = feature.properties?.featureType === 'annotation'
+	const isExternalPlaceholder = feature.properties?.externalPlaceholder === true
+	const hasGeometry = feature.geometry !== null
 
 	return (
-		<div className="rounded border border-gray-200 bg-white text-xs">
+		<div className={cn(
+			'rounded border text-xs',
+			isExternalPlaceholder 
+				? 'border-sky-200 bg-sky-50/50' 
+				: 'border-gray-200 bg-white'
+		)}>
 			{/* Row header */}
 			<div className="flex items-center gap-1 px-1.5 py-1">
 				<button
 					type="button"
 					onClick={onToggleExpand}
 					className="text-gray-400 hover:text-gray-600"
+					disabled={!hasGeometry}
 				>
-					{isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+					{hasGeometry ? (
+						isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />
+					) : (
+						<Cloud className="h-3 w-3 text-sky-400" />
+					)}
 				</button>
 
-				<GeometryBadge geometry={feature.geometry} isAnnotation={isAnnotation} />
+				<GeometryBadge 
+					geometry={feature.geometry} 
+					isAnnotation={isAnnotation} 
+					isExternal={isExternal || isExternalPlaceholder}
+				/>
 
 				<span className="flex-1 text-left truncate text-gray-700">{name}</span>
 			</div>
 
+			{/* External placeholder info */}
+			{isExternalPlaceholder && !hasGeometry && (
+				<div className="border-t border-sky-100 px-2 py-1.5 text-[11px] text-sky-600">
+					<span className="flex items-center gap-1">
+						<Cloud className="h-3 w-3" />
+						Geometry stored externally
+					</span>
+					{feature.properties?.blobUrl && (
+						<span className="block truncate text-[10px] text-sky-500 mt-0.5">
+							{feature.properties.blobUrl}
+						</span>
+					)}
+				</div>
+			)}
+
 			{/* Expanded content */}
-			{isExpanded && (
+			{isExpanded && hasGeometry && (
 				<div className="border-t border-gray-100 px-2 py-2 bg-gray-50/50 space-y-2">
 					{/* Annotation text */}
 					{isAnnotation && feature.properties?.text && (
@@ -61,7 +94,7 @@ function ReadOnlyFeatureRow({
 					)}
 
 					{/* Geometry coordinates */}
-					<GeometryDisplay geometry={feature.geometry} />
+					{feature.geometry && <GeometryDisplay geometry={feature.geometry} />}
 				</div>
 			)}
 		</div>
@@ -106,9 +139,13 @@ export function DatasetFeaturesList({ featureCollection, className }: DatasetFea
 		<div className={cn('space-y-1', className)}>
 			{features.map((feature, index) => {
 				const isAnnotation = feature.properties?.featureType === 'annotation'
+				const isExternalPlaceholder = feature.properties?.externalPlaceholder === true
+				
 				let name = feature.properties?.name as string | undefined
 				if (!name) {
-					if (isAnnotation) {
+					if (isExternalPlaceholder) {
+						name = 'External geometry'
+					} else if (isAnnotation) {
 						const text = feature.properties?.text as string | undefined
 						name = text ? `"${text.slice(0, 20)}${text.length > 20 ? '…' : ''}"` : 'Annotation'
 					} else {
@@ -120,13 +157,15 @@ export function DatasetFeaturesList({ featureCollection, className }: DatasetFea
 				return (
 					<ReadOnlyFeatureRow
 						key={feature.id ?? index}
-						feature={feature}
+						feature={feature as Feature<Geometry | null, GeoJsonProperties>}
 						name={name}
 						isExpanded={expandedIds.has(index)}
 						onToggleExpand={() => toggleExpand(index)}
+						isExternal={isExternalPlaceholder}
 					/>
 				)
 			})}
 		</div>
 	)
 }
+

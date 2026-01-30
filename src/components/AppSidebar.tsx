@@ -31,18 +31,9 @@ import {
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from './ui/resizable'
 import { MapSettingsPanel } from '../features/geo-editor/components/MapSettingsPanel'
 import { useEditorStore } from '../features/geo-editor/store'
+import { useRouting, type SidebarViewMode } from '../features/geo-editor/hooks/useRouting'
 import type { GeoFeatureItem } from './editor/GeoRichTextEditor'
 import type { EditorFeature } from '../features/geo-editor/core'
-
-/** Sidebar view modes */
-type SidebarViewMode =
-	| 'datasets'
-	| 'collections'
-	| 'combined'
-	| 'edit'
-	| 'posts'
-	| 'settings'
-	| 'help'
 
 /** Navigation items for main view modes (shown in the main icon list) */
 const mainNavItems: {
@@ -114,6 +105,9 @@ interface AppSidebarProps {
 	onCloseCollectionEditor?: () => void
 	onZoomToFeature?: (feature: EditorFeature) => void
 	onExitViewMode?: () => void
+	// Blossom upload props
+	featureCollectionForUpload?: FeatureCollection | null
+	onBlossomUploadComplete?: (result: { sha256: string; url: string; size: number }) => void
 }
 
 export function AppSidebar({
@@ -156,10 +150,13 @@ export function AppSidebar({
 	onCloseCollectionEditor,
 	onZoomToFeature,
 	onExitViewMode,
+	// Blossom upload props
+	featureCollectionForUpload,
+	onBlossomUploadComplete,
 }: AppSidebarProps) {
 	const { setOpen } = useSidebar()
 	const viewMode = useEditorStore((state) => state.sidebarViewMode)
-	const setViewMode = useEditorStore((state) => state.setSidebarViewMode)
+	const { navigateToView } = useRouting()
 
 	/** Common props for GeoDatasetsPanelContent */
 	const datasetsPanelProps = {
@@ -216,6 +213,8 @@ export function AppSidebar({
 		onSaveCollection,
 		onCloseCollectionEditor,
 		onZoomToFeature,
+		featureCollectionForUpload,
+		onBlossomUploadComplete,
 	}
 
 	/** Render the main content based on view mode */
@@ -296,7 +295,7 @@ export function AppSidebar({
 										<SidebarMenuButton
 											tooltip={{ children: item.title, hidden: false }}
 											onClick={() => {
-												setViewMode(item.mode)
+												navigateToView(item.mode)
 												setOpen(true)
 											}}
 											isActive={viewMode === item.mode}
@@ -319,7 +318,7 @@ export function AppSidebar({
 								<SidebarMenuButton
 									tooltip={{ children: item.title, hidden: false }}
 									onClick={() => {
-										setViewMode(item.mode)
+										navigateToView(item.mode)
 										setOpen(true)
 									}}
 									isActive={viewMode === item.mode}

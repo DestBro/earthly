@@ -10,11 +10,13 @@ import {
 	GeometriesTable,
 	ViewModePanel,
 } from './info-panel'
+import { DatasetSizeIndicator } from './info-panel/DatasetSizeIndicator'
 import { GeoCollectionEditorPanel } from './GeoCollectionEditorPanel'
 import { Button } from './ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
 import type { GeoFeatureItem } from './editor/GeoRichTextEditor'
 import type { EditorFeature } from '../features/geo-editor/core'
+import type { BlossomUploadResult } from '../lib/blossom/blossomUpload'
 
 export interface GeoEditorInfoPanelProps {
 	currentUserPubkey?: string
@@ -53,6 +55,10 @@ export interface GeoEditorInfoPanelProps {
 	onCloseCollectionEditor?: () => void
 	/** Callback when a feature is zoomed to from the geometries list */
 	onZoomToFeature?: (feature: EditorFeature) => void
+	/** Current feature collection for size checking */
+	featureCollectionForUpload?: FeatureCollection | null
+	/** Callback when blossom upload completes */
+	onBlossomUploadComplete?: (result: BlossomUploadResult) => void
 }
 
 export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
@@ -79,6 +85,8 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 		onSaveCollection,
 		onCloseCollectionEditor,
 		onZoomToFeature,
+		featureCollectionForUpload,
+		onBlossomUploadComplete,
 	} = props
 
 	// Store state
@@ -187,6 +195,14 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 				<span>{stats.lines} lines</span>
 				<span>{stats.polygons} polys</span>
 			</div>
+
+			{/* Dataset size indicator - shows warning when over limit */}
+			{featureCollectionForUpload && (
+				<DatasetSizeIndicator
+					featureCollection={featureCollectionForUpload}
+					onUploadComplete={onBlossomUploadComplete}
+				/>
+			)}
 
 			{/* Dataset Metadata - collapsible */}
 			<Collapsible defaultOpen>

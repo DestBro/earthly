@@ -1,12 +1,13 @@
 import type NDK from '@nostr-dev-kit/ndk'
 import type { FeatureCollection } from 'geojson'
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import type { GeoBlobReference, NDKGeoEvent } from '../../../lib/ndk/NDKGeoEvent'
 import { NDKGeoEvent as NDKGeoEventClass } from '../../../lib/ndk/NDKGeoEvent'
 import type { EditorFeature } from '../core'
 import { useEditorStore } from '../store'
 import type { EditorBlobReference } from '../types'
 import { extractCollectionMeta, sanitizeEditorProperties } from '../utils'
+import { BLOSSOM_UPLOAD_THRESHOLD_BYTES } from '../constants'
 
 interface UsePublishingOptions {
 	ndk: NDK | undefined
@@ -35,6 +36,10 @@ export function usePublishing({
 	const setActiveDataset = useEditorStore((state) => state.setActiveDataset)
 	const setCollectionMeta = useEditorStore((state) => state.setCollectionMeta)
 	const setSelectedFeatureIds = useEditorStore((state) => state.setSelectedFeatureIds)
+	
+	// Blossom dialog state
+	const setBlossomUploadDialogOpen = useEditorStore((state) => state.setBlossomUploadDialogOpen)
+	const setPendingPublishCollection = useEditorStore((state) => state.setPendingPublishCollection)
 
 	const serializeEditorFeature = useCallback((feature: EditorFeature) => {
 		const sanitized = sanitizeEditorProperties(
@@ -143,7 +148,30 @@ export function usePublishing({
 		serializeEditorFeature,
 	])
 
-	const handlePublishNew = useCallback(async () => {
+	/**
+	 * Calculate the serialized size of a FeatureCollection in bytes.
+	 */
+	const getCollectionSize = useCallback((collection: FeatureCollection): number => {
+		const jsonString = JSON.stringify(collection)
+		return new TextEncoder().encode(jsonString).length
+	}, [])
+
+	/**
+	 * Check if the collection exceeds the size threshold.
+	 */
+	const isOverSizeLimit = useCallback((collection: FeatureCollection): boolean => {
+		return getCollectionSize(collection) > BLOSSOM_UPLOAD_THRESHOLD_BYTES
+	}, [getCollectionSize])
+
+	/**
+	 * Current collection size for display (memoized).
+	 */
+	const currentCollectionSize = useMemo(() => {
+		const collection = buildCollectionFromEditor()
+		return collection ? getCollectionSize(collection) : 0
+	}, [buildCollectionFromEditor, getCollectionSize])
+
+	const handlePublishNew = useCallback(async (options?: { skipSizeCheck?: boolean }) => {
 		if (!editor) return
 		setIsPublishing(true)
 		setPublishMessage('Preparing dataset...')
@@ -152,6 +180,14 @@ export function usePublishing({
 		try {
 			const collection = buildCollectionFromEditor()
 			if (!collection) throw new Error('No features to publish')
+
+			// Check size and optionally show blossom dialog
+			if (!options?.skipSizeCheck && isOverSizeLimit(collection)) {
+				setIsPublishing(false)
+				setPendingPublishCollection(collection)
+				setBlossomUploadDialogOpen(true)
+				return
+			}
 
 			if (!ndk) {
 				setPublishError('NDK is not ready.')
@@ -178,11 +214,104 @@ export function usePublishing({
 		setPublishMessage,
 		setPublishError,
 		buildCollectionFromEditor,
+		isOverSizeLimit,
+		setPendingPublishCollection,
+		setBlossomUploadDialogOpen,
 		ndk,
 		serializeBlobReferences,
 		setActiveDataset,
 		setCollectionMeta,
 		setSelectedFeatureIds,
+	])
+
+	/**
+	 * Complete publishing with blossom blob reference.
+	 * Creates a stub event with centroid and blob reference.
+	 */
+	const handlePublishWithBlossomUpload = useCallback(async (
+		blobResult: { sha256: string; url: string; size: number }
+	) => {
+		if (!ndk) {
+			setPublishError('NDK is not ready.')
+			return
+		}
+
+		setIsPublishing(true)
+		setPublishMessage('Publishing with external reference...')
+		setPublishError(null)
+
+		try {
+			const collection = buildCollectionFromEditor()
+			if (!collection) throw new Error('No features to publish')
+
+			// Create a stub collection with metadata only
+			// Include a centroid point as preview
+			const stubCollection: FeatureCollection & { 
+				name?: string
+				description?: string 
+				properties?: Record<string, any>
+			} = {
+				type: 'FeatureCollection',
+				features: [{
+					type: 'Feature',
+					id: 'external-geometry-placeholder',
+					geometry: null,
+					properties: {
+						externalPlaceholder: true,
+						blobUrl: blobResult.url,
+						name: 'External geometry',
+					},
+				} as any],
+			}
+
+			// Copy metadata from original collection
+			if ((collection as any).name) stubCollection.name = (collection as any).name
+			if ((collection as any).description) stubCollection.description = (collection as any).description
+			if ((collection as any).properties) stubCollection.properties = (collection as any).properties
+
+			const event = new NDKGeoEventClass(ndk)
+			event.featureCollection = stubCollection
+
+			// Add the blob reference for the full collection
+			const existingRefs = serializeBlobReferences()
+			event.blobReferences = [
+				...existingRefs,
+				{
+					scope: 'collection',
+					url: blobResult.url,
+					sha256: blobResult.sha256,
+					size: blobResult.size,
+					mimeType: 'application/geo+json',
+				},
+			]
+
+			await event.publishNew()
+			setPublishMessage('Dataset published with external reference.')
+			setActiveDataset(event)
+			setCollectionMeta(extractCollectionMeta(collection))
+			setSelectedFeatureIds([])
+			
+			// Clean up dialog state
+			setPendingPublishCollection(null)
+			setBlossomUploadDialogOpen(false)
+		} catch (error) {
+			console.error('Failed to publish with blossom', error)
+			setPublishError('Failed to publish. Check console for details.')
+		} finally {
+			setIsPublishing(false)
+		}
+	}, [
+		ndk,
+		setIsPublishing,
+		setPublishMessage,
+		setPublishError,
+		buildCollectionFromEditor,
+		serializeBlobReferences,
+		setActiveDataset,
+		setCollectionMeta,
+		setSelectedFeatureIds,
+		setPendingPublishCollection,
+		setBlossomUploadDialogOpen,
 	])
 
 	const handlePublishUpdate = useCallback(async () => {
@@ -322,8 +451,14 @@ export function usePublishing({
 		handlePublishUpdate,
 		handlePublishCopy,
 		handleDeleteDataset,
+		handlePublishWithBlossomUpload,
 		buildCollectionFromEditor,
 		serializeBlobReferences,
+		// Size helpers
+		getCollectionSize,
+		isOverSizeLimit,
+		currentCollectionSize,
+		sizeThreshold: BLOSSOM_UPLOAD_THRESHOLD_BYTES,
 		// Computed
 		canPublishNew,
 		canPublishUpdate,
