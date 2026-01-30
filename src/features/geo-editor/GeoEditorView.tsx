@@ -1280,6 +1280,10 @@ export function GeoEditorView() {
 	// Resolve naddr to dataset
 	const resolveNaddrToDataset = useCallback(
 		(address: string): NDKGeoEvent | null => {
+			// Skip non-naddr addresses (e.g., legacy UUIDs or malformed data)
+			if (!address || !address.startsWith('naddr1')) {
+				return null
+			}
 			try {
 				// Decode naddr to get kind, pubkey, identifier
 				const { nip19 } = require('nostr-tools')

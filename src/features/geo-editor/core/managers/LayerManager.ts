@@ -296,7 +296,7 @@ export class LayerManager {
 						'circle-radius': [
 							'case',
 							['==', ['get', 'active'], true],
-							['coalesce', ['+', ['get', 'radius'], 2], 8],
+							['+', ['coalesce', ['get', 'radius'], 6], 2],
 							['coalesce', ['get', 'radius'], 6],
 						],
 						'circle-color': [
