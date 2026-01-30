@@ -261,16 +261,25 @@ export class NDKGeoEvent extends NDKEvent {
 		}
 	}
 
-	private async prepareForPublish(signer?: NDKSigner): Promise<void> {
+	private async prepareForPublish(
+		signer?: NDKSigner,
+		options?: { skipMetadataUpdate?: boolean },
+	): Promise<void> {
 		this.kind = NDKGeoEvent.kinds[0]
 		this.ensureDatasetId()
-		this.updateDerivedMetadata()
+		// Allow skipping metadata update if it was pre-computed (e.g., for stub events)
+		if (!options?.skipMetadataUpdate) {
+			this.updateDerivedMetadata()
+		}
 		await this.updateChecksum()
 		await this.sign(signer)
 	}
 
-	async publishNew(signer?: NDKSigner): Promise<NDKGeoEvent> {
-		await this.prepareForPublish(signer)
+	async publishNew(
+		signer?: NDKSigner,
+		options?: { skipMetadataUpdate?: boolean },
+	): Promise<NDKGeoEvent> {
+		await this.prepareForPublish(signer, options)
 		await this.publish()
 		return this
 	}

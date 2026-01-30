@@ -55,7 +55,6 @@ const BLOB_PREVIEW_SOURCE_ID = 'geo-editor-blob-preview'
 const BLOB_PREVIEW_FILL_LAYER = 'geo-editor-blob-preview-fill'
 const BLOB_PREVIEW_LINE_LAYER = 'geo-editor-blob-preview-line'
 
-
 export {
 	REMOTE_FILL_LAYER,
 	REMOTE_LINE_LAYER,
@@ -144,7 +143,13 @@ export function useMapLayers({
 							['==', ['geometry-type'], 'MultiPolygon'],
 						],
 						paint: {
-							'line-color': ['coalesce', ['get', 'strokeColor'], ['get', 'fillColor'], ['get', 'color'], '#1d4ed8'],
+							'line-color': [
+								'coalesce',
+								['get', 'strokeColor'],
+								['get', 'fillColor'],
+								['get', 'color'],
+								'#1d4ed8',
+							],
 							'line-width': ['coalesce', ['get', 'strokeWidth'], 2],
 						},
 					})
@@ -206,7 +211,7 @@ export function useMapLayers({
 					})
 				}
 
-					// Annotation text layer
+				// Annotation text layer
 				if (
 					textFont &&
 					mapInstance.isStyleLoaded() &&
@@ -239,20 +244,12 @@ export function useMapLayers({
 				}
 
 				// Feature label layer (for non-annotation features with labels)
-				if (
-					textFont &&
-					mapInstance.isStyleLoaded() &&
-					!mapInstance.getLayer(REMOTE_LABEL_LAYER)
-				) {
+				if (textFont && mapInstance.isStyleLoaded() && !mapInstance.getLayer(REMOTE_LABEL_LAYER)) {
 					mapInstance.addLayer({
 						id: REMOTE_LABEL_LAYER,
 						type: 'symbol',
 						source: REMOTE_SOURCE_ID,
-						filter: [
-							'all',
-							['has', 'label'],
-							['!=', ['get', 'featureType'], 'annotation'],
-						],
+						filter: ['all', ['has', 'label'], ['!=', ['get', 'featureType'], 'annotation']],
 						layout: {
 							'text-field': ['get', 'label'],
 							'text-font': textFont,
@@ -362,7 +359,17 @@ export function useMapLayers({
 				visibleGeoEvents,
 				resolvedCollectionResolver,
 			)
-			source.setData(collection)
+
+			// Filter out placeholder features and features with null geometry
+			// to prevent MapLibre expression evaluation errors
+			const filteredCollection = {
+				...collection,
+				features: collection.features.filter(
+					(f) => f.geometry !== null && !(f.properties as any)?.externalPlaceholder,
+				),
+			}
+
+			source.setData(filteredCollection)
 		} catch {
 			// Map may have been removed during source switch
 		}

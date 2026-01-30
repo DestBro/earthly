@@ -31,7 +31,8 @@ const MAP_CHUNKS_DIR = isProduction
 // Blossom BUD-01 CORS headers
 const BLOSSOM_CORS_HEADERS = {
 	'Access-Control-Allow-Origin': '*',
-	'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-SHA-256, X-Content-Type, X-Content-Length, *',
+	'Access-Control-Allow-Headers':
+		'Authorization, Content-Type, X-SHA-256, X-Content-Type, X-Content-Length, *',
 	'Access-Control-Allow-Methods': 'GET, HEAD, PUT, DELETE, OPTIONS',
 	'Access-Control-Max-Age': '86400',
 }
@@ -47,7 +48,9 @@ const MIME_TYPES: Record<string, string> = {
 	webp: 'image/webp',
 	svg: 'image/svg+xml',
 	json: 'application/json',
+	geojson: 'application/geo+json',
 	txt: 'text/plain',
+	bin: 'application/octet-stream',
 }
 
 // Reverse lookup: MIME type to extension
@@ -60,6 +63,7 @@ const EXT_FROM_MIME: Record<string, string> = {
 	'image/webp': 'webp',
 	'image/svg+xml': 'svg',
 	'application/json': 'json',
+	'application/geo+json': 'geojson',
 	'text/plain': 'txt',
 }
 
@@ -79,7 +83,18 @@ async function resolveBlob(
 	sha256: string,
 ): Promise<{ file: ReturnType<typeof Bun.file>; ext: string } | null> {
 	// Try to find the file with various extensions
-	const extensions = ['pmtiles', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'json']
+	const extensions = [
+		'pmtiles',
+		'pdf',
+		'png',
+		'jpg',
+		'jpeg',
+		'gif',
+		'webp',
+		'json',
+		'geojson',
+		'bin',
+	]
 
 	for (const ext of extensions) {
 		const filePath = join(MAP_CHUNKS_DIR, `${sha256}.${ext}`)
@@ -234,7 +249,7 @@ async function handleUpload(req: Request): Promise<Response> {
 		{
 			status: 200,
 			headers: BLOSSOM_CORS_HEADERS,
-		}
+		},
 	)
 }
 
@@ -357,4 +372,3 @@ console.log(`🌸 Blossom server running at http://localhost:${PORT}/`)
 console.log(`📂 Serving map-chunks from: ${MAP_CHUNKS_DIR}`)
 console.log(`🌍 Environment: ${isProduction ? 'production' : 'development'}`)
 console.log(`📤 Upload endpoint: PUT http://localhost:${PORT}/upload`)
-

@@ -288,6 +288,35 @@ export function GeoEditorView() {
 		getDatasetKey,
 	})
 
+	/**
+	 * Callback for when a Blossom upload completes.
+	 * Adds the blob reference to the store WITHOUT publishing.
+	 * User must click "Publish" separately to publish the dataset.
+	 */
+	const handleBlobUploadComplete = useCallback((result: { sha256: string; url: string; size: number }) => {
+		const newRef = {
+			id: crypto.randomUUID(),
+			scope: 'collection' as const,
+			url: result.url,
+			sha256: result.sha256,
+			size: result.size,
+			mimeType: 'application/geo+json',
+			status: 'ready' as const,
+		}
+		useEditorStore.getState().setBlobReferences([
+			...useEditorStore.getState().blobReferences,
+			newRef,
+		])
+	}, [])
+
+	// Memoize the collection to prevent expensive recalculation on every render
+	// Only compute when in edit mode to avoid unnecessary work
+	const memoizedFeatureCollection = useMemo(() => {
+		// Only compute when viewMode is 'edit' - this is when DatasetSizeIndicator is shown
+		if (viewMode !== 'edit') return null
+		return buildCollectionFromEditor()
+	}, [buildCollectionFromEditor, viewMode])
+
 	const {
 		infoMode,
 		setInfoMode,
@@ -618,21 +647,42 @@ export function GeoEditorView() {
 		}
 	}, [isMobile])
 
-	// Preload blob references for datasets
+	// Track which events have been processed for blob resolution to avoid re-processing
+	const processedBlobEventsRef = useRef<Set<string>>(new Set())
+
+	// Preload blob references for datasets - only process new events once
 	useEffect(() => {
 		let cancelled = false
+		const eventsToProcess = geoEvents.filter(
+			(event) =>
+				event.blobReferences.length > 0 &&
+				event.id &&
+				!processedBlobEventsRef.current.has(event.id)
+		)
+
+		if (eventsToProcess.length === 0) return
+
 		;(async () => {
-			for (const event of geoEvents) {
+			let resolvedAny = false
+			for (const event of eventsToProcess) {
 				if (cancelled) break
-				if (event.blobReferences.length === 0) continue
 				try {
 					await ensureResolvedFeatureCollection(event)
-					if (isMountedRef.current) {
-						setResolvedCollectionsVersion((v) => v + 1)
+					if (event.id) {
+						processedBlobEventsRef.current.add(event.id)
 					}
+					resolvedAny = true
 				} catch (error) {
 					console.warn('Failed to resolve external blob for dataset', event.id, error)
+					// Mark as processed even on error to avoid retry loops
+					if (event.id) {
+						processedBlobEventsRef.current.add(event.id)
+					}
 				}
+			}
+			// Only update version once after all events are processed
+			if (resolvedAny && isMountedRef.current && !cancelled) {
+				setResolvedCollectionsVersion((v) => v + 1)
 			}
 		})()
 		return () => {
@@ -1539,9 +1589,10 @@ export function GeoEditorView() {
 					onCloseCollectionEditor={handleCloseCollectionEditor}
 					onZoomToFeature={handleZoomToFeature}
 					onExitViewMode={exitViewMode}
-					// Blossom upload props
-					featureCollectionForUpload={buildCollectionFromEditor()}
-					onBlossomUploadComplete={handlePublishWithBlossomUpload}
+					// Blossom upload props - callback adds blob ref to store, does NOT publish
+					featureCollectionForUpload={memoizedFeatureCollection}
+					onBlossomUploadComplete={handleBlobUploadComplete}
+					ndk={ndk}
 				/>
 			)}
 
@@ -1730,8 +1781,9 @@ export function GeoEditorView() {
 									onSaveCollection={handleSaveCollection}
 									onCloseCollectionEditor={handleCloseCollectionEditor}
 									onZoomToFeature={handleZoomToFeature}
-									featureCollectionForUpload={buildCollectionFromEditor()}
-									onBlossomUploadComplete={handlePublishWithBlossomUpload}
+									featureCollectionForUpload={memoizedFeatureCollection}
+									onBlossomUploadComplete={handleBlobUploadComplete}
+									ndk={ndk}
 								/>
 							</div>
 						</SheetContent>
@@ -1905,15 +1957,15 @@ export function GeoEditorView() {
 			<BlossomUploadDialog
 				open={blossomUploadDialogOpen}
 				onOpenChange={setBlossomUploadDialogOpen}
-				geojson={pendingPublishCollection ?? buildCollectionFromEditor()}
-				onUploadComplete={(result) => {
-					handlePublishWithBlossomUpload(result)
-				}}
+				geojson={pendingPublishCollection ?? memoizedFeatureCollection}
+				onUploadComplete={handleBlobUploadComplete}
+				onPublishWithUpload={handlePublishWithBlossomUpload}
 				onSkip={() => {
 					handlePublishNew({ skipSizeCheck: true })
 				}}
 				allowSkip={false}
 				title="Dataset Size Warning"
+				ndk={ndk}
 			/>
 
 			{/* Import OSM Dialog */}

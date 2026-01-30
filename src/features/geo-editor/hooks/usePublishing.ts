@@ -36,7 +36,7 @@ export function usePublishing({
 	const setActiveDataset = useEditorStore((state) => state.setActiveDataset)
 	const setCollectionMeta = useEditorStore((state) => state.setCollectionMeta)
 	const setSelectedFeatureIds = useEditorStore((state) => state.setSelectedFeatureIds)
-	
+
 	// Blossom dialog state
 	const setBlossomUploadDialogOpen = useEditorStore((state) => state.setBlossomUploadDialogOpen)
 	const setPendingPublishCollection = useEditorStore((state) => state.setPendingPublishCollection)
@@ -159,9 +159,12 @@ export function usePublishing({
 	/**
 	 * Check if the collection exceeds the size threshold.
 	 */
-	const isOverSizeLimit = useCallback((collection: FeatureCollection): boolean => {
-		return getCollectionSize(collection) > BLOSSOM_UPLOAD_THRESHOLD_BYTES
-	}, [getCollectionSize])
+	const isOverSizeLimit = useCallback(
+		(collection: FeatureCollection): boolean => {
+			return getCollectionSize(collection) > BLOSSOM_UPLOAD_THRESHOLD_BYTES
+		},
+		[getCollectionSize],
+	)
 
 	/**
 	 * Current collection size for display (memoized).
@@ -171,7 +174,7 @@ export function usePublishing({
 		return collection ? getCollectionSize(collection) : 0
 	}, [buildCollectionFromEditor, getCollectionSize])
 
-	const handlePublishNew = useCallback(async (options?: { skipSizeCheck?: boolean }) => {
+	const handlePublishNew = useCallback(async () => {
 		if (!editor) return
 		setIsPublishing(true)
 		setPublishMessage('Preparing dataset...')
@@ -181,23 +184,61 @@ export function usePublishing({
 			const collection = buildCollectionFromEditor()
 			if (!collection) throw new Error('No features to publish')
 
-			// Check size and optionally show blossom dialog
-			if (!options?.skipSizeCheck && isOverSizeLimit(collection)) {
-				setIsPublishing(false)
-				setPendingPublishCollection(collection)
-				setBlossomUploadDialogOpen(true)
-				return
-			}
-
 			if (!ndk) {
 				setPublishError('NDK is not ready.')
 				return
 			}
 
+			const refs = serializeBlobReferences()
+			const collectionBlobRef = refs.find((ref) => ref.scope === 'collection')
+
 			const event = new NDKGeoEventClass(ndk)
-			event.featureCollection = collection
-			event.blobReferences = serializeBlobReferences()
-			await event.publishNew()
+
+			if (collectionBlobRef) {
+				// Publish as STUB with external reference (per SPEC.md section 1.5)
+				// Compute metadata from FULL collection first, then set stub content
+				event.featureCollection = collection
+				event.updateDerivedMetadata() // Computes bbox, geohash from full geometry
+
+				// Now replace content with stub - keeping the computed metadata tags
+				const stubCollection: FeatureCollection & {
+					name?: string
+					description?: string
+					properties?: Record<string, any>
+				} = {
+					type: 'FeatureCollection',
+					features: [
+						{
+							type: 'Feature',
+							id: 'external-geometry-placeholder',
+							geometry: null,
+							properties: {
+								externalPlaceholder: true,
+								blobUrl: collectionBlobRef.url,
+								name: 'External geometry',
+							},
+						} as any,
+					],
+				}
+
+				// Copy metadata from original collection for discovery
+				if ((collection as any).name) stubCollection.name = (collection as any).name
+				if ((collection as any).description)
+					stubCollection.description = (collection as any).description
+				if ((collection as any).properties)
+					stubCollection.properties = (collection as any).properties
+
+				// Set stub as content (metadata tags already computed above)
+				event.content = JSON.stringify(stubCollection)
+				event.blobReferences = refs
+				// Skip metadata update since we pre-computed from full collection
+				await event.publishNew(undefined, { skipMetadataUpdate: true })
+			} else {
+				// Publish with full geometry inline (standard case)
+				event.featureCollection = collection
+				event.blobReferences = refs
+				await event.publishNew()
+			}
 			setPublishMessage('Dataset published successfully.')
 			setActiveDataset(event)
 			setCollectionMeta(extractCollectionMeta(collection))
@@ -214,9 +255,6 @@ export function usePublishing({
 		setPublishMessage,
 		setPublishError,
 		buildCollectionFromEditor,
-		isOverSizeLimit,
-		setPendingPublishCollection,
-		setBlossomUploadDialogOpen,
 		ndk,
 		serializeBlobReferences,
 		setActiveDataset,
@@ -228,91 +266,96 @@ export function usePublishing({
 	 * Complete publishing with blossom blob reference.
 	 * Creates a stub event with centroid and blob reference.
 	 */
-	const handlePublishWithBlossomUpload = useCallback(async (
-		blobResult: { sha256: string; url: string; size: number }
-	) => {
-		if (!ndk) {
-			setPublishError('NDK is not ready.')
-			return
-		}
-
-		setIsPublishing(true)
-		setPublishMessage('Publishing with external reference...')
-		setPublishError(null)
-
-		try {
-			const collection = buildCollectionFromEditor()
-			if (!collection) throw new Error('No features to publish')
-
-			// Create a stub collection with metadata only
-			// Include a centroid point as preview
-			const stubCollection: FeatureCollection & { 
-				name?: string
-				description?: string 
-				properties?: Record<string, any>
-			} = {
-				type: 'FeatureCollection',
-				features: [{
-					type: 'Feature',
-					id: 'external-geometry-placeholder',
-					geometry: null,
-					properties: {
-						externalPlaceholder: true,
-						blobUrl: blobResult.url,
-						name: 'External geometry',
-					},
-				} as any],
+	const handlePublishWithBlossomUpload = useCallback(
+		async (blobResult: { sha256: string; url: string; size: number }) => {
+			if (!ndk) {
+				setPublishError('NDK is not ready.')
+				return
 			}
 
-			// Copy metadata from original collection
-			if ((collection as any).name) stubCollection.name = (collection as any).name
-			if ((collection as any).description) stubCollection.description = (collection as any).description
-			if ((collection as any).properties) stubCollection.properties = (collection as any).properties
+			setIsPublishing(true)
+			setPublishMessage('Publishing with external reference...')
+			setPublishError(null)
 
-			const event = new NDKGeoEventClass(ndk)
-			event.featureCollection = stubCollection
+			try {
+				const collection = buildCollectionFromEditor()
+				if (!collection) throw new Error('No features to publish')
 
-			// Add the blob reference for the full collection
-			const existingRefs = serializeBlobReferences()
-			event.blobReferences = [
-				...existingRefs,
-				{
-					scope: 'collection',
-					url: blobResult.url,
-					sha256: blobResult.sha256,
-					size: blobResult.size,
-					mimeType: 'application/geo+json',
-				},
-			]
+				// Create a stub collection with metadata only
+				// Include a centroid point as preview
+				const stubCollection: FeatureCollection & {
+					name?: string
+					description?: string
+					properties?: Record<string, any>
+				} = {
+					type: 'FeatureCollection',
+					features: [
+						{
+							type: 'Feature',
+							id: 'external-geometry-placeholder',
+							geometry: null,
+							properties: {
+								externalPlaceholder: true,
+								blobUrl: blobResult.url,
+								name: 'External geometry',
+							},
+						} as any,
+					],
+				}
 
-			await event.publishNew()
-			setPublishMessage('Dataset published with external reference.')
-			setActiveDataset(event)
-			setCollectionMeta(extractCollectionMeta(collection))
-			setSelectedFeatureIds([])
-			
-			// Clean up dialog state
-			setPendingPublishCollection(null)
-			setBlossomUploadDialogOpen(false)
-		} catch (error) {
-			console.error('Failed to publish with blossom', error)
-			setPublishError('Failed to publish. Check console for details.')
-		} finally {
-			setIsPublishing(false)
-		}
-	}, [
-		ndk,
-		setIsPublishing,
-		setPublishMessage,
-		setPublishError,
-		buildCollectionFromEditor,
-		serializeBlobReferences,
-		setActiveDataset,
-		setCollectionMeta,
-		setSelectedFeatureIds,
-		setPendingPublishCollection,
-		setBlossomUploadDialogOpen,
-	])
+				// Copy metadata from original collection
+				if ((collection as any).name) stubCollection.name = (collection as any).name
+				if ((collection as any).description)
+					stubCollection.description = (collection as any).description
+				if ((collection as any).properties)
+					stubCollection.properties = (collection as any).properties
+
+				const event = new NDKGeoEventClass(ndk)
+				event.featureCollection = stubCollection
+
+				// Add the blob reference for the full collection
+				const existingRefs = serializeBlobReferences()
+				event.blobReferences = [
+					...existingRefs,
+					{
+						scope: 'collection',
+						url: blobResult.url,
+						sha256: blobResult.sha256,
+						size: blobResult.size,
+						mimeType: 'application/geo+json',
+					},
+				]
+
+				await event.publishNew()
+				setPublishMessage('Dataset published with external reference.')
+				setActiveDataset(event)
+				setCollectionMeta(extractCollectionMeta(collection))
+				setSelectedFeatureIds([])
+
+				// Clean up dialog state
+				setPendingPublishCollection(null)
+				setBlossomUploadDialogOpen(false)
+			} catch (error) {
+				console.error('Failed to publish with blossom', error)
+				setPublishError('Failed to publish. Check console for details.')
+			} finally {
+				setIsPublishing(false)
+			}
+		},
+		[
+			ndk,
+			setIsPublishing,
+			setPublishMessage,
+			setPublishError,
+			buildCollectionFromEditor,
+			serializeBlobReferences,
+			setActiveDataset,
+			setCollectionMeta,
+			setSelectedFeatureIds,
+			setPendingPublishCollection,
+			setBlossomUploadDialogOpen,
+		],
+	)
 
 	const handlePublishUpdate = useCallback(async () => {
 		if (!editor || !activeDataset) return
@@ -438,8 +481,18 @@ export function usePublishing({
 		[ndk, activeDataset, getDatasetKey, getDatasetName],
 	)
 
+	// Check if there's a collection blob reference (uploaded to Blossom)
+	const hasCollectionBlob = blobReferences.some(
+		(ref) => ref.scope === 'collection' && ref.url && ref.status === 'ready',
+	)
+
 	// Computed permissions
-	const canPublishNew = features.length > 0 && !activeDataset
+	// Can publish new if: has features, no active dataset, and (not over size OR has blob uploaded)
+	const collection = buildCollectionFromEditor()
+	const canPublishNew =
+		features.length > 0 &&
+		!activeDataset &&
+		(hasCollectionBlob || (collection ? !isOverSizeLimit(collection) : true))
 	const canPublishUpdate =
 		!!activeDataset && currentUserPubkey === activeDataset?.pubkey && features.length > 0
 	const canPublishCopy =

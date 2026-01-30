@@ -108,6 +108,8 @@ interface AppSidebarProps {
 	// Blossom upload props
 	featureCollectionForUpload?: FeatureCollection | null
 	onBlossomUploadComplete?: (result: { sha256: string; url: string; size: number }) => void
+	/** NDK instance for authenticated uploads */
+	ndk?: import('@nostr-dev-kit/ndk').default | null
 }
 
 export function AppSidebar({
@@ -153,6 +155,7 @@ export function AppSidebar({
 	// Blossom upload props
 	featureCollectionForUpload,
 	onBlossomUploadComplete,
+	ndk,
 }: AppSidebarProps) {
 	const { setOpen } = useSidebar()
 	const viewMode = useEditorStore((state) => state.sidebarViewMode)
@@ -215,6 +218,7 @@ export function AppSidebar({
 		onZoomToFeature,
 		featureCollectionForUpload,
 		onBlossomUploadComplete,
+		ndk,
 	}
 
 	/** Render the main content based on view mode */

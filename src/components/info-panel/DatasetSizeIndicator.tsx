@@ -3,10 +3,14 @@
  * 
  * Shows the current dataset size with a progress bar relative to the upload threshold.
  * Displays a warning when over limit and offers to upload to Blossom.
+ * 
+ * NOTE: This component does NOT auto-publish. It only uploads the blob and calls
+ * onUploadComplete with the result. The parent component decides what to do with it.
  */
 
-import { AlertTriangle, CloudUpload, CheckCircle2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { AlertTriangle, CloudUpload, CheckCircle2, Copy, ExternalLink } from 'lucide-react'
+import { useMemo, useState, useCallback } from 'react'
+import { toast } from 'sonner'
 import { Progress } from '../ui/progress'
 import { Button } from '../ui/button'
 import { 
@@ -23,11 +27,13 @@ import { cn } from '@/lib/utils'
 interface DatasetSizeIndicatorProps {
 	/** The current feature collection to measure */
 	featureCollection: FeatureCollection | null
-	/** Called when upload completes successfully */
+	/** Called when upload completes - should add blob reference to store, NOT publish */
 	onUploadComplete?: (result: BlossomUploadResult) => void
 	/** Show compact version */
 	compact?: boolean
 	className?: string
+	/** NDK instance for authenticated uploads */
+	ndk?: import('@nostr-dev-kit/ndk').default | null
 }
 
 export function DatasetSizeIndicator({
@@ -35,9 +41,12 @@ export function DatasetSizeIndicator({
 	onUploadComplete,
 	compact = false,
 	className,
+	ndk,
 }: DatasetSizeIndicatorProps) {
 	const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle')
 	const [uploadError, setUploadError] = useState<string | null>(null)
+	const [uploadResult, setUploadResult] = useState<BlossomUploadResult | null>(null)
+	const [copied, setCopied] = useState(false)
 
 	const { size, percentOfLimit, isOverLimit } = useMemo(() => {
 		if (!featureCollection) {
@@ -53,19 +62,52 @@ export function DatasetSizeIndicator({
 		}
 	}, [featureCollection])
 
+	const handleCopyUrl = useCallback(async () => {
+		if (!uploadResult?.url) return
+		try {
+			await navigator.clipboard.writeText(uploadResult.url)
+			setCopied(true)
+			toast.success('URL copied to clipboard')
+			setTimeout(() => setCopied(false), 2000)
+		} catch {
+			// Fallback
+			const textarea = document.createElement('textarea')
+			textarea.value = uploadResult.url
+			document.body.appendChild(textarea)
+			textarea.select()
+			document.execCommand('copy')
+			document.body.removeChild(textarea)
+			setCopied(true)
+			toast.success('URL copied to clipboard')
+			setTimeout(() => setCopied(false), 2000)
+		}
+	}, [uploadResult?.url])
+
 	const handleUpload = async () => {
 		if (!featureCollection) return
 
 		setUploadState('uploading')
 		setUploadError(null)
+		setUploadResult(null)
 
 		try {
-			const result = await uploadGeoJsonToBlossom(featureCollection)
+			const result = await uploadGeoJsonToBlossom(featureCollection, { ndk })
 			setUploadState('success')
+			setUploadResult(result)
+			// Notify parent - should add blob reference to store, NOT publish
 			onUploadComplete?.(result)
+			
+			toast.success('Upload complete!', {
+				description: `Blob stored. Click "Publish" when ready.`,
+			})
 		} catch (error) {
-			setUploadError(error instanceof Error ? error.message : 'Upload failed')
+			const errorMessage = error instanceof Error ? error.message : 'Upload failed'
+			setUploadError(errorMessage)
 			setUploadState('error')
+			
+			toast.error('Upload failed', {
+				description: errorMessage,
+			})
 		}
 	}
 
@@ -143,12 +185,36 @@ export function DatasetSizeIndicator({
 						</Button>
 					)}
 
-					{uploadState === 'success' && (
+				{uploadState === 'success' && uploadResult && (
+					<div className="space-y-2">
 						<div className="text-[10px] text-green-600 flex items-center gap-1">
 							<CheckCircle2 className="h-3 w-3" />
-							Uploaded successfully! Ready to publish.
+							Uploaded! Click Publish when ready.
 						</div>
-					)}
+						<div className="flex items-center gap-1 bg-white rounded border border-green-200 p-1.5">
+							<code className="text-[9px] text-green-700 break-all flex-1 select-all truncate">
+								{uploadResult.url}
+							</code>
+						</div>
+						<div className="flex items-center gap-1">
+							<Button
+								size="sm"
+								variant="outline"
+								className="h-6 text-[10px] gap-1 px-2"
+								onClick={handleCopyUrl}
+							>
+								<Copy className="h-2.5 w-2.5" />
+								{copied ? 'Copied!' : 'Copy'}
+							</Button>
+							<Button size="sm" variant="outline" className="h-6 text-[10px] gap-1 px-2" asChild>
+								<a href={uploadResult.url} target="_blank" rel="noopener noreferrer">
+									<ExternalLink className="h-2.5 w-2.5" />
+									Open
+								</a>
+							</Button>
+						</div>
+					</div>
+				)}
 
 					{uploadState === 'error' && uploadError && (
 						<div className="space-y-1">

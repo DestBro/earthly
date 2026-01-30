@@ -59,6 +59,8 @@ export interface GeoEditorInfoPanelProps {
 	featureCollectionForUpload?: FeatureCollection | null
 	/** Callback when blossom upload completes */
 	onBlossomUploadComplete?: (result: BlossomUploadResult) => void
+	/** NDK instance for authenticated uploads */
+	ndk?: import('@nostr-dev-kit/ndk').default | null
 }
 
 export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
@@ -87,6 +89,7 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 		onZoomToFeature,
 		featureCollectionForUpload,
 		onBlossomUploadComplete,
+		ndk,
 	} = props
 
 	// Store state
@@ -201,6 +204,7 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 				<DatasetSizeIndicator
 					featureCollection={featureCollectionForUpload}
 					onUploadComplete={onBlossomUploadComplete}
+					ndk={ndk}
 				/>
 			)}
 
