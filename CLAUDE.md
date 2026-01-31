@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Earthly** is a Nostr-based GeoJSON collaborative mapping application. Users can publish, discover, and edit geographic datasets over a decentralized Nostr relay network.
+**Earthly** is a Nostr-based GeoJSON collaborative mapping application. Users can publish, discover, and edit geographic datasets over a decentralized Nostr relay network. The app includes social features like comments, reactions, and city-based discussions.
 
 **Tech Stack:**
 - **Runtime:** Bun (not Node.js)
@@ -14,6 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **State Management:** Zustand
 - **Nostr Integration:** NDK (Nostr Dev Kit)
 - **Styling:** Tailwind CSS v4 + Radix UI
+- **Rich Text:** TipTap editor with custom extensions
 
 ## Common Commands
 
@@ -74,48 +75,88 @@ bun test                  # Run tests with Bun's test runner
 
 ```
 Frontend (React/Bun) ←→ Nostr Relay (Go/Khatru) ←→ Other Nostr Clients
-     ↓
-MapLibre GL Editor
+     ↓                        ↓
+MapLibre GL Editor      Blossom Blob Storage
      ↓
 GeoJSON Events (kind 31991)
 Collections (kind 30406)
+Comments (kind 1111)
 ```
 
 ### Core Components
 
 **1. GeoEditor (`src/features/geo-editor/core/GeoEditor.ts`)**
-- Main editing engine built on MapLibre GL
+- Main editing engine built on MapLibre GL (~1,800 lines)
 - Manages drawing modes: point, linestring, polygon
 - Handles selection, snapping, undo/redo, transforms
-- Organized into managers: SelectionManager, HistoryManager, SnapManager, TransformManager
+- Organized into managers: SelectionManager, HistoryManager, SnapManager, TransformManager, LayerManager, RenderingManager
 
 **2. Editor State (`src/features/geo-editor/store.ts`)**
-- Zustand store with 50+ actions
+- Zustand store with 50+ actions (~660 lines)
 - Manages features, mode, selection, datasets, publishing state
 - Syncs between GeoEditor instance and React UI
 
 **3. GeoEditorView (`src/features/geo-editor/GeoEditorView.tsx`)**
-- ~2000 line orchestration component
+- ~2,000 line orchestration component
 - Coordinates map, toolbar, panels, and editor state
 - Handles dataset loading/publishing workflow
 - Manages blob reference resolution
+- Uses extracted hooks: useDatasetManagement, usePublishing, useMapLayers, useViewMode, useRouting
 
-**4. Nostr Event Classes**
-- `NDKGeoEvent` (kind 31991) - GeoJSON datasets
-- `NDKGeoCollectionEvent` (kind 30406) - Dataset collections
-- Custom NDK event wrappers with GeoJSON-specific methods
+**4. Nostr Event Classes (`src/lib/ndk/`)**
+- `NDKGeoEvent` (kind 31991) - GeoJSON datasets (~370 lines)
+- `NDKGeoCollectionEvent` (kind 30406) - Dataset collections (~150 lines)
+- `NDKGeoCommentEvent` (kind 1111) - Comments on datasets (~390 lines)
+- `NDKMapLayerSetEvent` - Map layer configuration (~70 lines)
 
-**5. Go Relay (`relay/main.go`)**
+**5. Social Features**
+- `src/components/comments/` - Threaded comments on datasets
+  - `CommentsPanel.tsx` - Comment list container
+  - `GeoComment.tsx` - Individual comment display
+  - `GeoCommentForm.tsx` - Comment composition
+  - `GeoMention.tsx` - @mentions with feature references
+  - `GeoSocialActions.tsx` - Reactions and engagement
+- `src/components/shoutbox/` - City-based discussions
+  - `ShoutboxPanel.tsx` - Local posts panel
+  - `PostCard.tsx` - Post display
+  - `CommentThread.tsx` - Threaded replies
+- `src/components/editor/` - Rich text editing
+  - `GeoRichTextEditor.tsx` - TipTap-based editor (~540 lines)
+  - `GeoMentionExtension.tsx` - Custom mention handling
+  - `MediaExtensions.tsx` - Image/video embedding
+
+**6. Go Relay (`relay/main.go`)**
 - Khatru-based Nostr relay
 - SQLite for event storage
 - Bluge for full-text search (NIP-50)
 - Supports Blossom blob storage
 
-**6. Map Chunking System (`map-scripts/index.ts`)**
+**7. Map Chunking System (`map-scripts/index.ts`)**
 - PMTiles chunking by geohash for efficient regional tile serving
 - Generates announcement.json manifest mapping geohash → PMTiles file
 - Content-addressed storage using SHA-256 (deduplicates identical chunks)
 - Custom layer support for adding overlay PMTiles
+
+### Managers (`src/features/geo-editor/core/managers/`)
+
+| Manager | Lines | Purpose |
+|---------|-------|---------|
+| LayerManager.ts | ~630 | Map layer management |
+| RenderingManager.ts | ~300 | Rendering pipeline |
+| SnapManager.ts | ~180 | Grid/object snapping |
+| SelectionManager.ts | ~160 | Feature selection |
+| TransformManager.ts | ~170 | Geometry transforms |
+| HistoryManager.ts | ~100 | Undo/redo |
+
+### Hooks (`src/features/geo-editor/hooks/`)
+
+| Hook | Lines | Purpose |
+|------|-------|---------|
+| usePublishing.ts | ~550 | Dataset publishing workflow |
+| useDatasetManagement.ts | ~440 | Dataset CRUD operations |
+| useMapLayers.ts | ~410 | Map layer state coordination |
+| useRouting.ts | ~270 | Route/sidebar state management |
+| useViewMode.ts | ~210 | Edit/view mode toggle |
 
 ### Nostr Event Specification
 
@@ -131,7 +172,28 @@ Collections (kind 30406)
 - `content`: JSON metadata (name, description, picture, license)
 - Tags: `d` (collection ID), `a` (references to 31991 events), `bbox`, `g`
 
+**Kind 1111 - Geo Comment Event**
+- `content`: Comment text (supports rich text, mentions)
+- Tags: `a` (reference to dataset), `e` (parent comment for threading)
+
 Full spec: See `SPEC.md`
+
+### Blob Handling (Blossom)
+
+Large datasets are stored externally via Blossom blob storage:
+
+**Upload Flow (`src/lib/blossom/blossomUpload.ts`):**
+1. User creates dataset exceeding relay size limits
+2. `detectBlobScope()` identifies large features
+3. `BlossomUploadDialog` shows upload UI with size indicator
+4. Geometry uploaded to Blossom server
+5. Blob reference tag added to event: `["blob", "feature:id", "url", "sha256=...", "size=..."]`
+
+**Resolution Flow (`src/lib/geo/resolveBlobReferences.ts`):**
+1. `ensureResolvedFeatureCollection()` checks for blob tags
+2. Fetches external GeoJSON from Blossom URLs
+3. Merges with inline features
+4. Replaces placeholder features with full geometry
 
 ### Build System
 
@@ -158,9 +220,10 @@ Full spec: See `SPEC.md`
 2. Features stored in EditorState.features
 3. Click "Publish New"
 4. `buildCollectionFromEditor()` creates FeatureCollection
-5. Create NDKGeoEvent, set content and blob references
-6. `event.publishNew()` signs and publishes to relay
-7. Relay stores in SQLite + indexes in Bluge
+5. If large: upload to Blossom, get blob URL
+6. Create NDKGeoEvent, set content and blob references
+7. `event.publishNew()` signs and publishes to relay
+8. Relay stores in SQLite + indexes in Bluge
 
 **Loading a Dataset:**
 1. User selects dataset from GeoDatasetsPanel
@@ -172,7 +235,7 @@ Full spec: See `SPEC.md`
 ### External Integrations
 
 **ContextVM (MCP):**
-- `src/ctxcn/EarthlyGeoServerClient.ts` - MCP client for geo services
+- `src/ctxcn/EarthlyGeoServerClient.ts` - MCP client for geo services (~440 lines)
 - `SearchLocation(query, limit)` - Place name search
 - `ReverseLookup(lat, lon, zoom)` - Reverse geocoding
 - Uses Nostr transport for communication
@@ -192,16 +255,53 @@ Full spec: See `SPEC.md`
    - Zustand for local UI state
    - Nostr events for shared/persistent state
 5. **MapLibre layer abstraction** - GeoEditor manages all map layers internally
+6. **Hook composition** - Business logic extracted into reusable hooks
+7. **Manager pattern** - Editor functionality split into focused managers
 
 ## Development Notes
 
 - **Editor size:** `GeoEditorView.tsx` is intentionally large (~2000 lines) as the orchestration layer
-- **Managers:** Core editor functionality split into focused managers (Selection, History, Snap, Transform)
-- **Blob handling:** Large GeoJSON can be external (HTTPS/IPFS) with references in event tags
+- **Managers:** Core editor functionality split into 6 focused managers
+- **Hooks:** Business logic extracted to 5 custom hooks in `hooks/` directory
+- **Blob handling:** Large GeoJSON stored externally via Blossom with event references
 - **Mobile-first:** Responsive UI with collapsible panels
 - **Test data:** Use `bun run seed` to generate fake datasets with Faker
 - **Code quality:** Biome is used for linting and formatting (not ESLint/Prettier)
 - **Map chunking:** PMTiles are chunked by geohash and stored in `map-chunks/` with content-addressed filenames
+- **Social hooks:** `useGeoComments` and `useGeoReactions` in `src/lib/hooks/` for comment subscriptions
+
+## Directory Structure
+
+```
+src/
+├── components/           # Shared UI components
+│   ├── ui/              # Radix-based primitives (30+ components)
+│   ├── info-panel/      # InfoPanel sub-components (11 files, ~2,700 lines)
+│   │   └── geometry/    # Geometry visualization (2 files)
+│   ├── comments/        # Comment system (5 files, ~1,100 lines)
+│   ├── shoutbox/        # City discussions (6 files, ~1,900 lines)
+│   └── editor/          # Rich text editor (5 files, ~1,400 lines)
+│
+├── features/
+│   └── geo-editor/      # Main editor feature
+│       ├── core/        # Editor engine
+│       │   ├── GeoEditor.ts (~1,800 lines)
+│       │   ├── managers/ (6 files, ~1,500 lines)
+│       │   └── modes/ (2 files)
+│       ├── components/ (10+ files)
+│       ├── hooks/ (5 files, ~1,900 lines)
+│       ├── GeoEditorView.tsx (~2,000 lines)
+│       └── store.ts (~660 lines)
+│
+├── lib/                 # Shared libraries
+│   ├── ndk/            # Nostr event wrappers (4 files)
+│   ├── blossom/        # Blob upload utilities
+│   ├── geo/            # GeoJSON utilities
+│   └── hooks/          # Shared hooks (comments, reactions, etc.)
+│
+├── ctxcn/              # MCP Geo Server Client
+└── config/             # Environment configuration
+```
 
 ## File References
 

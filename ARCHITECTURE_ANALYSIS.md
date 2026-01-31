@@ -1,7 +1,7 @@
 # Earthly - Architecture Analysis & Visualization
 
 Generated: 2025-12-28
-Updated: 2025-12-28 (Post-Refactoring)
+Updated: 2026-01-31
 
 ## Table of Contents
 1. [Directory Structure Overview](#directory-structure-overview)
@@ -9,7 +9,7 @@ Updated: 2025-12-28 (Post-Refactoring)
 3. [Component Hierarchy](#component-hierarchy)
 4. [Module Dependencies](#module-dependencies)
 5. [Function/Method Inventory](#functionmethod-inventory)
-6. [Issues & Refactoring Opportunities](#issues--refactoring-opportunities)
+6. [Codebase Metrics](#codebase-metrics)
 
 ---
 
@@ -18,89 +18,130 @@ Updated: 2025-12-28 (Post-Refactoring)
 ```
 src/
 ├── components/           # Shared UI components
-│   ├── ui/              # Radix-based primitives (17 components, 19-163 lines)
-│   │   └── search-bar.tsx (139 lines) ✅ NEW - Shared search component
-│   ├── info-panel/      # ✅ NEW - Extracted InfoPanel components
+│   ├── ui/              # Radix-based primitives (30+ components)
+│   │   └── search-bar.tsx
+│   ├── info-panel/      # InfoPanel sub-components
 │   │   ├── index.ts
-│   │   ├── ViewModePanel.tsx (~180 lines)
-│   │   ├── DatasetActionCard.tsx (~100 lines)
-│   │   ├── DatasetMetadataSection.tsx (~120 lines)
-│   │   ├── BlobReferencesSection.tsx (~110 lines)
-│   │   └── FeaturePropertiesSection.tsx (~140 lines)
-│   ├── GeoDatasetsPanel.tsx (334 lines) ⚠️ Large
-│   ├── GeoEditorInfoPanel.tsx (~210 lines) ✅ REDUCED from 774
-│   ├── LoginSessionButtom.tsx (144 lines) ⚠️ Typo in filename
-│   ├── Nip46LoginDialog.tsx (548 lines) ⚠️ Large
-│   ├── SignupDialog.tsx (429 lines) ⚠️ Large
-│   ├── DebugDialog.tsx (39 lines) 🔴 ORPHANED
-│   ├── datasets-columns.tsx (134 lines)
-│   └── collections-columns.tsx (120 lines)
+│   │   ├── ViewModePanel.tsx (497 lines)
+│   │   ├── DatasetActionCard.tsx
+│   │   ├── DatasetMetadataSection.tsx
+│   │   ├── DatasetFeaturesList.tsx (171 lines)
+│   │   ├── DatasetSizeIndicator.tsx (303 lines)
+│   │   ├── BlobReferencesSection.tsx (123 lines)
+│   │   ├── FeaturePropertiesSection.tsx
+│   │   ├── StylePropertiesSection.tsx (310 lines)
+│   │   └── geometry/
+│   │       ├── GeometriesTable.tsx (388 lines)
+│   │       └── GeometryDisplay.tsx (341 lines)
+│   ├── comments/        # Comment system (1,096 lines total)
+│   │   ├── CommentsPanel.tsx (174 lines)
+│   │   ├── GeoComment.tsx (235 lines)
+│   │   ├── GeoCommentForm.tsx (176 lines)
+│   │   ├── GeoMention.tsx (160 lines)
+│   │   └── GeoSocialActions.tsx (151 lines)
+│   ├── shoutbox/        # City-based discussions (1,922 lines total)
+│   │   ├── ShoutboxPanel.tsx (230 lines)
+│   │   ├── PostCard.tsx (206 lines)
+│   │   ├── PostForm.tsx (123 lines)
+│   │   ├── CommentThread.tsx (182 lines)
+│   │   ├── useShoutboxComments.ts (202 lines)
+│   │   └── types.ts (77 lines)
+│   ├── editor/          # Rich text editing (1,432 lines total)
+│   │   ├── GeoRichTextEditor.tsx (542 lines)
+│   │   ├── GeoMentionExtension.tsx (298 lines)
+│   │   ├── MediaExtensions.tsx (223 lines)
+│   │   ├── ContentViewer.tsx (84 lines)
+│   │   └── contentParser.ts (272 lines)
+│   ├── GeoDatasetsPanel.tsx (414 lines)
+│   ├── GeoEditorInfoPanel.tsx (271 lines)
+│   ├── GeoCollectionEditorPanel.tsx (409 lines)
+│   ├── BlossomUploadDialog.tsx (335 lines)
+│   ├── AppSidebar.tsx (359 lines)
+│   ├── CityPostsPanel.tsx (214 lines)
+│   ├── LoginSessionButtom.tsx (177 lines) ⚠️ Typo in filename
+│   ├── Nip46LoginDialog.tsx (548 lines)
+│   ├── SignupDialog.tsx (429 lines)
+│   ├── HelpPanel.tsx (118 lines)
+│   ├── HelpPopover.tsx (106 lines)
+│   ├── DebugDialog.tsx (38 lines)
+│   ├── datasets-columns.tsx
+│   └── collections-columns.tsx
 │
 ├── features/
 │   └── geo-editor/      # Main editor feature
 │       ├── core/        # Editor engine
-│       │   ├── GeoEditor.ts (~1343 lines) ✅ REDUCED from 2025
-│       │   ├── managers/ (6 files) ✅ EXPANDED
-│       │   │   ├── HistoryManager.ts
-│       │   │   ├── SelectionManager.ts
-│       │   │   ├── SnapManager.ts
-│       │   │   ├── TransformManager.ts
-│       │   │   ├── LayerManager.ts (~427 lines) ✅ NEW
-│       │   │   └── RenderingManager.ts (~290 lines) ✅ NEW
+│       │   ├── GeoEditor.ts (1,823 lines)
+│       │   ├── managers/ (6 files, 1,538 lines total)
+│       │   │   ├── HistoryManager.ts (102 lines)
+│       │   │   ├── SelectionManager.ts (160 lines)
+│       │   │   ├── SnapManager.ts (184 lines)
+│       │   │   ├── TransformManager.ts (169 lines)
+│       │   │   ├── LayerManager.ts (628 lines)
+│       │   │   └── RenderingManager.ts (295 lines)
 │       │   ├── modes/ (2 files)
-│       │   │   ├── DrawMode.ts (282 lines)
-│       │   │   └── EditMode.ts (330 lines)
+│       │   │   ├── DrawMode.ts
+│       │   │   └── EditMode.ts
 │       │   ├── types/
 │       │   └── utils/
-│       │       └── geometry.ts (139 lines)
-│       ├── components/ (8 files)
-│       │   ├── Editor.tsx (128 lines)
-│       │   ├── Map.tsx (479 lines) ⚠️ Large
-│       │   ├── Toolbar.tsx (~659 lines) ✅ REDUCED from 742
-│       │   ├── MapSettingsPanel.tsx (161 lines)
-│       │   ├── LocationInspectorPanel.tsx (92 lines)
-│       │   ├── MobileSearch.tsx (~103 lines) ✅ REDUCED from 158
-│       │   └── Magnifier.tsx (92 lines)
-│       ├── hooks/       # ✅ NEW - Extracted business logic
-│       │   ├── index.ts
-│       │   ├── useDatasetManagement.ts (~309 lines)
-│       │   ├── usePublishing.ts (~333 lines)
-│       │   ├── useMapLayers.ts (~188 lines)
-│       │   └── useViewMode.ts (~106 lines)
-│       ├── GeoEditorView.tsx (~826 lines) ✅ REDUCED from 1591
-│       ├── store.ts (473 lines) - Zustand store (50+ actions)
+│       │       └── geometry.ts
+│       ├── components/ (10+ files)
+│       │   ├── Editor.tsx (204 lines)
+│       │   ├── Map.tsx (839 lines)
+│       │   ├── Toolbar.tsx (1,259 lines)
+│       │   ├── CreateMapPopover.tsx (646 lines)
+│       │   ├── ImportOsmDialog.tsx (523 lines)
+│       │   ├── MapSettingsPanel.tsx (345 lines)
+│       │   ├── LocationInspectorPanel.tsx
+│       │   ├── MobileSearch.tsx
+│       │   └── Magnifier.tsx
+│       ├── hooks/ (5 files, 1,886 lines total)
+│       │   ├── index.ts (12 lines)
+│       │   ├── useDatasetManagement.ts (440 lines)
+│       │   ├── usePublishing.ts (546 lines)
+│       │   ├── useMapLayers.ts (409 lines)
+│       │   ├── useRouting.ts (266 lines)
+│       │   └── useViewMode.ts (213 lines)
+│       ├── GeoEditorView.tsx (2,014 lines)
+│       ├── store.ts (658 lines) - Zustand store (50+ actions)
 │       ├── types.ts
-│       └── utils.ts (206 lines) - 10 utility functions
+│       └── utils.ts
 │
 ├── lib/                 # Shared libraries & utilities
 │   ├── ndk/            # Nostr Dev Kit wrappers
-│   │   ├── NDKGeoEvent.ts (354 lines) ⚠️ Large
+│   │   ├── NDKGeoEvent.ts (369 lines)
+│   │   ├── NDKGeoCommentEvent.ts (388 lines)
 │   │   ├── NDKGeoCollectionEvent.ts (152 lines)
-│   │   └── NDKMapLayerSetEvent.ts (68 lines)
+│   │   └── NDKMapLayerSetEvent.ts (71 lines)
+│   ├── blossom/
+│   │   └── blossomUpload.ts (186 lines)
 │   ├── geo/
-│   │   └── resolveBlobReferences.ts (58 lines)
+│   │   └── resolveBlobReferences.ts (127 lines)
 │   ├── hooks/
+│   │   ├── useGeoComments.ts (232 lines)
+│   │   ├── useGeoReactions.ts (233 lines)
+│   │   ├── useAvailableGeoFeatures.ts (88 lines)
 │   │   ├── useStations.ts (181 lines)
-│   │   └── useIsMobile.ts (5 lines)
-│   ├── fixtures.ts (seed data utilities)
+│   │   └── useIsMobile.ts (28 lines)
+│   ├── fixtures.ts (32 lines)
 │   ├── worldGeohash.ts (137 lines)
-│   └── utils.ts (single function: cn)
+│   └── utils.ts
 │
 ├── ctxcn/              # MCP Geo Server Client
-│   └── EarthlyGeoServerClient.ts (182 lines)
+│   ├── EarthlyGeoServerClient.ts (442 lines)
+│   └── index.ts (258 lines)
 │
 ├── config/             # Environment configuration
-│   ├── env.schema.ts   # Zod validation
-│   ├── env.client.ts   # Frontend config
-│   ├── env.server.ts   # Backend config
-│   ├── index.ts
-│   └── platform.ts
+│   ├── env.schema.ts (86 lines)
+│   ├── env.client.ts (124 lines)
+│   ├── env.server.ts (48 lines)
+│   ├── index.ts (24 lines)
+│   └── platform.ts (69 lines)
 │
-├── App.tsx (20 lines)
+├── App.tsx
 ├── frontend.tsx (entry point)
-├── index.ts (207 lines) - Bun server
-├── blossom.ts (229 lines) - Blossom blob server
-└── APITester.tsx (old component?)
+├── index.ts - Bun server
+├── blossom.ts - Blossom blob server
+└── APITester.tsx (76 lines)
 
 map-scripts/            # PMTiles chunking system
 ├── index.ts (500 lines)
@@ -113,30 +154,43 @@ relay/                  # Go Khatru relay
 
 ### File Size Analysis
 
-**✅ Post-Refactoring Improvements:**
-- `GeoEditor.ts` - ~~2025~~ → **1343 lines** (-34%)
-- `GeoEditorView.tsx` - ~~1591~~ → **826 lines** (-48%)
-- `GeoEditorInfoPanel.tsx` - ~~774~~ → **210 lines** (-73%)
-- `Toolbar.tsx` - ~~742~~ → **659 lines** (-11%)
-- `MobileSearch.tsx` - ~~158~~ → **103 lines** (-35%)
+**Large Files (1000+ lines):**
+| File | Lines | Notes |
+|------|-------|-------|
+| GeoEditorView.tsx | 2,014 | Main orchestration component |
+| GeoEditor.ts | 1,823 | Core editing engine |
+| Toolbar.tsx | 1,259 | Feature-rich toolbar |
 
-**⚠️ Large (500-1000 lines):**
-- `GeoEditor.ts` - 1343 lines (still large, but much improved)
-- `GeoEditorView.tsx` - 826 lines (still large, but manageable)
-- `Toolbar.tsx` - 659 lines
-- `Nip46LoginDialog.tsx` - 548 lines
-- `store.ts` - 473 lines
+**Medium-Large (500-1000 lines):**
+| File | Lines | Notes |
+|------|-------|-------|
+| Map.tsx | 839 | MapLibre container |
+| store.ts | 658 | Zustand state (50+ actions) |
+| CreateMapPopover.tsx | 646 | New map creation UI |
+| LayerManager.ts | 628 | Map layer management |
+| usePublishing.ts | 546 | Publishing workflow hook |
+| Nip46LoginDialog.tsx | 548 | NIP-46 authentication |
+| GeoRichTextEditor.tsx | 542 | TipTap editor |
+| ImportOsmDialog.tsx | 523 | OSM data import |
+| ViewModePanel.tsx | 497 | Dataset viewing panel |
 
-**⚠️ Medium-Large (300-500 lines):**
-- `Map.tsx` - 479 lines
-- `LayerManager.ts` - 427 lines (extracted from GeoEditor)
-- `SignupDialog.tsx` - 429 lines
-- `NDKGeoEvent.ts` - 354 lines
-- `GeoDatasetsPanel.tsx` - 334 lines
-- `usePublishing.ts` - 333 lines (extracted from GeoEditorView)
-- `EditMode.ts` - 330 lines
-- `useDatasetManagement.ts` - 309 lines (extracted from GeoEditorView)
-- `RenderingManager.ts` - 290 lines (extracted from GeoEditor)
+**Medium (300-500 lines):**
+| File | Lines | Notes |
+|------|-------|-------|
+| useDatasetManagement.ts | 440 | Dataset CRUD hook |
+| EarthlyGeoServerClient.ts | 442 | MCP client |
+| SignupDialog.tsx | 429 | User registration |
+| useMapLayers.ts | 409 | Layer coordination hook |
+| GeoCollectionEditorPanel.tsx | 409 | Collection editing |
+| GeometriesTable.tsx | 388 | Geometry list display |
+| NDKGeoCommentEvent.ts | 388 | Comment event class |
+| NDKGeoEvent.ts | 369 | GeoJSON event class |
+| AppSidebar.tsx | 359 | Main sidebar |
+| MapSettingsPanel.tsx | 345 | Map configuration |
+| GeometryDisplay.tsx | 341 | Geometry visualization |
+| BlossomUploadDialog.tsx | 335 | Blob upload UI |
+| StylePropertiesSection.tsx | 310 | Style editing |
+| DatasetSizeIndicator.tsx | 303 | Size display |
 
 ---
 
@@ -149,34 +203,52 @@ graph TB
     subgraph Client["Frontend (React + Bun)"]
         FE[Frontend Entry<br/>frontend.tsx]
         APP[App.tsx]
-        GEV[GeoEditorView<br/>1591 lines<br/>Main Orchestrator]
+        GEV[GeoEditorView<br/>2,014 lines<br/>Main Orchestrator]
 
         subgraph EditorCore["GeoEditor Core Engine"]
-            GE[GeoEditor<br/>2025 lines<br/>232 methods]
+            GE[GeoEditor<br/>1,823 lines]
             HM[HistoryManager]
             SM[SelectionManager]
             SNM[SnapManager]
             TM[TransformManager]
+            LM[LayerManager<br/>628 lines]
+            RM[RenderingManager]
             DM[DrawMode]
             EM[EditMode]
         end
 
+        subgraph Hooks["Custom Hooks"]
+            HP[usePublishing<br/>546 lines]
+            HD[useDatasetManagement<br/>440 lines]
+            HML[useMapLayers<br/>409 lines]
+            HR[useRouting]
+            HV[useViewMode]
+        end
+
         subgraph State["State Management"]
-            STORE[Zustand Store<br/>50+ actions]
+            STORE[Zustand Store<br/>658 lines<br/>50+ actions]
+        end
+
+        subgraph Social["Social Features"]
+            COMMENTS[Comments System<br/>1,096 lines]
+            SHOUTBOX[Shoutbox<br/>1,922 lines]
+            RICHTEXT[Rich Text Editor<br/>1,432 lines]
         end
 
         subgraph UI["UI Components"]
-            TB[Toolbar<br/>742 lines]
-            INFO[InfoPanel<br/>774 lines]
-            DS[DatasetsPanel<br/>334 lines]
-            MAP[MapLibre Map<br/>479 lines]
+            TB[Toolbar<br/>1,259 lines]
+            INFO[InfoPanel<br/>2,700 lines total]
+            DS[DatasetsPanel<br/>414 lines]
+            MAP[MapLibre Map<br/>839 lines]
         end
 
         FE --> APP --> GEV
         GEV --> GE
         GEV --> STORE
+        GEV --> HP & HD & HML & HR & HV
         GEV --> TB & INFO & DS & MAP
-        GE --> HM & SM & SNM & TM
+        GEV --> COMMENTS & SHOUTBOX
+        GE --> HM & SM & SNM & TM & LM & RM
         GE --> DM & EM
         GE -.sync.-> STORE
     end
@@ -197,12 +269,15 @@ graph TB
     GEV <-.MCP.-> MCP
     MAP <-.tiles.-> PMTILES
     RELAY --> BLOSSOM
+    COMMENTS <-.comments.-> RELAY
 
     style GE fill:#ff6b6b
     style GEV fill:#ff6b6b
     style TB fill:#ffa06b
-    style INFO fill:#ffa06b
+    style LM fill:#ffa06b
     style STORE fill:#4ecdc4
+    style COMMENTS fill:#9b59b6
+    style SHOUTBOX fill:#9b59b6
 ```
 
 ### 2. Data Flow - Publishing a Dataset
@@ -211,9 +286,11 @@ graph TB
 sequenceDiagram
     participant User
     participant GEV as GeoEditorView
-    participant Editor as GeoEditor<br/>(2025 lines)
+    participant Hook as usePublishing
+    participant Editor as GeoEditor
     participant Store as Zustand Store
     participant Utils as utils.ts
+    participant Blossom as Blossom Server
     participant NDKGeo as NDKGeoEvent
     participant Relay as Nostr Relay
 
@@ -221,72 +298,65 @@ sequenceDiagram
     Editor->>Store: setFeatures(features)
 
     User->>GEV: Click "Publish New"
-    GEV->>Store: Get features + collectionMeta
-    Store-->>GEV: EditorFeature[]
+    GEV->>Hook: handlePublish()
+    Hook->>Store: Get features + collectionMeta
+    Store-->>Hook: EditorFeature[]
 
-    GEV->>Utils: buildCollectionFromEditor()
-    Utils-->>GEV: FeatureCollection
+    Hook->>Utils: buildCollectionFromEditor()
+    Utils-->>Hook: FeatureCollection
 
-    GEV->>Utils: detectBlobScope()
-    Utils-->>GEV: BlobReferences (if large)
+    Hook->>Utils: detectBlobScope()
+    Utils-->>Hook: BlobReferences (if large)
 
-    GEV->>NDKGeo: new NDKGeoEvent()
-    GEV->>NDKGeo: Set content, bbox, geohash, etc.
-
-    alt Has blob references
-        GEV->>NDKGeo: addBlobTag(scope, url, sha256, size)
+    alt Has large features
+        Hook->>Blossom: Upload geometry blob
+        Blossom-->>Hook: blob URL, sha256, size
     end
 
-    GEV->>NDKGeo: publishNew()
+    Hook->>NDKGeo: new NDKGeoEvent()
+    Hook->>NDKGeo: Set content, bbox, geohash, etc.
+
+    alt Has blob references
+        Hook->>NDKGeo: addBlobTag(scope, url, sha256, size)
+    end
+
+    Hook->>NDKGeo: publishNew()
     NDKGeo->>Relay: Sign & publish event
     Relay-->>NDKGeo: Confirmation
-    NDKGeo-->>GEV: Published event
+    NDKGeo-->>Hook: Published event
 
-    GEV->>Store: setActiveDataset(event)
-    GEV->>Store: setIsPublishing(false)
+    Hook->>Store: setActiveDataset(event)
+    Hook->>Store: setIsPublishing(false)
     Store-->>User: Success message
 ```
 
-### 3. Data Flow - Loading a Dataset
+### 3. Social Features Flow
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant Panel as GeoDatasetsPanel
-    participant GEV as GeoEditorView
-    participant Utils as utils.ts
-    participant Blob as resolveBlobReferences
-    participant NDKGeo as NDKGeoEvent
-    participant Store as Zustand Store
-    participant Editor as GeoEditor
+    participant Panel as CommentsPanel
+    participant Hook as useGeoComments
+    participant Form as GeoCommentForm
+    participant Editor as GeoRichTextEditor
+    participant NDK as NDKGeoCommentEvent
+    participant Relay as Nostr Relay
 
-    User->>Panel: Select dataset
-    Panel->>GEV: onLoadDataset(event)
+    User->>Panel: View dataset comments
+    Panel->>Hook: Subscribe to comments
+    Hook->>Relay: NDK subscription (kind 1111)
+    Relay-->>Hook: Existing comments
+    Hook-->>Panel: Comment list
 
-    GEV->>Utils: ensureResolvedFeatureCollection(event)
+    User->>Form: Write comment
+    User->>Editor: Add @mention or feature reference
+    Editor-->>Form: Rich text content
 
-    alt Has blob references
-        Utils->>NDKGeo: Get blob tags
-        NDKGeo-->>Utils: BlobReference[]
-        Utils->>Blob: resolveGeoEventFeatureCollection(event)
-        Blob->>Blob: Fetch external GeoJSON
-        Blob-->>Utils: Merged FeatureCollection
-    else No blobs
-        Utils->>NDKGeo: featureCollection
-        NDKGeo-->>Utils: FeatureCollection
-    end
-
-    Utils-->>GEV: FeatureCollection
-
-    GEV->>Utils: convertGeoEventsToEditorFeatures()
-    Utils-->>GEV: EditorFeature[]
-
-    GEV->>Store: setFeatures(features)
-    Store->>Editor: editor.setFeatures(features)
-    Editor->>Editor: Update MapLibre layers
-
-    GEV->>Store: setActiveDataset(event)
-    Store-->>User: Dataset loaded
+    User->>Form: Submit
+    Form->>NDK: new NDKGeoCommentEvent()
+    NDK->>Relay: Sign & publish
+    Relay-->>Hook: New comment notification
+    Hook-->>Panel: Update list
 ```
 
 ---
@@ -298,90 +368,60 @@ sequenceDiagram
 ```mermaid
 graph TD
     FE[frontend.tsx] --> APP[App.tsx]
-    APP --> GEV[GeoEditorView<br/>🔴 1591 lines]
+    APP --> GEV[GeoEditorView<br/>2,014 lines]
 
     subgraph "GeoEditorView Children"
-        GEV --> EDITOR[Editor<br/>128 lines]
-        GEV --> MAP[GeoEditorMap<br/>479 lines]
-        GEV --> TB[Toolbar<br/>🔴 742 lines]
-        GEV --> INFO[GeoEditorInfoPanel<br/>🔴 774 lines]
-        GEV --> DS[GeoDatasetsPanel<br/>334 lines]
-        GEV --> LOC[LocationInspectorPanel<br/>92 lines]
-        GEV --> MAG[Magnifier<br/>92 lines]
-        GEV --> LOGIN[LoginSessionButtons<br/>144 lines]
+        GEV --> EDITOR[Editor<br/>204 lines]
+        GEV --> MAP[GeoEditorMap<br/>839 lines]
+        GEV --> TB[Toolbar<br/>1,259 lines]
+        GEV --> INFO[GeoEditorInfoPanel<br/>271 lines]
+        GEV --> DS[GeoDatasetsPanel<br/>414 lines]
+        GEV --> SIDEBAR[AppSidebar<br/>359 lines]
+        GEV --> LOC[LocationInspectorPanel]
+        GEV --> MAG[Magnifier]
     end
 
-    subgraph "Toolbar Children"
-        TB --> LOGIN2[LoginSessionButtons<br/>⚠️ Duplicate?]
-        TB --> MAPS[MapSettingsPanel<br/>161 lines]
-        TB --> SEARCH[Search UI<br/>⚠️ Inline component]
+    subgraph "InfoPanel Children"
+        INFO --> VIEW[ViewModePanel<br/>497 lines]
+        INFO --> GEOM[geometry/]
+        INFO --> SIZE[DatasetSizeIndicator<br/>303 lines]
+        INFO --> STYLE[StylePropertiesSection<br/>310 lines]
     end
 
-    subgraph "Mobile Components"
-        GEV --> MSEARCH[MobileSearch<br/>158 lines<br/>⚠️ Duplicate search?]
+    subgraph "Geometry Components"
+        GEOM --> GTABLE[GeometriesTable<br/>388 lines]
+        GEOM --> GDISP[GeometryDisplay<br/>341 lines]
+    end
+
+    subgraph "Social Components"
+        GEV --> COMM[CommentsPanel<br/>174 lines]
+        COMM --> GCOMM[GeoComment<br/>235 lines]
+        COMM --> GFORM[GeoCommentForm<br/>176 lines]
+        GFORM --> RTE[GeoRichTextEditor<br/>542 lines]
+    end
+
+    subgraph "Shoutbox"
+        GEV --> SHOUT[ShoutboxPanel<br/>230 lines]
+        SHOUT --> POST[PostCard<br/>206 lines]
+        SHOUT --> THREAD[CommentThread<br/>182 lines]
     end
 
     subgraph "Auth Dialogs"
+        GEV --> LOGIN[LoginSessionButtons<br/>177 lines]
         LOGIN --> NIP46[Nip46LoginDialog<br/>548 lines]
         LOGIN --> SIGNUP[SignupDialog<br/>429 lines]
     end
 
-    subgraph "Data Tables"
-        DS --> DSCOL[datasets-columns<br/>134 lines]
-        DS --> COLCOL[collections-columns<br/>120 lines]
-    end
-
-    subgraph "Orphaned"
-        ORPHAN[DebugDialog<br/>🔴 NOT USED<br/>39 lines]
+    subgraph "Toolbar Children"
+        TB --> CREATE[CreateMapPopover<br/>646 lines]
+        TB --> MAPS[MapSettingsPanel<br/>345 lines]
+        TB --> IMPORT[ImportOsmDialog<br/>523 lines]
     end
 
     style GEV fill:#ff6b6b
     style TB fill:#ff6b6b
-    style INFO fill:#ff6b6b
-    style ORPHAN fill:#999,stroke:#f00,stroke-width:3px
-    style SEARCH fill:#ffe66d
-    style MSEARCH fill:#ffe66d
-```
-
-### UI Primitive Component Usage
-
-```mermaid
-graph LR
-    subgraph "Most Used (10+ usages)"
-        BTN[Button<br/>Used by 15+]
-        INPUT[Input<br/>Used by 10+]
-    end
-
-    subgraph "Frequently Used (5-10 usages)"
-        LABEL[Label<br/>Used by 5+]
-        DIALOG[Dialog<br/>Used by 4]
-        SELECT[Select<br/>Used by 3]
-    end
-
-    subgraph "Moderately Used (2-4 usages)"
-        SHEET[Sheet]
-        TOOLTIP[Tooltip]
-        POPOVER[Popover]
-        TABLE[Table]
-        SEPARATOR[Separator]
-    end
-
-    subgraph "Rarely Used (1 usage)"
-        ALERT[Alert]
-        COLLAPSIBLE[Collapsible]
-        BTNGROUP[ButtonGroup]
-        DATATABLE[DataTable]
-    end
-
-    subgraph "Unused 🔴"
-        CARD[Card]
-        TEXTAREA[Textarea]
-    end
-
-    style BTN fill:#4ecdc4
-    style INPUT fill:#4ecdc4
-    style CARD fill:#999,stroke:#f00
-    style TEXTAREA fill:#999,stroke:#f00
+    style RTE fill:#9b59b6
+    style COMM fill:#9b59b6
 ```
 
 ---
@@ -401,12 +441,22 @@ graph TB
         GEV[GeoEditorView]
     end
 
+    subgraph "Custom Hooks"
+        HP[usePublishing]
+        HD[useDatasetManagement]
+        HML[useMapLayers]
+        HR[useRouting]
+        HV[useViewMode]
+    end
+
     subgraph "Editor Core"
-        GE[GeoEditor<br/>232 methods]
+        GE[GeoEditor]
         HIST[HistoryManager]
         SEL[SelectionManager]
         SNAP[SnapManager]
         TRANS[TransformManager]
+        LAYER[LayerManager]
+        RENDER[RenderingManager]
         DRAW[DrawMode]
         EDIT[EditMode]
     end
@@ -418,13 +468,20 @@ graph TB
     subgraph "NDK Wrappers"
         NDKGEO[NDKGeoEvent<br/>kind 31991]
         NDKCOL[NDKGeoCollectionEvent<br/>kind 30406]
+        NDKCOMM[NDKGeoCommentEvent<br/>kind 1111]
         NDKMAP[NDKMapLayerSetEvent]
     end
 
+    subgraph "Social Hooks"
+        HGC[useGeoComments]
+        HGR[useGeoReactions]
+    end
+
     subgraph "Utilities"
-        UTILS[geo-editor/utils.ts<br/>10 functions]
+        UTILS[geo-editor/utils.ts]
         BLOB[resolveBlobReferences]
-        LIBUTILS[lib/utils.ts<br/>cn function]
+        BUPLOAD[blossomUpload]
+        LIBUTILS[lib/utils.ts]
         GEOHASH[worldGeohash]
     end
 
@@ -435,10 +492,13 @@ graph TB
     FE --> APP --> GEV
     GEV --> GE
     GEV --> STORE
-    GE --> HIST & SEL & SNAP & TRANS
+    GEV --> HP & HD & HML & HR & HV
+    GE --> HIST & SEL & SNAP & TRANS & LAYER & RENDER
     GE --> DRAW & EDIT
+    HP --> NDKGEO & BUPLOAD
+    HD --> NDKGEO & NDKCOL
+    HGC --> NDKCOMM
     GEV --> UTILS
-    GEV --> NDKGEO & NDKCOL
     UTILS --> BLOB
     UTILS --> NDKGEO
     GEV --> MCP
@@ -446,43 +506,7 @@ graph TB
     style GE fill:#ff6b6b
     style GEV fill:#ff6b6b
     style STORE fill:#4ecdc4
-```
-
-### Import Coupling Analysis
-
-```mermaid
-graph LR
-    subgraph "High Coupling Components"
-        GEV[GeoEditorView<br/>20+ imports<br/>🔴 Very High]
-        TB[Toolbar<br/>15+ imports<br/>🔴 High]
-        INFO[GeoEditorInfoPanel<br/>10+ imports<br/>🟡 High]
-    end
-
-    subgraph "Medium Coupling"
-        DS[GeoDatasetsPanel<br/>8 imports]
-        MAP[Map<br/>7 imports]
-        NIP46[Nip46LoginDialog<br/>8 imports]
-    end
-
-    subgraph "Low Coupling"
-        ED[Editor<br/>4 imports]
-        MAG[Magnifier<br/>3 imports]
-        LOC[LocationInspector<br/>3 imports]
-    end
-
-    subgraph "Stores Used By"
-        STORE[useEditorStore]
-    end
-
-    GEV -.50+ state selections.-> STORE
-    TB -.40+ state selections.-> STORE
-    INFO -.40+ state selections.-> STORE
-    MAP -.2 state selections.-> STORE
-
-    style GEV fill:#ff6b6b
-    style TB fill:#ff6b6b
-    style INFO fill:#ffa06b
-    style STORE fill:#4ecdc4
+    style NDKCOMM fill:#9b59b6
 ```
 
 ---
@@ -491,7 +515,7 @@ graph LR
 
 ### GeoEditor.ts (Core Engine)
 
-**Class:** `GeoEditor` (2025 lines, 232 methods)
+**Class:** `GeoEditor` (1,823 lines)
 
 **Public API Methods (20+):**
 - `setMode(mode)` - Switch between static/edit/draw modes
@@ -505,32 +529,22 @@ graph LR
 - `finishDrawing()` - Complete current drawing
 - `destroy()` - Cleanup
 
-**Managers (4):**
-- `HistoryManager` - Undo/redo stack management
-- `SelectionManager` - Feature selection logic
-- `SnapManager` - Vertex snapping during drawing/editing
-- `TransformManager` - Move/rotate transformations
+**Managers (6):**
 
-**Modes (4):**
-- `DrawPointMode` - Point drawing
-- `DrawLineStringMode` - Line drawing
-- `DrawPolygonMode` - Polygon drawing
-- `EditMode` - Feature editing
-
-**Private Methods (200+):**
-- Layer setup (40+ methods)
-- Event handlers (60+ methods)
-- Geometry operations (30+ methods)
-- Rendering helpers (40+ methods)
-- State management (30+ methods)
-
-**🔴 Issue:** GeoEditor is a god object with too many responsibilities
+| Manager | Lines | Responsibility |
+|---------|-------|----------------|
+| LayerManager | 628 | MapLibre layer setup, styling, updates |
+| RenderingManager | 295 | Render pipeline coordination |
+| SnapManager | 184 | Vertex snapping during drawing/editing |
+| TransformManager | 169 | Move/rotate transformations |
+| SelectionManager | 160 | Feature selection logic |
+| HistoryManager | 102 | Undo/redo stack management |
 
 ---
 
 ### store.ts (Zustand State)
 
-**Actions (50+):**
+**Store Size:** 658 lines, 50+ actions
 
 **Editor State:**
 - `setEditor`, `setFeatures`, `setMode`, `setSelectedFeatureIds`
@@ -565,235 +579,129 @@ graph LR
 
 ---
 
-### geo-editor/utils.ts (10 utility functions)
+### Custom Hooks
 
-1. `convertGeoEventsToEditorFeatures(events)` - NDK events → Editor format
-2. `convertGeoEventsToFeatureCollection(events)` - NDK events → GeoJSON
-3. `fetchGeoJsonPayload(url)` - Fetch external GeoJSON
-4. `ensureFeatureCollection(payload)` - Validate GeoJSON
-5. `summarizeFeatureCollection(collection)` - Count features by type
-6. `detectBlobScope(collection)` - Find large features for external storage
-7. `sanitizeEditorProperties(props)` - Remove internal properties
-8. `createDefaultCollectionMeta()` - Create empty metadata
-9. `extractCollectionMeta(collection)` - Parse metadata from GeoJSON
-10. `parseCustomValue(value)` - Parse string to proper type
+**usePublishing.ts (546 lines)**
+- `handlePublishNew()` - Create and publish new dataset
+- `handlePublishUpdate()` - Update existing dataset
+- `handleBlobUpload()` - Upload large geometry to Blossom
+- Publishing state management
+
+**useDatasetManagement.ts (440 lines)**
+- `loadDatasetForEditing(event)` - Load dataset into editor
+- `loadDatasetForViewing(event)` - View-only mode
+- `deleteDataset(event)` - Delete with confirmation
+- Dataset resolution and conversion
+
+**useMapLayers.ts (409 lines)**
+- Layer visibility coordination
+- Active layer state synchronization
+- Map source management
+
+**useRouting.ts (266 lines)**
+- Sidebar state management
+- Route coordination
+- Panel visibility
+
+**useViewMode.ts (213 lines)**
+- Edit/view mode toggle
+- Mode-specific behavior
 
 ---
 
-### NDKGeoEvent.ts (Nostr Event Wrapper)
+### NDK Event Classes
 
-**Class:** `NDKGeoEvent extends NDKEvent`
-
-**Getters/Setters (20+):**
+**NDKGeoEvent.ts (369 lines)**
 - `featureCollection` - Parse/stringify GeoJSON content
-- `datasetId` - d tag accessor
-- `boundingBox` - bbox tag (west,south,east,north)
-- `geohash` - g tag
-- `crs` - Coordinate reference system
-- `checksum` - SHA-256 of content
-- `size` - Byte length
-- `version` - v tag
-- `relayUrl` - r tag
-- `hashtags` - t tags
-- `collectionId` - Back-reference to collection
+- `boundingBox`, `geohash`, `checksum`, `size`
+- `getBlobReferences()`, `addBlobTag()`, `removeBlobTag()`
+- `publishNew()`, `publishUpdate()`
 
-**Methods:**
-- `calculateBoundingBox()` - Compute bbox from features
-- `calculateGeohash()` - Compute geohash from centroid
-- `syncMetadata()` - Update all derived tags
-- `getBlobReferences()` - Parse blob tags
-- `addBlobTag(scope, url, sha256, size)` - Add blob reference
-- `removeBlobTag(scope, featureId?)` - Remove blob reference
-- `publishNew()` - Create new event and publish
-- `publishUpdate()` - Update existing event
+**NDKGeoCommentEvent.ts (388 lines)**
+- `content` - Comment text with rich formatting
+- `referencedDataset` - Link to parent dataset
+- `parentComment` - For threaded replies
+- `mentions` - @mention references
+- `reactions` - Like/reaction support
+
+**NDKGeoCollectionEvent.ts (152 lines)**
+- `metadata` - Collection name, description, license
+- `datasetReferences` - Links to member datasets
+- `calculateBoundingBox()` - Aggregate bbox
 
 ---
 
-### EarthlyGeoServerClient.ts (MCP Integration)
+## Codebase Metrics
 
-**Class:** `EarthlyGeoServerClient`
+### Summary Statistics
 
-**Methods:**
-- `SearchLocation(query, limit)` - Nominatim location search
-- `ReverseLookup(lat, lon, zoom)` - Reverse geocoding
+| Category | Count | Total Lines |
+|----------|-------|-------------|
+| TypeScript/TSX files | ~146 | ~25,000+ |
+| src/components/ | 40+ files | ~8,500 |
+| src/features/geo-editor/ | 39 files | ~12,000 |
+| src/lib/ | 14 files | ~2,200 |
+| UI components (ui/) | 30+ | ~1,500 |
+| Core managers | 6 files | 1,538 |
+| Custom hooks (geo-editor) | 5 files | 1,886 |
+| Social hooks (lib) | 2 files | 465 |
 
-**Singleton:**
-- `earthlyGeoServer` - Pre-configured client instance
+### Feature Area Breakdown
 
----
+| Feature | Files | Lines | Notes |
+|---------|-------|-------|-------|
+| GeoEditor Core | 10 | ~3,400 | Engine + managers + modes |
+| GeoEditor Components | 10+ | ~4,200 | Toolbar, Map, etc. |
+| GeoEditor Hooks | 5 | ~1,900 | Business logic |
+| Comments System | 5 | ~1,100 | Threaded comments |
+| Shoutbox | 6 | ~1,900 | City discussions |
+| Rich Text Editor | 5 | ~1,400 | TipTap + extensions |
+| InfoPanel | 11 | ~2,700 | Dataset info display |
+| NDK Wrappers | 4 | ~980 | Nostr event classes |
 
-### resolveBlobReferences.ts
+### Largest Files
 
-**Function:** `resolveGeoEventFeatureCollection(event)`
-- Fetches external GeoJSON blobs
-- Merges with inline features
-- Replaces placeholder features with full geometry
-
----
-
-## Issues & Refactoring Opportunities
-
-### 🔴 Critical Issues
-
-#### 1. GeoEditor God Object
-**File:** `src/features/geo-editor/core/GeoEditor.ts` (2025 lines, 232 methods)
-
-**Problems:**
-- Single class with too many responsibilities
-- Difficult to test individual features
-- Hard to understand and modify
-- Violates Single Responsibility Principle
-
-**Refactoring Suggestions:**
-```
-Current:
-GeoEditor (2025 lines)
-  ├── Layer management (40+ methods)
-  ├── Event handling (60+ methods)
-  ├── Geometry operations (30+ methods)
-  ├── Rendering (40+ methods)
-  └── State management (30+ methods)
-
-Proposed:
-GeoEditor (coordinator, ~300 lines)
-  ├── LayerManager (layer setup/rendering)
-  ├── EventHandler (map events)
-  ├── GeometryService (geometry operations)
-  ├── HistoryManager (already extracted ✓)
-  ├── SelectionManager (already extracted ✓)
-  ├── SnapManager (already extracted ✓)
-  └── TransformManager (already extracted ✓)
-```
-
-#### 2. GeoEditorView Orchestration Layer
-**File:** `src/features/geo-editor/GeoEditorView.tsx` (1591 lines)
-
-**Problems:**
-- Very large orchestration component
-- Mixes UI rendering with business logic
-- 50+ state selections from store
-- Difficult to test
-
-**Refactoring Suggestions:**
-- Extract business logic into custom hooks
-- Split into smaller sub-components
-- Use composition over single large component
-
-```typescript
-// Proposed structure:
-GeoEditorView (main, ~300 lines)
-  ├── useEditorLifecycle() - Editor setup/teardown
-  ├── useDatasetManagement() - Load/save datasets
-  ├── usePublishing() - Publishing logic
-  ├── useSearch() - Search functionality
-  └── Sub-components:
-      ├── EditorCanvas
-      ├── EditorSidebar
-      └── EditorToolbar
-```
-
-#### 3. Toolbar Complexity
-**File:** `src/features/geo-editor/components/Toolbar.tsx` (742 lines)
-
-**Problems:**
-- Inline search component duplicates MobileSearch logic
-- Too many responsibilities
-- 40+ state selections
-
-**Refactoring Suggestions:**
-- Extract SearchBar as shared component
-- Split desktop/mobile toolbars
-- Reduce direct store coupling
+| Rank | File | Lines | Purpose |
+|------|------|-------|---------|
+| 1 | GeoEditorView.tsx | 2,014 | Main orchestrator |
+| 2 | GeoEditor.ts | 1,823 | Core engine |
+| 3 | Toolbar.tsx | 1,259 | Feature toolbar |
+| 4 | Map.tsx | 839 | MapLibre container |
+| 5 | store.ts | 658 | Zustand state |
+| 6 | CreateMapPopover.tsx | 646 | Map creation UI |
+| 7 | LayerManager.ts | 628 | Layer management |
+| 8 | Nip46LoginDialog.tsx | 548 | NIP-46 auth |
+| 9 | usePublishing.ts | 546 | Publishing hook |
+| 10 | GeoRichTextEditor.tsx | 542 | Rich text editor |
 
 ---
 
-### ⚠️ Medium Priority Issues
+## Architecture Strengths
 
-#### 4. Search Component Duplication
+**Good Practices:**
+1. **Clear feature separation** - `/features/geo-editor/` is well organized
+2. **Manager pattern** - 6 focused managers handle specific concerns
+3. **Hook composition** - Business logic extracted to reusable hooks
+4. **Centralized state** - Single Zustand store with clear action groups
+5. **Type safety** - Extensive TypeScript usage throughout
+6. **UI primitives** - Reusable Radix-based components
+7. **Nostr abstractions** - NDK event wrappers for type-safe handling
+8. **Utility separation** - Clear util modules for specific tasks
 
-**Files:**
-- `Toolbar.tsx` lines 80-123 (inline SearchBar)
-- `MobileSearch.tsx` lines 7-61 (component)
-
-**Issue:** Nearly identical search input implementation
-
-**Solution:** Extract to shared component
-
-```typescript
-// Proposed: src/components/ui/search-bar.tsx
-export function SearchBar({
-  query,
-  results,
-  loading,
-  error,
-  onQueryChange,
-  onSubmit,
-  onClear,
-  placeholder = "Search locations..."
-}: SearchBarProps) {
-  // Shared implementation
-}
-```
-
-#### 5. Large Panel Components
-
-**Files:**
-- `GeoEditorInfoPanel.tsx` (774 lines)
-- `GeoDatasetsPanel.tsx` (334 lines)
-
-**Issue:** Complex panels with multiple modes/tabs
-
-**Solution:** Split into mode-specific components
-
-```
-GeoEditorInfoPanel
-  ├── EditModePanel (feature properties)
-  ├── ViewModePanel (dataset viewer)
-  └── CollectionViewPanel (collection viewer)
-
-GeoDatasetsPanel
-  ├── DatasetsList
-  ├── CollectionsList
-  └── DatasetActions
-```
-
-#### 6. Large Auth Dialogs
-
-**Files:**
-- `Nip46LoginDialog.tsx` (548 lines)
-- `SignupDialog.tsx` (429 lines)
-
-**Issue:** Complex multi-mode dialogs
-
-**Solution:** Extract QR scanning to shared component, split modes
-
-```
-Nip46LoginDialog
-  ├── PairingMode (QR scan)
-  ├── ConnectMode (manual entry)
-  └── QRScanner (shared)
-
-SignupDialog
-  ├── CreateMode
-  ├── ImportMode
-  └── QRScanner (shared)
-```
+**Well-Structured Modules:**
+- `managers/` - Clean separation of editor concerns
+- `modes/` - Drawing mode encapsulation
+- `hooks/` - Reusable business logic
+- `lib/ndk/` - Nostr event wrappers
+- `components/ui/` - Reusable primitives
+- `components/comments/` - Social feature isolation
+- `components/editor/` - Rich text isolation
 
 ---
 
-### 🟡 Low Priority Issues
+## Low Priority Issues
 
-#### 7. Orphaned Component
-
-**File:** `src/components/DebugDialog.tsx` (39 lines)
-
-**Issue:** Not imported anywhere in the codebase
-
-**Solutions:**
-- If useful: Integrate into GeoEditorInfoPanel or GeoDatasetsPanel for debugging
-- If not needed: Delete
-
-#### 8. Filename Typo
+### Filename Typo
 
 **File:** `src/components/LoginSessionButtom.tsx`
 
@@ -801,160 +709,23 @@ SignupDialog
 
 **Solution:** Rename to `LoginSessionButton.tsx`
 
-```bash
-git mv src/components/LoginSessionButtom.tsx src/components/LoginSessionButton.tsx
-# Update imports
-```
+### Unused Components
 
-#### 9. Unused UI Components
-
-**Files:**
-- `src/components/ui/card.tsx` - Not used
-- `src/components/ui/textarea.tsx` - Only referenced in APITester.tsx
-
-**Solution:** Remove if truly unused, or add to component library docs
-
-#### 10. APITester.tsx
-
-**File:** `src/APITester.tsx`
-
-**Issue:** Unclear if this is still used or is old test code
-
-**Solution:** Investigate usage, document or remove
-
----
-
-### 📊 Code Metrics Summary
-
-| Metric | Before | After | Improvement |
-|--------|--------|-------|-------------|
-| **Very Large Files (>1000 lines)** | 2 | 2 | Files reduced significantly |
-| **GeoEditor.ts lines** | 2025 | 1343 | -34% |
-| **GeoEditorView.tsx lines** | 1591 | 826 | -48% |
-| **GeoEditorInfoPanel.tsx lines** | 774 | 210 | -73% |
-| **Toolbar.tsx lines** | 742 | 659 | -11% |
-| **Duplicate Patterns** | 1 | 0 | ✅ SearchBar extracted |
-| **New Managers Created** | 0 | 2 | LayerManager, RenderingManager |
-| **New Hooks Created** | 0 | 4 | Dataset, Publishing, MapLayers, ViewMode |
-| **New UI Components** | 0 | 6 | SearchBar + 5 InfoPanel components |
-
-| Metric | Count | Notes |
-|--------|-------|-------|
-| **Total .tsx files** | ~35 | Added new components |
-| **Total .ts files** | ~34 | Added managers and hooks |
-| **Orphaned Components** | 1 | DebugDialog (unchanged) |
-| **Unused UI Components** | 2 | Card, Textarea (unchanged) |
-| **Total Store Actions** | 50+ | Consider splitting |
-
----
-
-### 🎯 Refactoring Priority List
-
-1. **Priority 1 (Critical):** ✅ COMPLETED
-   - [x] Refactor GeoEditor god object into service classes
-     - Extracted LayerManager (~427 lines)
-     - Extracted RenderingManager (~290 lines)
-     - GeoEditor reduced from 2025 → 1343 lines (-34%)
-   - [x] Split GeoEditorView into hooks + smaller components
-     - Extracted useDatasetManagement (~309 lines)
-     - Extracted usePublishing (~333 lines)
-     - Extracted useMapLayers (~188 lines)
-     - Extracted useViewMode (~106 lines)
-     - GeoEditorView reduced from 1591 → 826 lines (-48%)
-
-2. **Priority 2 (High):** ✅ MOSTLY COMPLETED
-   - [x] Extract shared SearchBar component
-     - Created src/components/ui/search-bar.tsx
-     - Updated Toolbar.tsx and MobileSearch.tsx to use it
-   - [x] Split large panel components (InfoPanel)
-     - Created info-panel/ folder with 5 components
-     - GeoEditorInfoPanel reduced from 774 → 210 lines (-73%)
-   - [ ] Split GeoDatasetsPanel (lower priority, 334 lines)
-   - [x] Refactor Toolbar to reduce complexity
-     - Removed duplicate SearchBar, reduced from 742 → 659 lines
-
-3. **Priority 3 (Medium):**
-   - [ ] Extract QR scanning to shared component
-   - [ ] Split auth dialogs into mode-specific components
-   - [ ] Consider splitting Zustand store by domain
-
-4. **Priority 4 (Low):**
-   - [ ] Handle orphaned DebugDialog
-   - [ ] Fix LoginSessionButtom.tsx filename typo
-   - [ ] Remove unused UI components
-   - [ ] Investigate APITester.tsx
-
----
-
-### 🏗️ Architecture Strengths
-
-✅ **Good Practices:**
-1. **Clear feature separation** - `/features/geo-editor/` is well organized
-2. **Manager pattern** - History, Selection, Snap, Transform extracted
-3. **Centralized state** - Single Zustand store
-4. **Type safety** - Extensive TypeScript usage
-5. **UI primitives** - Reusable Radix-based components
-6. **Nostr abstractions** - NDKGeoEvent, NDKGeoCollectionEvent wrappers
-7. **Utility separation** - Clear util modules for specific tasks
-
-✅ **Well-Structured Modules:**
-- `managers/` - Clean separation of editor concerns
-- `modes/` - Drawing mode encapsulation
-- `lib/ndk/` - Nostr event wrappers
-- `components/ui/` - Reusable primitives
-
----
-
-## Recommendations
-
-### Short Term (1-2 weeks)
-1. Fix filename typo: `LoginSessionButtom.tsx` → `LoginSessionButton.tsx`
-2. Resolve DebugDialog (integrate or delete)
-3. Extract SearchBar component
-4. Document APITester.tsx purpose
-
-### Medium Term (1-2 months)
-1. Split GeoEditorView into smaller components + custom hooks
-2. Refactor Toolbar to reduce complexity
-3. Split InfoPanel and DatasetsPanel by mode
-4. Extract shared QRScanner component
-
-### Long Term (3-6 months)
-1. **Major refactor:** Break down GeoEditor god object
-   - Extract LayerManager
-   - Extract EventHandler
-   - Extract GeometryService
-   - Keep existing managers (History, Selection, Snap, Transform)
-2. Consider domain-based store splitting
-3. Add comprehensive test coverage for core modules
+**Files to verify usage:**
+- `src/components/DebugDialog.tsx` (38 lines) - May be for development only
+- `src/APITester.tsx` (76 lines) - Test utility
 
 ---
 
 ## Conclusion
 
-### Post-Refactoring Status (December 2025)
+The codebase has matured significantly with:
 
-The codebase has undergone significant refactoring to address the critical issues identified:
+1. **Strong core architecture** - GeoEditor engine with 6 focused managers
+2. **Business logic extraction** - 5 custom hooks totaling ~1,900 lines
+3. **Social features** - Comments (~1,100 lines) and Shoutbox (~1,900 lines)
+4. **Rich text editing** - TipTap integration (~1,400 lines)
+5. **Blob handling** - Blossom integration for large datasets
+6. **Type-safe Nostr** - 4 NDK event classes (~980 lines)
 
-**✅ Major Improvements:**
-- **GeoEditor.ts** reduced from 2025 → 1343 lines (-34%)
-  - Extracted LayerManager and RenderingManager
-  - Still large but now follows manager pattern consistently
-- **GeoEditorView.tsx** reduced from 1591 → 826 lines (-48%)
-  - Extracted 4 custom hooks for business logic
-  - Much more readable and testable
-- **GeoEditorInfoPanel.tsx** reduced from 774 → 210 lines (-73%)
-  - Split into 5 focused sub-components
-  - Clear separation between view mode and edit mode
-- **SearchBar duplication eliminated**
-  - Single shared component in ui/search-bar.tsx
-
-**Remaining Opportunities:**
-- GeoDatasetsPanel (334 lines) - could be split if needed
-- Auth dialogs (Nip46LoginDialog, SignupDialog) - could extract QR scanner
-- Store splitting by domain - consider if it grows further
-- Low priority cleanup (DebugDialog, filename typo, unused components)
-
-The manager pattern extraction (History, Selection, Snap, Transform, **LayerManager**, **RenderingManager**) is now consistently applied across the GeoEditor core.
-
-**Overall: 7.5/10 maintainability** - Significant improvement from 6/10. The largest files are now manageable with clear separation of concerns.
+**Overall: 8/10 maintainability** - Clean separation of concerns with well-defined boundaries between features.
