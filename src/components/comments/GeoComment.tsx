@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { GeoCommentForm } from './GeoCommentForm'
 import { GeoSocialActions } from './GeoSocialActions'
 import { GeoRichTextEditor } from '../editor/GeoRichTextEditor'
+import { UserProfile } from '../user-profile'
 
 interface GeoCommentProps {
 	commentNode: CommentNode
@@ -67,10 +68,6 @@ export function GeoComment({
 		return date.toLocaleDateString()
 	}, [comment.created_at])
 
-	const authorDisplay = useMemo(() => {
-		const pubkey = comment.pubkey
-		return `${pubkey.slice(0, 8)}…${pubkey.slice(-4)}`
-	}, [comment.pubkey])
 
 	const handleReply = async (text: string, geojson?: FeatureCollection) => {
 		await onReply(comment, text, geojson)
@@ -103,9 +100,7 @@ export function GeoComment({
 				{/* Header: author, timestamp, collapse button */}
 				<div className="flex items-center justify-between gap-2 mb-1">
 					<div className="flex items-center gap-2 min-w-0">
-						{/* Avatar placeholder */}
-						<div className="h-5 w-5 rounded-full bg-gradient-to-br from-sky-400 to-emerald-400 flex-shrink-0" />
-						<span className="text-xs font-medium text-gray-700 truncate">{authorDisplay}</span>
+						<UserProfile pubkey={comment.pubkey} mode="avatar-name" size="sm" showNip05Badge />
 						<span className="text-[10px] text-gray-400">{timestamp}</span>
 					</div>
 

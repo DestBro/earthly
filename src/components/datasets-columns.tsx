@@ -3,6 +3,7 @@ import { Bug, Download, Maximize2, Pencil, Search, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
 import { Button } from './ui/button'
+import { UserProfile } from './user-profile'
 import { nip19 } from 'nostr-tools'
 import type { GeoFeatureItem } from './editor/GeoRichTextEditor'
 
@@ -108,9 +109,7 @@ export const createDatasetColumns = (
 					<div className="text-xs font-semibold text-gray-900 truncate" title={datasetName}>
 						{datasetName}
 					</div>
-					<div className="text-[10px] text-gray-500 truncate">
-						{event.pubkey.slice(0, 8)}…{event.pubkey.slice(-4)}
-					</div>
+					<UserProfile pubkey={event.pubkey} mode="avatar-name" size="xs" showNip05Badge />
 					{event.hashtags.length > 0 && (
 						<div className="flex flex-wrap gap-0.5">
 							{event.hashtags.slice(0, 2).map((tag) => (

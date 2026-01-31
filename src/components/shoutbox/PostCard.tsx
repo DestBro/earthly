@@ -10,6 +10,7 @@ import { GeoRichTextEditor, type GeoRichTextEditorRef } from '../editor/GeoRichT
 import { GeoSocialActions } from '../comments/GeoSocialActions'
 import { CommentsList } from './CommentThread'
 import { useShoutboxComments } from './useShoutboxComments'
+import { UserProfile } from '../user-profile'
 
 interface PostCardProps {
 	/** The post event */
@@ -93,11 +94,13 @@ export function PostCard({ event, isDeveloperPost = false }: PostCardProps) {
 			{/* Header */}
 			<div className="flex items-center justify-between text-xs text-muted-foreground">
 				<div className="flex items-center gap-2">
+					<UserProfile pubkey={event.pubkey} mode="avatar-name" size="sm" showNip05Badge />
 					{isDeveloperPost && (
 						<span className="px-1.5 py-0.5 rounded bg-primary/20 text-primary text-[10px] font-medium">
 							OFFICIAL
 						</span>
 					)}
+					<span className="text-[10px]">·</span>
 					<span>{timestamp}</span>
 				</div>
 				<a

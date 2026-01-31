@@ -7,6 +7,7 @@ import { Button } from '../ui/button'
 import { ContentViewer } from '../editor/ContentViewer'
 import { GeoRichTextEditor, type GeoRichTextEditorRef } from '../editor/GeoRichTextEditor'
 import { GeoSocialActions } from '../comments/GeoSocialActions'
+import { UserProfile } from '../user-profile'
 import type { CommentNode } from './types'
 
 interface CommentThreadProps {
@@ -61,7 +62,7 @@ export function CommentThread({ node, onReply, collapseDepth = 3 }: CommentThrea
 			<div className="py-2">
 				{/* Header */}
 				<div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-					<span className="font-medium text-foreground">{event.pubkey.slice(0, 8)}...</span>
+					<UserProfile pubkey={event.pubkey} mode="avatar-name" size="xs" showNip05Badge />
 					<span>·</span>
 					<span>{timestamp}</span>
 				</div>

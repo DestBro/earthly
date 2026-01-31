@@ -3,6 +3,7 @@ import { Bug, Maximize2, Pencil, Eye } from 'lucide-react'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
 import { Button } from './ui/button'
+import { UserProfile } from './user-profile'
 
 export interface CollectionRowData {
 	collection: NDKGeoCollectionEvent
@@ -74,9 +75,7 @@ export const createCollectionColumns = (
 					<div className="text-xs font-semibold text-gray-900 truncate" title={collectionName}>
 						{collectionName}
 					</div>
-					<div className="text-[10px] text-gray-500 truncate">
-						{collection.pubkey.slice(0, 8)}…{collection.pubkey.slice(-4)}
-					</div>
+					<UserProfile pubkey={collection.pubkey} mode="avatar-name" size="xs" showNip05Badge />
 					<div className="text-[10px] text-gray-500">
 						{datasetCount} dataset{datasetCount === 1 ? '' : 's'}
 					</div>
