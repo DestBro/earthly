@@ -4,6 +4,7 @@ import { Loader2, QrCode } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from './ui/button'
+import { Checkbox } from './ui/checkbox'
 import {
 	Dialog,
 	DialogContent,
@@ -18,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 
 interface Nip46LoginDialogProps {
 	trigger: React.ReactNode
-	onLogin: (signer: NDKNip46Signer) => Promise<void>
+	onLogin: (signer: NDKNip46Signer, rememberMe: boolean) => Promise<void>
 }
 
 type TabType = 'scan' | 'paste'
@@ -51,6 +52,7 @@ export function Nip46LoginDialog({ trigger, onLogin }: Nip46LoginDialogProps) {
 	const [bunkerUrl, setBunkerUrl] = useState('')
 	const [showScanner, setShowScanner] = useState(false)
 	const [scanError, setScanError] = useState<string | null>(null)
+	const [rememberMe, setRememberMe] = useState(true)
 
 	// Refs for cleanup
 	const ndkRef = useRef<NDK | null>(null)
@@ -89,6 +91,7 @@ export function Nip46LoginDialog({ trigger, onLogin }: Nip46LoginDialogProps) {
 			setShowScanner(false)
 			setScanError(null)
 			secretRef.current = ''
+			setRememberMe(true)
 		}
 	}
 
@@ -214,7 +217,7 @@ export function Nip46LoginDialog({ trigger, onLogin }: Nip46LoginDialogProps) {
 					const nip46Signer = NDKNip46Signer.bunker(loginNdk, bunkerUrl, signer)
 					await nip46Signer.blockUntilReady()
 
-					await onLogin(nip46Signer)
+					await onLogin(nip46Signer, rememberMe)
 
 					cleanup()
 					setOpen(false)
@@ -266,7 +269,7 @@ export function Nip46LoginDialog({ trigger, onLogin }: Nip46LoginDialogProps) {
 			const nip46Signer = NDKNip46Signer.bunker(ndk, bunkerUrl, signer)
 			await nip46Signer.blockUntilReady()
 
-			await onLogin(nip46Signer)
+			await onLogin(nip46Signer, rememberMe)
 			setOpen(false)
 		} catch (err: any) {
 			console.error('NIP-46 login failed:', err)
@@ -490,6 +493,21 @@ export function Nip46LoginDialog({ trigger, onLogin }: Nip46LoginDialogProps) {
 							</div>
 						</div>
 					)}
+
+					{/* Stay Logged In Checkbox */}
+					<div className="flex items-center gap-2 pt-2">
+						<Checkbox
+							id="nip46-remember-me"
+							checked={rememberMe}
+							onCheckedChange={(checked) => setRememberMe(checked === true)}
+						/>
+						<label
+							htmlFor="nip46-remember-me"
+							className="text-sm cursor-pointer select-none"
+						>
+							Stay logged in
+						</label>
+					</div>
 
 					{/* Error Message */}
 					{error && (

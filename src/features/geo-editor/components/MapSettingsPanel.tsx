@@ -1,6 +1,7 @@
 import { Download, Eye, EyeOff, GripVertical, Layers, Map } from 'lucide-react'
 import type React from 'react'
 import { useRef, useState } from 'react'
+import { SessionsManager } from '../../../components/SessionsManager'
 import { Button } from '../../../components/ui/button'
 import { Checkbox } from '../../../components/ui/checkbox'
 import { Input } from '../../../components/ui/input'
@@ -12,6 +13,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '../../../components/ui/select'
+import { Separator } from '../../../components/ui/separator'
 import { Slider } from '../../../components/ui/slider'
 import { useEditorStore } from '../store'
 
@@ -126,6 +128,12 @@ export function MapSettingsPanel() {
 
 	return (
 		<div className="space-y-4">
+			{/* Sessions Manager */}
+			<SessionsManager />
+
+			<Separator />
+
+			{/* Map Source Settings */}
 			<div className="space-y-2">
 				<Label>Map Source</Label>
 				<Select value={mapSource.type} onValueChange={handleSourceTypeChange}>

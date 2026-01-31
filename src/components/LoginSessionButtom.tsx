@@ -1,8 +1,10 @@
 import {
 	NDKNip07Signer,
+	NDKSessionLocalStorage,
 	type NDKNip46Signer,
 	type NDKPrivateKeySigner,
 	type NDKUser,
+	removeStoredSession,
 	useNDKCurrentUser,
 	useNDKSessionLogin,
 	useNDKSessionLogout,
@@ -10,7 +12,7 @@ import {
 	type Hexpubkey,
 } from '@nostr-dev-kit/react'
 import { AppWindowIcon, KeyRoundIcon, LogOutIcon, QrCodeIcon, User2Icon } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Nip46LoginDialog } from './Nip46LoginDialog'
 import { SignupDialog } from './SignupDialog'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
@@ -73,10 +75,18 @@ export function LoginSessionButtons() {
 
 	const [loading, setLoading] = useState(false)
 	const [showSignupDialog, setShowSignupDialog] = useState(false)
+	const storageRef = useRef(new NDKSessionLocalStorage())
 
-	const handleSignup = async (signer: NDKPrivateKeySigner) => {
+	const handleSignup = async (signer: NDKPrivateKeySigner, rememberMe: boolean) => {
 		try {
 			await login(signer)
+			// If user doesn't want to stay logged in, remove from persistent storage
+			if (!rememberMe) {
+				const user = await signer.user()
+				if (user?.pubkey) {
+					await removeStoredSession(storageRef.current, user.pubkey)
+				}
+			}
 		} catch (error) {
 			console.error('Login failed:', error)
 			throw error
@@ -88,6 +98,7 @@ export function LoginSessionButtons() {
 			setLoading(true)
 			const signer = new NDKNip07Signer()
 			await login(signer)
+			// NIP-07 always stays logged in (extension manages the key)
 		} catch (error) {
 			console.error('Extension login failed:', error)
 		} finally {
@@ -95,10 +106,17 @@ export function LoginSessionButtons() {
 		}
 	}
 
-	const handleNip46Login = async (signer: NDKNip46Signer) => {
+	const handleNip46Login = async (signer: NDKNip46Signer, rememberMe: boolean) => {
 		try {
 			setLoading(true)
 			await login(signer)
+			// If user doesn't want to stay logged in, remove from persistent storage
+			if (!rememberMe) {
+				const user = await signer.user()
+				if (user?.pubkey) {
+					await removeStoredSession(storageRef.current, user.pubkey)
+				}
+			}
 		} catch (error) {
 			console.error('NIP-46 login failed:', error)
 			throw error

@@ -5,6 +5,7 @@ import { nip19 } from 'nostr-tools'
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
+import { Checkbox } from './ui/checkbox'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
 import {
 	Dialog,
@@ -20,7 +21,7 @@ import { Label } from './ui/label'
 interface SignupDialogProps {
 	open: boolean
 	onOpenChange: (open: boolean) => void
-	onConfirm: (signer: any) => Promise<void>
+	onConfirm: (signer: any, rememberMe: boolean) => Promise<void>
 }
 
 type Mode = 'create' | 'import'
@@ -38,6 +39,7 @@ export function SignupDialog({ open, onOpenChange, onConfirm }: SignupDialogProp
 	const [isImportCollapsed, setIsImportCollapsed] = useState(false)
 	const [showScanner, setShowScanner] = useState(false)
 	const [scanError, setScanError] = useState<string | null>(null)
+	const [rememberMe, setRememberMe] = useState(true)
 
 	// Generate nsec and npub when dialog opens
 	useEffect(() => {
@@ -127,13 +129,14 @@ export function SignupDialog({ open, onOpenChange, onConfirm }: SignupDialogProp
 				signerToUse = new NDKPrivateKeySigner(privateKeyHex)
 			}
 
-			await onConfirm(signerToUse)
+			await onConfirm(signerToUse, rememberMe)
 			onOpenChange(false)
 
 			// Reset state
 			setMode('create')
 			setImportKey('')
 			setImportError('')
+			setRememberMe(true)
 		} catch (error) {
 			console.error('Signup/Login failed:', error)
 		} finally {
@@ -364,22 +367,37 @@ export function SignupDialog({ open, onOpenChange, onConfirm }: SignupDialogProp
 					)}
 				</div>
 
-				<DialogFooter>
-					<Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-						Cancel
-					</Button>
-					<Button
-						onClick={handleConfirm}
-						disabled={loading || (mode === 'import' && (!importKey || !!importError))}
-					>
-						{loading
-							? mode === 'create'
-								? 'Creating Account...'
-								: 'Logging in...'
-							: mode === 'create'
-								? "I've Saved My Key, Continue"
-								: 'Login'}
-					</Button>
+				<DialogFooter className="flex-col gap-4 sm:flex-row sm:justify-between">
+					<div className="flex items-center gap-2">
+						<Checkbox
+							id="remember-me"
+							checked={rememberMe}
+							onCheckedChange={(checked) => setRememberMe(checked === true)}
+						/>
+						<label
+							htmlFor="remember-me"
+							className="text-sm cursor-pointer select-none"
+						>
+							Stay logged in
+						</label>
+					</div>
+					<div className="flex gap-2">
+						<Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+							Cancel
+						</Button>
+						<Button
+							onClick={handleConfirm}
+							disabled={loading || (mode === 'import' && (!importKey || !!importError))}
+						>
+							{loading
+								? mode === 'create'
+									? 'Creating Account...'
+									: 'Logging in...'
+								: mode === 'create'
+									? "I've Saved My Key, Continue"
+									: 'Login'}
+						</Button>
+					</div>
 				</DialogFooter>
 			</DialogContent>
 
