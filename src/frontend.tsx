@@ -11,6 +11,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { config } from './config'
+import { DEFAULT_PUBLIC_RELAYS } from './features/geo-editor/constants'
 
 const elem = document.getElementById('root')!
 
@@ -28,7 +29,7 @@ const app = (
 	<StrictMode>
 		<NDKHeadless
 			ndk={{
-				explicitRelayUrls: config.relayUrls,
+				explicitRelayUrls: config.relayUrls.concat(DEFAULT_PUBLIC_RELAYS),
 				cacheAdapter: dexieAdapter,
 			}}
 			session={{

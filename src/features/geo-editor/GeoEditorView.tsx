@@ -36,11 +36,13 @@ import { OsmResultsPanel } from './components/OsmResultsPanel'
 import { Toolbar } from './components/Toolbar'
 import type { EditorFeature, EditorMode } from './core'
 import {
+	CLUSTER_CIRCLE_LAYER,
 	REMOTE_ANNOTATION_ANCHOR_LAYER,
 	REMOTE_ANNOTATION_LAYER,
 	REMOTE_FILL_LAYER,
 	REMOTE_LINE_LAYER,
 	REMOTE_POINT_LAYER,
+	UNCLUSTERED_POINT_LAYER,
 	useDatasetManagement,
 	useMapLayers,
 	usePublishing,
@@ -114,7 +116,6 @@ function bboxFromGeometry(geometry: any): [number, number, number, number] | nul
 	}
 	return [west, south, east, north]
 }
-
 
 export function GeoEditorView() {
 	const map = useRef<maplibregl.Map | null>(null)
@@ -216,13 +217,7 @@ export function GeoEditorView() {
 			mapSource.blossomServer ?? '',
 			file ? `${file.name}:${file.size}:${file.lastModified}` : '',
 		].join('|')
-	}, [
-		mapSource.type,
-		mapSource.location,
-		mapSource.url,
-		mapSource.blossomServer,
-		mapSource.file,
-	])
+	}, [mapSource.type, mapSource.location, mapSource.url, mapSource.blossomServer, mapSource.file])
 
 	// Collection Editor state
 	const [collectionEditorMode, setCollectionEditorMode] = useState<'none' | 'create' | 'edit'>(
@@ -266,7 +261,7 @@ export function GeoEditorView() {
 
 	// Store state for viewMode
 	const viewMode = useEditorStore((state) => state.viewMode)
-	
+
 	// Blossom upload dialog state
 	const blossomUploadDialogOpen = useEditorStore((state) => state.blossomUploadDialogOpen)
 	const setBlossomUploadDialogOpen = useEditorStore((state) => state.setBlossomUploadDialogOpen)
@@ -294,21 +289,23 @@ export function GeoEditorView() {
 	 * Adds the blob reference to the store WITHOUT publishing.
 	 * User must click "Publish" separately to publish the dataset.
 	 */
-	const handleBlobUploadComplete = useCallback((result: { sha256: string; url: string; size: number }) => {
-		const newRef = {
-			id: crypto.randomUUID(),
-			scope: 'collection' as const,
-			url: result.url,
-			sha256: result.sha256,
-			size: result.size,
-			mimeType: 'application/geo+json',
-			status: 'ready' as const,
-		}
-		useEditorStore.getState().setBlobReferences([
-			...useEditorStore.getState().blobReferences,
-			newRef,
-		])
-	}, [])
+	const handleBlobUploadComplete = useCallback(
+		(result: { sha256: string; url: string; size: number }) => {
+			const newRef = {
+				id: crypto.randomUUID(),
+				scope: 'collection' as const,
+				url: result.url,
+				sha256: result.sha256,
+				size: result.size,
+				mimeType: 'application/geo+json',
+				status: 'ready' as const,
+			}
+			useEditorStore
+				.getState()
+				.setBlobReferences([...useEditorStore.getState().blobReferences, newRef])
+		},
+		[],
+	)
 
 	// Memoize the collection to prevent expensive recalculation on every render
 	// Only compute when in edit mode to avoid unnecessary work
@@ -339,8 +336,15 @@ export function GeoEditorView() {
 	})
 
 	// Routing hook for URL-based focus mode
-	const { route, navigateTo, clearFocus, navigateHome, encodeGeoEventNaddr, encodeCollectionNaddr, isFocused } =
-		useRouting()
+	const {
+		route,
+		navigateTo,
+		clearFocus,
+		navigateHome,
+		encodeGeoEventNaddr,
+		encodeCollectionNaddr,
+		isFocused,
+	} = useRouting()
 
 	// Store focus state
 	const focusedNaddr = useEditorStore((state) => state.focusedNaddr)
@@ -371,7 +375,7 @@ export function GeoEditorView() {
 					const coordinate = `${event.kind ?? GEO_EVENT_KIND}:${event.pubkey}:${datasetId}`
 					const inCollection = references.has(coordinate)
 					if (!inCollection) return false
-					
+
 					// Also respect visibility toggle
 					return datasetVisibility[getDatasetKey(event)] !== false
 				})
@@ -379,7 +383,16 @@ export function GeoEditorView() {
 		}
 		// Default: filter by visibility toggles
 		return geoEvents.filter((event) => datasetVisibility[getDatasetKey(event)] !== false)
-	}, [geoEvents, collectionEvents, datasetVisibility, getDatasetKey, focusedNaddr, focusedType, encodeGeoEventNaddr, encodeCollectionNaddr])
+	}, [
+		geoEvents,
+		collectionEvents,
+		datasetVisibility,
+		getDatasetKey,
+		focusedNaddr,
+		focusedType,
+		encodeGeoEventNaddr,
+		encodeCollectionNaddr,
+	])
 
 	// Effective visibility for sidebar - shows actual visibility state including focus mode
 	const effectiveVisibility = useMemo(() => {
@@ -409,10 +422,13 @@ export function GeoEditorView() {
 		return [...geoEvents, viewingDataset]
 	}, [geoEvents, viewingDataset])
 
-	const availableFeatures = useAvailableGeoFeatures(geoEventsForMentions, resolvedCollectionResolver)
+	const availableFeatures = useAvailableGeoFeatures(
+		geoEventsForMentions,
+		resolvedCollectionResolver,
+	)
 
 	// Map layers hook
-	const { remoteLayersReady } = useMapLayers({
+	const { remoteLayersReady, CLUSTERED_SOURCE_ID } = useMapLayers({
 		mapRef: map,
 		mounted,
 		visibleGeoEvents,
@@ -432,7 +448,9 @@ export function GeoEditorView() {
 		const zoomToCurrentGeometry = async () => {
 			if (cancelled) return
 			const currentFeatures = (featuresRef.current ?? []).filter(
-				(feature): feature is EditorFeature & { geometry: NonNullable<EditorFeature['geometry']> } =>
+				(
+					feature,
+				): feature is EditorFeature & { geometry: NonNullable<EditorFeature['geometry']> } =>
 					feature.geometry !== null,
 			)
 			if (currentFeatures.length === 0) {
@@ -486,7 +504,7 @@ export function GeoEditorView() {
 	const initialZoomPerformed = useRef(false)
 	useEffect(() => {
 		if (initialZoomPerformed.current || !map.current || !mounted) return
-		
+
 		// Only perform initial zoom if we're on the home route (no focus)
 		if (route.focusType !== 'none') return
 
@@ -503,21 +521,23 @@ export function GeoEditorView() {
 		const performZoom = async () => {
 			try {
 				// Get collection or feature collection
-				const dataset = resolveNaddrToDataset(latestEvent.datasetId || latestEvent.dTag || latestEvent.id)
+				const dataset = resolveNaddrToDataset(
+					latestEvent.datasetId || latestEvent.dTag || latestEvent.id,
+				)
 				const col = dataset?.featureCollection || latestEvent.featureCollection
-				
+
 				if (!col) return
 
 				const turf = await import('@turf/turf')
 				const bbox = turf.bbox(col as any)
-				
-				if (Array.isArray(bbox) && bbox.length === 4 && bbox.every(n => Number.isFinite(n))) {
+
+				if (Array.isArray(bbox) && bbox.length === 4 && bbox.every((n) => Number.isFinite(n))) {
 					map.current?.fitBounds(
 						[
 							[bbox[0], bbox[1]],
 							[bbox[2], bbox[3]],
 						],
-						{ padding: 100, duration: 1500, maxZoom: 16 }
+						{ padding: 100, duration: 1500, maxZoom: 16 },
 					)
 					initialZoomPerformed.current = true
 				}
@@ -658,7 +678,7 @@ export function GeoEditorView() {
 			(event) =>
 				event.blobReferences.length > 0 &&
 				event.id &&
-				!processedBlobEventsRef.current.has(event.id)
+				!processedBlobEventsRef.current.has(event.id),
 		)
 
 		if (eventsToProcess.length === 0) return
@@ -704,10 +724,10 @@ export function GeoEditorView() {
 				const newFeatures = collection.features.map((f: any) => {
 					// Ensure ID is a string
 					const featureId = f.id != null ? String(f.id) : crypto.randomUUID()
-					
+
 					// Extract known properties, rest go to customProperties
 					const { name, description, meta, featureId: _, ...restProperties } = f.properties || {}
-					
+
 					return {
 						...f,
 						id: featureId,
@@ -788,10 +808,10 @@ export function GeoEditorView() {
 				const newFeatures = collection.features.map((f: any) => {
 					// Ensure ID is a string
 					const featureId = f.id != null ? String(f.id) : crypto.randomUUID()
-					
+
 					// Extract known properties, rest go to customProperties
 					const { name, description, meta, featureId: _, ...restProperties } = f.properties || {}
-					
+
 					return {
 						...f,
 						id: featureId,
@@ -832,42 +852,45 @@ export function GeoEditorView() {
 		setOsmQueryMode('click')
 	}, [setOsmQueryMode])
 
-	const executeOsmQuery = useCallback(async (lat: number, lon: number, screenX: number, screenY: number) => {
-		setOsmQueryMode('loading')
-		setOsmQueryPosition({ x: screenX, y: screenY, lat, lon })
-		setOsmQueryError(null)
-		setOsmQueryResults([])
+	const executeOsmQuery = useCallback(
+		async (lat: number, lon: number, screenX: number, screenY: number) => {
+			setOsmQueryMode('loading')
+			setOsmQueryPosition({ x: screenX, y: screenY, lat, lon })
+			setOsmQueryError(null)
+			setOsmQueryResults([])
 
-		try {
-			const filters = osmQueryFilter === 'all' ? undefined : { [osmQueryFilter]: '*' }
-			const response = await earthlyGeoServer.QueryOsmNearby(lat, lon, 200, filters, 30)
-			
-			if (!response?.result) {
-				setOsmQueryError('Failed to query OSM - no response')
+			try {
+				const filters = osmQueryFilter === 'all' ? undefined : { [osmQueryFilter]: '*' }
+				const response = await earthlyGeoServer.QueryOsmNearby(lat, lon, 200, filters, 30)
+
+				if (!response?.result) {
+					setOsmQueryError('Failed to query OSM - no response')
+					setOsmQueryMode('idle')
+					return
+				}
+
+				setOsmQueryResults(response.result.features)
 				setOsmQueryMode('idle')
-				return
+			} catch (err: any) {
+				setOsmQueryError(err.message || 'Failed to query OSM')
+				setOsmQueryMode('idle')
 			}
-
-			setOsmQueryResults(response.result.features)
-			setOsmQueryMode('idle')
-		} catch (err: any) {
-			setOsmQueryError(err.message || 'Failed to query OSM')
-			setOsmQueryMode('idle')
-		}
-	}, [osmQueryFilter, setOsmQueryMode, setOsmQueryPosition, setOsmQueryError, setOsmQueryResults])
+		},
+		[osmQueryFilter, setOsmQueryMode, setOsmQueryPosition, setOsmQueryError, setOsmQueryResults],
+	)
 
 	const handleOsmQueryView = useCallback(async () => {
 		if (!map.current) return
 		const bounds = map.current.getBounds()
 		const center = map.current.getCenter()
 		const container = map.current.getContainer()
-		
+
 		setOsmQueryMode('loading')
-		setOsmQueryPosition({ 
-			x: container.clientWidth / 2, 
-			y: container.clientHeight / 2, 
-			lat: center.lat, 
-			lon: center.lng 
+		setOsmQueryPosition({
+			x: container.clientWidth / 2,
+			y: container.clientHeight / 2,
+			lat: center.lat,
+			lon: center.lng,
 		})
 		setOsmQueryError(null)
 		setOsmQueryResults([])
@@ -880,9 +903,9 @@ export function GeoEditorView() {
 				bounds.getEast(),
 				bounds.getNorth(),
 				filters,
-				30
+				30,
 			)
-			
+
 			if (!response?.result) {
 				setOsmQueryError('Failed to query OSM - no response')
 				setOsmQueryMode('idle')
@@ -897,21 +920,24 @@ export function GeoEditorView() {
 		}
 	}, [osmQueryFilter, setOsmQueryMode, setOsmQueryPosition, setOsmQueryError, setOsmQueryResults])
 
-	const handleOsmImport = useCallback((features: GeoJSON.Feature[]) => {
-		if (!editor) return
-		features.forEach((feature) => {
-			const newFeature = {
-				...feature,
-				id: feature.id?.toString() || crypto.randomUUID(),
-				properties: {
-					...feature.properties,
-					meta: 'feature',
-					featureId: feature.id?.toString() || crypto.randomUUID(),
-				},
-			}
-			editor.addFeature(newFeature as EditorFeature)
-		})
-	}, [editor])
+	const handleOsmImport = useCallback(
+		(features: GeoJSON.Feature[]) => {
+			if (!editor) return
+			features.forEach((feature) => {
+				const newFeature = {
+					...feature,
+					id: feature.id?.toString() || crypto.randomUUID(),
+					properties: {
+						...feature.properties,
+						meta: 'feature',
+						featureId: feature.id?.toString() || crypto.randomUUID(),
+					},
+				}
+				editor.addFeature(newFeature as EditorFeature)
+			})
+		},
+		[editor],
+	)
 
 	// Handle map click for OSM query
 	useEffect(() => {
@@ -1046,7 +1072,39 @@ export function GeoEditorView() {
 			REMOTE_POINT_LAYER,
 			REMOTE_ANNOTATION_ANCHOR_LAYER,
 			REMOTE_ANNOTATION_LAYER,
+			UNCLUSTERED_POINT_LAYER,
 		]
+
+		// Cluster click handler - zoom to expand cluster
+		const handleClusterClick = async (event: maplibregl.MapLayerMouseEvent) => {
+			const features = mapInstance.queryRenderedFeatures(event.point, {
+				layers: [CLUSTER_CIRCLE_LAYER],
+			})
+			if (!features.length) return
+
+			const feature = features[0]
+			if (!feature) return
+
+			const clusterId = feature.properties?.cluster_id as number | undefined
+			if (clusterId === undefined) return
+
+			const source = mapInstance.getSource(CLUSTERED_SOURCE_ID) as maplibregl.GeoJSONSource
+			if (!source) return
+
+			try {
+				const zoom = await source.getClusterExpansionZoom(clusterId)
+				const geometry = feature.geometry
+				if (geometry.type !== 'Point') return
+
+				mapInstance.easeTo({
+					center: geometry.coordinates as [number, number],
+					zoom: zoom ?? mapInstance.getZoom() + 2,
+					duration: 500,
+				})
+			} catch {
+				// Cluster may have been removed
+			}
+		}
 
 		const handleMapDatasetClick = (event: maplibregl.MapLayerMouseEvent & any) => {
 			const feature = event.features?.[0]
@@ -1101,6 +1159,13 @@ export function GeoEditorView() {
 			}
 		}
 
+		// Add cluster layer handlers
+		if (mapInstance.getLayer(CLUSTER_CIRCLE_LAYER)) {
+			mapInstance.on('click', CLUSTER_CIRCLE_LAYER, handleClusterClick)
+			mapInstance.on('mouseenter', CLUSTER_CIRCLE_LAYER, handleMouseEnter)
+			mapInstance.on('mouseleave', CLUSTER_CIRCLE_LAYER, handleMouseLeave)
+		}
+
 		return () => {
 			for (const layer of remoteLayers) {
 				try {
@@ -1111,6 +1176,14 @@ export function GeoEditorView() {
 					// Layer may have been removed
 				}
 			}
+			// Remove cluster layer handlers
+			try {
+				mapInstance.off('click', CLUSTER_CIRCLE_LAYER, handleClusterClick)
+				mapInstance.off('mouseenter', CLUSTER_CIRCLE_LAYER, handleMouseEnter)
+				mapInstance.off('mouseleave', CLUSTER_CIRCLE_LAYER, handleMouseLeave)
+			} catch {
+				// Layer may have been removed
+			}
 		}
 	}, [
 		handleInspectDatasetWithoutFocus,
@@ -1118,6 +1191,7 @@ export function GeoEditorView() {
 		geoEventsRef,
 		remoteLayersReady,
 		setFocusedMapGeometry,
+		CLUSTERED_SOURCE_ID,
 		viewMode,
 	])
 
@@ -1204,7 +1278,7 @@ export function GeoEditorView() {
 				isFirstLocationUpdate.current = true
 			}
 		},
-		[]
+		[],
 	)
 
 	const handleSearchResultSelect = useCallback(
@@ -1322,19 +1396,22 @@ export function GeoEditorView() {
 	}, [])
 
 	// Zoom to a single editor feature
-	const handleZoomToFeature = useCallback((feature: EditorFeature) => {
-		if (!map.current || !feature.geometry) return
-		import('@turf/turf')
-			.then((turf) => {
-				const bbox = turf.bbox(feature as GeoJSON.Feature) as [number, number, number, number]
-				if (bbox.every((v) => Number.isFinite(v))) {
-					handleZoomToBounds(bbox)
-				}
-			})
-			.catch((err) => {
-				console.warn('Failed to zoom to feature:', err)
-			})
-	}, [handleZoomToBounds])
+	const handleZoomToFeature = useCallback(
+		(feature: EditorFeature) => {
+			if (!map.current || !feature.geometry) return
+			import('@turf/turf')
+				.then((turf) => {
+					const bbox = turf.bbox(feature as GeoJSON.Feature) as [number, number, number, number]
+					if (bbox.every((v) => Number.isFinite(v))) {
+						handleZoomToBounds(bbox)
+					}
+				})
+				.catch((err) => {
+					console.warn('Failed to zoom to feature:', err)
+				})
+		},
+		[handleZoomToBounds],
+	)
 
 	// Resolve naddr to dataset
 	const resolveNaddrToDataset = useCallback(
@@ -1603,411 +1680,421 @@ export function GeoEditorView() {
 					className="relative h-screen w-full"
 					style={{ height: '100dvh', minHeight: '100svh' }}
 				>
-			<MapComponent
-				className="w-full h-full touch-none"
-				onLoad={(m) => {
-					map.current = m
-					setMounted(true)
-				}}
-				mapSource={mapSource}
-			>
-				<Editor />
-			</MapComponent>
+					<MapComponent
+						className="w-full h-full touch-none"
+						onLoad={(m) => {
+							map.current = m
+							setMounted(true)
+						}}
+						mapSource={mapSource}
+					>
+						<Editor />
+					</MapComponent>
 
-			{/* User location marker - pulsating blue dot */}
-			<UserLocationMarker
-				map={map.current}
-				coordinates={userLocation}
-				accuracy={userLocation?.accuracy}
-			/>
+					{/* User location marker - pulsating blue dot */}
+					<UserLocationMarker
+						map={map.current}
+						coordinates={userLocation}
+						accuracy={userLocation?.accuracy}
+					/>
 
-			<Magnifier
-				enabled={magnifierEnabled}
-				visible={magnifierVisible}
-				position={magnifierPosition}
-				center={magnifierCenter}
-				mainMap={map.current}
-				size={MAGNIFIER_SIZE}
-				zoomOffset={magnifierZoomOffset}
-			/>
+					<Magnifier
+						enabled={magnifierEnabled}
+						visible={magnifierVisible}
+						position={magnifierPosition}
+						center={magnifierCenter}
+						mainMap={map.current}
+						size={MAGNIFIER_SIZE}
+						zoomOffset={magnifierZoomOffset}
+					/>
 
-			{/* Inspector Popup - appears near cursor when inspector is active */}
-			<LocationInspectorPopup
-				isOpen={inspectorActive && inspectorClickPosition !== null}
-				loading={reverseLookupStatus === 'loading'}
-				error={reverseLookupError}
-				result={reverseLookupResult}
-				clickPosition={inspectorClickPosition}
-				containerRef={mapContainerRef}
-				onClose={() => {
-					setInspectorClickPosition(null)
-					setReverseLookupResult(null)
-					setReverseLookupError(null)
-				}}
-			/>
+					{/* Inspector Popup - appears near cursor when inspector is active */}
+					<LocationInspectorPopup
+						isOpen={inspectorActive && inspectorClickPosition !== null}
+						loading={reverseLookupStatus === 'loading'}
+						error={reverseLookupError}
+						result={reverseLookupResult}
+						clickPosition={inspectorClickPosition}
+						containerRef={mapContainerRef}
+						onClose={() => {
+							setInspectorClickPosition(null)
+							setReverseLookupResult(null)
+							setReverseLookupError(null)
+						}}
+					/>
 
-			{mapError && (
-				<div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded z-50">
-					<p className="font-bold">Map Error</p>
-					<p>{mapError}</p>
-				</div>
-			)}
+					{mapError && (
+						<div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded z-50">
+							<p className="font-bold">Map Error</p>
+							<p>{mapError}</p>
+						</div>
+					)}
 
-			{/* Desktop: Floating locate button */}
-			{!isMobile && (
-				<div className="absolute bottom-12 right-4 z-10">
-					<LocateButton onLocate={handleLocate} />
-				</div>
-			)}
-
-			{!isMobile && (
-				<div className="absolute bottom-0 left-0 right-0 z-10 pointer-events-none">
-					<div className="mx-auto w-full max-w-6xl px-6 pb-2 text-xs text-gray-500 text-center pointer-events-auto">
-						Hold <strong>{multiSelectModifierLabel}</strong> to multi-select
-						{selectionCount > 0 ? ` • ${selectionCount} selected` : ''}
-					</div>
-				</div>
-			)}
-
-			{mounted && editor && (
-				<div className="absolute top-2 left-2 right-2 z-10 pointer-events-none flex">
-					<div className="w-full">
-						<Toolbar
-							datasetActions={{
-								onExport: exportGeoJSON,
-								canExport: stats.total > 0,
-								onImport: handleImport,
-								onClear: handleClear,
-								onPublishNew: handlePublishNew,
-								canPublishNew,
-								onPublishUpdate: handlePublishUpdate,
-								canPublishUpdate,
-								onPublishCopy: handlePublishCopy,
-								canPublishCopy,
-								isPublishing,
-							}}
-							isMobile={isMobile}
-							showLogin={true}
-							onSearchResultSelect={(result) => handleSearchResultSelect(result as any)}
-							onInspectorDeactivate={disableInspector}
-							onStartNewDataset={startNewDataset}
-							onCancelEditing={cancelEditing}
-							onOsmQueryClick={handleOsmQueryClick}
-							onOsmQueryView={handleOsmQueryView}
-							onOsmAdvanced={() => setImportOsmDialogOpen(true)}
-						/>
-					</div>
-				</div>
-			)}
-
-
-
-
-
-
-			{isMobile && (
-				<>
-					{/* Datasets Sheet - bottom drawer for browsing datasets */}
-					<Sheet open={mobileDatasetsOpen} onOpenChange={setMobileDatasetsOpen} modal={false}>
-						<SheetContent
-							side="bottom"
-							className="p-0 h-[40vh] sm:hidden"
-							onPointerDownOutside={(e) => e.preventDefault()}
-							onInteractOutside={(e) => e.preventDefault()}
-						>
-							<div className="h-full w-full overflow-y-auto px-4 pb-6 pt-3">
-								<GeoDatasetsPanelContent
-									mode="datasets"
-									geoEvents={geoEvents}
-									collectionEvents={collectionEvents}
-									activeDataset={activeDataset}
-									currentUserPubkey={currentUser?.pubkey}
-									datasetVisibility={effectiveVisibility}
-									collectionVisibility={collectionVisibility}
-									isPublishing={isPublishing}
-									deletingKey={deletingKey}
-									onClearEditing={clearEditingSession}
-									onLoadDataset={loadDatasetForEditing}
-									onToggleVisibility={handleToggleVisibilityWithExitFocus}
-									onToggleAllVisibility={handleToggleAllVisibilityWithExitFocus}
-									onToggleCollectionVisibility={handleToggleCollectionVisibility}
-									onToggleAllCollectionVisibility={handleToggleAllCollectionVisibility}
-									onZoomToDataset={zoomToDataset}
-									onDeleteDataset={onDeleteDataset}
-									getDatasetKey={getDatasetKey}
-									getDatasetName={getDatasetName}
-									onZoomToCollection={zoomToCollection}
-									onInspectDataset={handleInspectDatasetWithModeSwitch}
-									onInspectCollection={handleInspectCollectionWithModeSwitch}
-									onOpenDebug={handleOpenDebug}
-									onClose={() => setMobileDatasetsOpen(false)}
-									onCreateCollection={handleCreateCollection}
-									onEditCollection={handleEditCollection}
-									isFocused={isFocused}
-									onExitFocus={navigateHome}
-								/>
-							</div>
-						</SheetContent>
-					</Sheet>
-
-					{/* Info/Editor Sheet - bottom drawer for viewing/editing */}
-					<Sheet open={mobileInfoOpen} onOpenChange={setMobileInfoOpen} modal={false}>
-						<SheetContent
-							side="bottom"
-							className="p-0 h-[40vh] sm:hidden"
-							onPointerDownOutside={(e) => e.preventDefault()}
-							onInteractOutside={(e) => e.preventDefault()}
-						>
-							<div className="h-full w-full overflow-y-auto px-4 pb-6 pt-3">
-								<GeoEditorInfoPanelContent
-									currentUserPubkey={currentUser?.pubkey}
-									onLoadDataset={loadDatasetForEditing}
-									onToggleVisibility={toggleDatasetVisibility}
-									onZoomToDataset={zoomToDataset}
-									onDeleteDataset={onDeleteDataset}
-									onZoomToCollection={zoomToCollection}
-									deletingKey={deletingKey}
-									onExitViewMode={exitViewMode}
-									onClose={() => setMobileInfoOpen(false)}
-									getDatasetKey={getDatasetKey}
-									getDatasetName={getDatasetName}
-									onCommentGeometryVisibility={handleCommentGeometryVisibility}
-									onZoomToBounds={handleZoomToBounds}
-									availableFeatures={availableFeatures}
-									onMentionVisibilityToggle={handleMentionVisibilityToggle}
-									onMentionZoomTo={handleMentionZoomTo}
-									onEditCollection={handleEditCollection}
-									collectionEditorMode={collectionEditorMode}
-									editingCollection={editingCollection}
-									onSaveCollection={handleSaveCollection}
-									onCloseCollectionEditor={handleCloseCollectionEditor}
-									onZoomToFeature={handleZoomToFeature}
-									featureCollectionForUpload={memoizedFeatureCollection}
-									onBlossomUploadComplete={handleBlobUploadComplete}
-									ndk={ndk}
-								/>
-							</div>
-						</SheetContent>
-					</Sheet>
-				</>
-			)}
-
-			{isMobile && (
-				<>
-					<div className="fixed bottom-2 left-2 z-50 md:hidden">
-						<div className="flex gap-2">
+					{/* Desktop: Floating locate button */}
+					{!isMobile && (
+						<div className="absolute bottom-12 right-4 z-10">
 							<LocateButton onLocate={handleLocate} />
-							<Button
-								variant={panLocked ? 'default' : 'outline'}
-								className="shadow-lg h-10 w-10 p-0 rounded-full bg-white/95 backdrop-blur hover:bg-white"
-								onClick={togglePanLock}
-								aria-label="Toggle pan lock while drawing"
-								disabled={isDrawingMode}
-								title={isDrawingMode ? 'Pan is auto-locked while drawing' : 'Toggle pan lock'}
-							>
-								{panLocked ? <Lock className="h-5 w-5" /> : <LockOpen className="h-5 w-5" />}
-							</Button>
-							{(currentMode === 'draw_linestring' || currentMode === 'draw_polygon') && (
-								<Button
-									variant="default"
-									className="shadow-lg h-10 px-4 rounded-full"
-									onClick={() => editor?.finishDrawing()}
-									aria-label="Finish current drawing"
-									disabled={!canFinishDrawing}
+						</div>
+					)}
+
+					{!isMobile && (
+						<div className="absolute bottom-0 left-0 right-0 z-10 pointer-events-none">
+							<div className="mx-auto w-full max-w-6xl px-6 pb-2 text-xs text-gray-500 text-center pointer-events-auto">
+								Hold <strong>{multiSelectModifierLabel}</strong> to multi-select
+								{selectionCount > 0 ? ` • ${selectionCount} selected` : ''}
+							</div>
+						</div>
+					)}
+
+					{mounted && editor && (
+						<div className="absolute top-2 left-2 right-2 z-10 pointer-events-none flex">
+							<div className="w-full">
+								<Toolbar
+									datasetActions={{
+										onExport: exportGeoJSON,
+										canExport: stats.total > 0,
+										onImport: handleImport,
+										onClear: handleClear,
+										onPublishNew: handlePublishNew,
+										canPublishNew,
+										onPublishUpdate: handlePublishUpdate,
+										canPublishUpdate,
+										onPublishCopy: handlePublishCopy,
+										canPublishCopy,
+										isPublishing,
+									}}
+									isMobile={isMobile}
+									showLogin={true}
+									onSearchResultSelect={(result) => handleSearchResultSelect(result as any)}
+									onInspectorDeactivate={disableInspector}
+									onStartNewDataset={startNewDataset}
+									onCancelEditing={cancelEditing}
+									onOsmQueryClick={handleOsmQueryClick}
+									onOsmQueryView={handleOsmQueryView}
+									onOsmAdvanced={() => setImportOsmDialogOpen(true)}
+								/>
+							</div>
+						</div>
+					)}
+
+					{isMobile && (
+						<>
+							{/* Datasets Sheet - bottom drawer for browsing datasets */}
+							<Sheet open={mobileDatasetsOpen} onOpenChange={setMobileDatasetsOpen} modal={false}>
+								<SheetContent
+									side="bottom"
+									className="p-0 h-[40vh] sm:hidden"
+									onPointerDownOutside={(e) => e.preventDefault()}
+									onInteractOutside={(e) => e.preventDefault()}
 								>
-									Finish
-								</Button>
-							)}
-							<div className="relative">
+									<div className="h-full w-full overflow-y-auto px-4 pb-6 pt-3">
+										<GeoDatasetsPanelContent
+											mode="datasets"
+											geoEvents={geoEvents}
+											collectionEvents={collectionEvents}
+											activeDataset={activeDataset}
+											currentUserPubkey={currentUser?.pubkey}
+											datasetVisibility={effectiveVisibility}
+											collectionVisibility={collectionVisibility}
+											isPublishing={isPublishing}
+											deletingKey={deletingKey}
+											onClearEditing={clearEditingSession}
+											onLoadDataset={loadDatasetForEditing}
+											onToggleVisibility={handleToggleVisibilityWithExitFocus}
+											onToggleAllVisibility={handleToggleAllVisibilityWithExitFocus}
+											onToggleCollectionVisibility={handleToggleCollectionVisibility}
+											onToggleAllCollectionVisibility={handleToggleAllCollectionVisibility}
+											onZoomToDataset={zoomToDataset}
+											onDeleteDataset={onDeleteDataset}
+											getDatasetKey={getDatasetKey}
+											getDatasetName={getDatasetName}
+											onZoomToCollection={zoomToCollection}
+											onInspectDataset={handleInspectDatasetWithModeSwitch}
+											onInspectCollection={handleInspectCollectionWithModeSwitch}
+											onOpenDebug={handleOpenDebug}
+											onClose={() => setMobileDatasetsOpen(false)}
+											onCreateCollection={handleCreateCollection}
+											onEditCollection={handleEditCollection}
+											isFocused={isFocused}
+											onExitFocus={navigateHome}
+										/>
+									</div>
+								</SheetContent>
+							</Sheet>
+
+							{/* Info/Editor Sheet - bottom drawer for viewing/editing */}
+							<Sheet open={mobileInfoOpen} onOpenChange={setMobileInfoOpen} modal={false}>
+								<SheetContent
+									side="bottom"
+									className="p-0 h-[40vh] sm:hidden"
+									onPointerDownOutside={(e) => e.preventDefault()}
+									onInteractOutside={(e) => e.preventDefault()}
+								>
+									<div className="h-full w-full overflow-y-auto px-4 pb-6 pt-3">
+										<GeoEditorInfoPanelContent
+											currentUserPubkey={currentUser?.pubkey}
+											onLoadDataset={loadDatasetForEditing}
+											onToggleVisibility={toggleDatasetVisibility}
+											onZoomToDataset={zoomToDataset}
+											onDeleteDataset={onDeleteDataset}
+											onZoomToCollection={zoomToCollection}
+											deletingKey={deletingKey}
+											onExitViewMode={exitViewMode}
+											onClose={() => setMobileInfoOpen(false)}
+											getDatasetKey={getDatasetKey}
+											getDatasetName={getDatasetName}
+											onCommentGeometryVisibility={handleCommentGeometryVisibility}
+											onZoomToBounds={handleZoomToBounds}
+											availableFeatures={availableFeatures}
+											onMentionVisibilityToggle={handleMentionVisibilityToggle}
+											onMentionZoomTo={handleMentionZoomTo}
+											onEditCollection={handleEditCollection}
+											collectionEditorMode={collectionEditorMode}
+											editingCollection={editingCollection}
+											onSaveCollection={handleSaveCollection}
+											onCloseCollectionEditor={handleCloseCollectionEditor}
+											onZoomToFeature={handleZoomToFeature}
+											featureCollectionForUpload={memoizedFeatureCollection}
+											onBlossomUploadComplete={handleBlobUploadComplete}
+											ndk={ndk}
+										/>
+									</div>
+								</SheetContent>
+							</Sheet>
+						</>
+					)}
+
+					{isMobile && (
+						<>
+							<div className="fixed bottom-2 left-2 z-50 md:hidden">
+								<div className="flex gap-2">
+									<LocateButton onLocate={handleLocate} />
+									<Button
+										variant={panLocked ? 'default' : 'outline'}
+										className="shadow-lg h-10 w-10 p-0 rounded-full bg-white/95 backdrop-blur hover:bg-white"
+										onClick={togglePanLock}
+										aria-label="Toggle pan lock while drawing"
+										disabled={isDrawingMode}
+										title={isDrawingMode ? 'Pan is auto-locked while drawing' : 'Toggle pan lock'}
+									>
+										{panLocked ? <Lock className="h-5 w-5" /> : <LockOpen className="h-5 w-5" />}
+									</Button>
+									{(currentMode === 'draw_linestring' || currentMode === 'draw_polygon') && (
+										<Button
+											variant="default"
+											className="shadow-lg h-10 px-4 rounded-full"
+											onClick={() => editor?.finishDrawing()}
+											aria-label="Finish current drawing"
+											disabled={!canFinishDrawing}
+										>
+											Finish
+										</Button>
+									)}
+									<div className="relative">
+										<Button
+											ref={magnifierButtonRef}
+											variant={magnifierEnabled ? 'default' : 'outline'}
+											className="shadow-lg h-10 w-10 p-0 rounded-full"
+											onPointerDown={handleMagnifierPointerDown}
+											onPointerUp={handleMagnifierPointerUp}
+											onPointerLeave={clearMagnifierLongPress}
+											onPointerCancel={clearMagnifierLongPress}
+											onContextMenu={(event) => event.preventDefault()}
+											aria-label="Toggle magnifier"
+										>
+											<Search className="h-5 w-5" />
+										</Button>
+										{magnifierMenuOpen && (
+											<div
+												ref={magnifierMenuRef}
+												className="pointer-events-auto absolute bottom-14 left-0 z-50 w-52 rounded-xl border border-gray-200 bg-white/95 px-4 py-3 text-sm shadow-lg backdrop-blur"
+											>
+												<div className="mb-3 text-xs font-medium text-gray-600">Magnifier zoom</div>
+												<div className="flex items-center gap-3">
+													<button
+														type="button"
+														className="h-8 w-8 rounded-md border border-gray-200 text-sm text-gray-700"
+														onClick={() =>
+															setMagnifierZoomOffset((value) => Math.max(1, value - 0.5))
+														}
+														aria-label="Decrease magnifier zoom"
+													>
+														-
+													</button>
+													<input
+														type="range"
+														min={1}
+														max={6}
+														step={0.5}
+														value={magnifierZoomOffset}
+														onChange={(event) => setMagnifierZoomOffset(Number(event.target.value))}
+														className="h-2 w-full"
+														aria-label="Magnifier zoom level"
+													/>
+													<button
+														type="button"
+														className="h-8 w-8 rounded-md border border-gray-200 text-sm text-gray-700"
+														onClick={() =>
+															setMagnifierZoomOffset((value) => Math.min(6, value + 0.5))
+														}
+														aria-label="Increase magnifier zoom"
+													>
+														+
+													</button>
+												</div>
+												<div className="mt-2 text-xs text-gray-500">
+													Zoom +{magnifierZoomOffset}
+												</div>
+											</div>
+										)}
+									</div>
+								</div>
+							</div>
+							{/* Mobile buttons - positioned to move up when drawer is open */}
+							<div
+								className={`fixed bottom-2 right-2 z-50 flex flex-col gap-2 md:hidden transition-all duration-300 ${
+									mobileDatasetsOpen || mobileInfoOpen ? 'bottom-[calc(40vh+0.5rem)]' : ''
+								}`}
+							>
+								{/* Draw tools */}
 								<Button
-									ref={magnifierButtonRef}
-									variant={magnifierEnabled ? 'default' : 'outline'}
-									className="shadow-lg h-10 w-10 p-0 rounded-full"
-									onPointerDown={handleMagnifierPointerDown}
-									onPointerUp={handleMagnifierPointerUp}
-									onPointerLeave={clearMagnifierLongPress}
-									onPointerCancel={clearMagnifierLongPress}
-									onContextMenu={(event) => event.preventDefault()}
-									aria-label="Toggle magnifier"
+									size="icon"
+									className="shadow-lg h-10 w-10 rounded-full"
+									variant={mobileToolsOpen ? 'default' : 'outline'}
+									onClick={() => {
+										// Close other toolbars, keep drawers
+										setMobileSearchOpen(false)
+										setMobileActionsOpen(false)
+										setMobileToolsOpen(!mobileToolsOpen)
+									}}
+								>
+									<Edit3 className="h-5 w-5" />
+								</Button>
+								{/* Search tools */}
+								<Button
+									size="icon"
+									className="shadow-lg h-10 w-10 rounded-full"
+									variant={mobileSearchOpen ? 'default' : 'outline'}
+									onClick={() => {
+										// Close other toolbars, keep drawers
+										setMobileToolsOpen(false)
+										setMobileActionsOpen(false)
+										setMobileSearchOpen(!mobileSearchOpen)
+									}}
 								>
 									<Search className="h-5 w-5" />
 								</Button>
-								{magnifierMenuOpen && (
-									<div
-										ref={magnifierMenuRef}
-										className="pointer-events-auto absolute bottom-14 left-0 z-50 w-52 rounded-xl border border-gray-200 bg-white/95 px-4 py-3 text-sm shadow-lg backdrop-blur"
-									>
-										<div className="mb-3 text-xs font-medium text-gray-600">Magnifier zoom</div>
-										<div className="flex items-center gap-3">
-											<button
-												type="button"
-												className="h-8 w-8 rounded-md border border-gray-200 text-sm text-gray-700"
-												onClick={() => setMagnifierZoomOffset((value) => Math.max(1, value - 0.5))}
-												aria-label="Decrease magnifier zoom"
-											>
-												-
-											</button>
-											<input
-												type="range"
-												min={1}
-												max={6}
-												step={0.5}
-												value={magnifierZoomOffset}
-												onChange={(event) => setMagnifierZoomOffset(Number(event.target.value))}
-												className="h-2 w-full"
-												aria-label="Magnifier zoom level"
-											/>
-											<button
-												type="button"
-												className="h-8 w-8 rounded-md border border-gray-200 text-sm text-gray-700"
-												onClick={() => setMagnifierZoomOffset((value) => Math.min(6, value + 0.5))}
-												aria-label="Increase magnifier zoom"
-											>
-												+
-											</button>
-										</div>
-										<div className="mt-2 text-xs text-gray-500">Zoom +{magnifierZoomOffset}</div>
-									</div>
-								)}
+								{/* Upload/settings/etc */}
+								<Button
+									size="icon"
+									className="shadow-lg h-10 w-10 rounded-full"
+									variant={mobileActionsOpen ? 'default' : 'outline'}
+									onClick={() => {
+										// Close other toolbars, keep drawers
+										setMobileToolsOpen(false)
+										setMobileSearchOpen(false)
+										setMobileActionsOpen(!mobileActionsOpen)
+									}}
+								>
+									<UploadCloud className="h-5 w-5" />
+								</Button>
+								{/* Drawer 1 (datasets) */}
+								<Button
+									size="icon"
+									className="shadow-lg h-10 w-10 rounded-full"
+									variant={mobileDatasetsOpen ? 'default' : 'outline'}
+									onClick={() => {
+										// Close other drawer, keep toolbars
+										setMobileInfoOpen(false)
+										setMobileDatasetsOpen(!mobileDatasetsOpen)
+									}}
+								>
+									<Layers className="h-5 w-5" />
+								</Button>
+								{/* Drawer 2 (editor) */}
+								<Button
+									size="icon"
+									className="shadow-lg h-10 w-10 rounded-full"
+									variant={mobileInfoOpen ? 'default' : 'outline'}
+									onClick={() => {
+										// Close other drawer, keep toolbars
+										setMobileDatasetsOpen(false)
+										setMobileInfoOpen(!mobileInfoOpen)
+									}}
+								>
+									<FilePenLine className="h-5 w-5" />
+								</Button>
 							</div>
-						</div>
-					</div>
-					{/* Mobile buttons - positioned to move up when drawer is open */}
-					<div
-						className={`fixed bottom-2 right-2 z-50 flex flex-col gap-2 md:hidden transition-all duration-300 ${
-							mobileDatasetsOpen || mobileInfoOpen ? 'bottom-[calc(40vh+0.5rem)]' : ''
-						}`}
-					>
-						{/* Draw tools */}
-						<Button
-							size="icon"
-							className="shadow-lg h-10 w-10 rounded-full"
-							variant={mobileToolsOpen ? 'default' : 'outline'}
-							onClick={() => {
-								// Close other toolbars, keep drawers
-								setMobileSearchOpen(false)
-								setMobileActionsOpen(false)
-								setMobileToolsOpen(!mobileToolsOpen)
-							}}
-						>
-							<Edit3 className="h-5 w-5" />
-						</Button>
-						{/* Search tools */}
-						<Button
-							size="icon"
-							className="shadow-lg h-10 w-10 rounded-full"
-							variant={mobileSearchOpen ? 'default' : 'outline'}
-							onClick={() => {
-								// Close other toolbars, keep drawers
-								setMobileToolsOpen(false)
-								setMobileActionsOpen(false)
-								setMobileSearchOpen(!mobileSearchOpen)
-							}}
-						>
-							<Search className="h-5 w-5" />
-						</Button>
-						{/* Upload/settings/etc */}
-						<Button
-							size="icon"
-							className="shadow-lg h-10 w-10 rounded-full"
-							variant={mobileActionsOpen ? 'default' : 'outline'}
-							onClick={() => {
-								// Close other toolbars, keep drawers
-								setMobileToolsOpen(false)
-								setMobileSearchOpen(false)
-								setMobileActionsOpen(!mobileActionsOpen)
-							}}
-						>
-							<UploadCloud className="h-5 w-5" />
-						</Button>
-						{/* Drawer 1 (datasets) */}
-						<Button
-							size="icon"
-							className="shadow-lg h-10 w-10 rounded-full"
-							variant={mobileDatasetsOpen ? 'default' : 'outline'}
-							onClick={() => {
-								// Close other drawer, keep toolbars
-								setMobileInfoOpen(false)
-								setMobileDatasetsOpen(!mobileDatasetsOpen)
-							}}
-						>
-							<Layers className="h-5 w-5" />
-						</Button>
-						{/* Drawer 2 (editor) */}
-						<Button
-							size="icon"
-							className="shadow-lg h-10 w-10 rounded-full"
-							variant={mobileInfoOpen ? 'default' : 'outline'}
-							onClick={() => {
-								// Close other drawer, keep toolbars
-								setMobileDatasetsOpen(false)
-								setMobileInfoOpen(!mobileInfoOpen)
-							}}
-						>
-							<FilePenLine className="h-5 w-5" />
-						</Button>
-						</div>
-				</>
-			)}
+						</>
+					)}
 
-			{debugEvent && (
-				<DebugDialog event={debugEvent} open={debugDialogOpen} onOpenChange={setDebugDialogOpen} />
-			)}
+					{debugEvent && (
+						<DebugDialog
+							event={debugEvent}
+							open={debugDialogOpen}
+							onOpenChange={setDebugDialogOpen}
+						/>
+					)}
 
-			{/* Blossom Upload Dialog */}
-			<BlossomUploadDialog
-				open={blossomUploadDialogOpen}
-				onOpenChange={setBlossomUploadDialogOpen}
-				geojson={pendingPublishCollection ?? memoizedFeatureCollection}
-				onUploadComplete={handleBlobUploadComplete}
-				onPublishWithUpload={handlePublishWithBlossomUpload}
-				onSkip={() => {
-					handlePublishNew({ skipSizeCheck: true })
-				}}
-				allowSkip={false}
-				title="Dataset Size Warning"
-				ndk={ndk}
-			/>
+					{/* Blossom Upload Dialog */}
+					<BlossomUploadDialog
+						open={blossomUploadDialogOpen}
+						onOpenChange={setBlossomUploadDialogOpen}
+						geojson={pendingPublishCollection ?? memoizedFeatureCollection}
+						onUploadComplete={handleBlobUploadComplete}
+						onPublishWithUpload={handlePublishWithBlossomUpload}
+						onSkip={() => {
+							handlePublishNew({ skipSizeCheck: true })
+						}}
+						allowSkip={false}
+						title="Dataset Size Warning"
+						ndk={ndk}
+					/>
 
-			{/* Import OSM Dialog */}
-			<ImportOsmDialog
-				open={importOsmDialogOpen}
-				onOpenChange={setImportOsmDialogOpen}
-				mapCenter={map.current ? (() => {
-					const center = map.current.getCenter()
-					return { lat: center.lat, lon: center.lng }
-				})() : undefined}
-				mapBounds={map.current ? (() => {
-					const bounds = map.current.getBounds()
-					return {
-						west: bounds.getWest(),
-						south: bounds.getSouth(),
-						east: bounds.getEast(),
-						north: bounds.getNorth(),
-					}
-				})() : undefined}
-				onImport={(features) => {
-					if (!editor) return
-					features.forEach((feature) => {
-						const newFeature = {
-							...feature,
-							id: feature.id?.toString() || crypto.randomUUID(),
-							properties: {
-								...feature.properties,
-								meta: 'feature',
-								featureId: feature.id?.toString() || crypto.randomUUID(),
-							},
+					{/* Import OSM Dialog */}
+					<ImportOsmDialog
+						open={importOsmDialogOpen}
+						onOpenChange={setImportOsmDialogOpen}
+						mapCenter={
+							map.current
+								? (() => {
+										const center = map.current.getCenter()
+										return { lat: center.lat, lon: center.lng }
+									})()
+								: undefined
 						}
-						editor.addFeature(newFeature as EditorFeature)
-					})
-				}}
-			/>
+						mapBounds={
+							map.current
+								? (() => {
+										const bounds = map.current.getBounds()
+										return {
+											west: bounds.getWest(),
+											south: bounds.getSouth(),
+											east: bounds.getEast(),
+											north: bounds.getNorth(),
+										}
+									})()
+								: undefined
+						}
+						onImport={(features) => {
+							if (!editor) return
+							features.forEach((feature) => {
+								const newFeature = {
+									...feature,
+									id: feature.id?.toString() || crypto.randomUUID(),
+									properties: {
+										...feature.properties,
+										meta: 'feature',
+										featureId: feature.id?.toString() || crypto.randomUUID(),
+									},
+								}
+								editor.addFeature(newFeature as EditorFeature)
+							})
+						}}
+					/>
 
-			{/* OSM Query Results Panel (cursor-oriented) */}
-			<OsmResultsPanel
-				onImport={handleOsmImport}
-				onClose={clearOsmQuery}
-			/>
+					{/* OSM Query Results Panel (cursor-oriented) */}
+					<OsmResultsPanel onImport={handleOsmImport} onClose={clearOsmQuery} />
 				</div>
 			</SidebarInset>
 		</SidebarProvider>

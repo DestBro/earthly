@@ -1,5 +1,11 @@
 import type { FeatureCollection } from 'geojson'
 import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
+import {
+	isGeoJsonFeature,
+	isGeoJsonFeatureCollection,
+	isGeoJsonGeometry,
+	normalizeGeoJsonToFeatureCollection,
+} from '../../lib/geo/normalizeGeoJSON'
 import type { EditorFeature } from './core'
 import type { CollectionMeta } from './types'
 
@@ -107,22 +113,16 @@ export async function fetchGeoJsonPayload(
 }
 
 export function ensureFeatureCollection(payload: any): FeatureCollection {
-	if (payload?.type === 'FeatureCollection') {
-		const features = Array.isArray(payload.features) ? payload.features : []
-		return {
-			type: 'FeatureCollection',
-			features,
-		}
+	if (
+		isGeoJsonFeatureCollection(payload) ||
+		isGeoJsonFeature(payload) ||
+		isGeoJsonGeometry(payload) ||
+		(typeof payload === 'object' && payload !== null && 'geometry' in (payload as any))
+	) {
+		return normalizeGeoJsonToFeatureCollection(payload)
 	}
 
-	if (payload?.type === 'Feature') {
-		return {
-			type: 'FeatureCollection',
-			features: [payload],
-		}
-	}
-
-	throw new Error('Payload is not a GeoJSON Feature or FeatureCollection.')
+	throw new Error('Payload is not a GeoJSON Feature, FeatureCollection, Geometry, or Feature-like object.')
 }
 
 export function summarizeFeatureCollection(collection: FeatureCollection): {

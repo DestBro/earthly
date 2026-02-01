@@ -1,40 +1,23 @@
-import type { Feature, FeatureCollection } from 'geojson'
+import type { Feature, FeatureCollection, Geometry } from 'geojson'
 import type { GeoBlobReference, NDKGeoEvent } from '../ndk/NDKGeoEvent'
+import {
+	isGeoJsonFeature,
+	isGeoJsonFeatureCollection,
+	isGeoJsonGeometry,
+	normalizeGeoJsonToFeatureCollection,
+} from './normalizeGeoJSON'
 
-type BlobPayload = FeatureCollection | Feature
+type BlobPayload = FeatureCollection | Feature | Geometry
 
 const blobCache = new Map<string, BlobPayload>()
-
-function isFeatureCollection(payload: unknown): payload is FeatureCollection {
-	return (
-		typeof payload === 'object' &&
-		payload !== null &&
-		(payload as FeatureCollection).type === 'FeatureCollection' &&
-		Array.isArray((payload as FeatureCollection).features)
-	)
-}
-
-function isFeature(payload: unknown): payload is Feature {
-	return (
-		typeof payload === 'object' &&
-		payload !== null &&
-		(payload as Feature).type === 'Feature' &&
-		'geometry' in (payload as Feature)
-	)
-}
 
 function cloneFeature(feature: Feature): Feature {
 	return JSON.parse(JSON.stringify(feature))
 }
 
 function normalizeToFeatureArray(payload: BlobPayload): Feature[] {
-	if (isFeature(payload)) {
-		return payload.geometry ? [payload] : []
-	}
-	if (isFeatureCollection(payload)) {
-		return (payload.features ?? []).filter((feature) => Boolean(feature.geometry))
-	}
-	return []
+	const normalized = normalizeGeoJsonToFeatureCollection(payload)
+	return (normalized.features ?? []).filter((feature) => Boolean(feature.geometry)) as Feature[]
 }
 
 // Track failed URLs to avoid repeated requests
@@ -62,8 +45,10 @@ async function fetchBlobReference(reference: GeoBlobReference): Promise<BlobPayl
 			return null
 		}
 		const json = await response.json()
-		if (!isFeatureCollection(json) && !isFeature(json)) {
-			console.warn(`Blob payload at ${reference.url} is not a valid GeoJSON Feature or FeatureCollection.`)
+		if (!isGeoJsonFeatureCollection(json) && !isGeoJsonFeature(json) && !isGeoJsonGeometry(json)) {
+			console.warn(
+				`Blob payload at ${reference.url} is not a valid GeoJSON Feature, FeatureCollection, or Geometry.`,
+			)
 			failedUrls.add(reference.url)
 			return null
 		}
@@ -85,9 +70,9 @@ export async function resolveGeoEventFeatureCollection(
 		return baseCollection
 	}
 
-	let features = baseCollection.features
+	let features = normalizeGeoJsonToFeatureCollection(baseCollection).features
 		.filter((feature) => Boolean(feature.geometry))
-		.map((feature) => cloneFeature(feature))
+		.map((feature) => cloneFeature(feature as Feature))
 
 	for (const reference of event.blobReferences) {
 		const payload = await fetchBlobReference(reference)
@@ -120,8 +105,9 @@ export async function resolveGeoEventFeatureCollection(
 		}
 	}
 
-	return {
+	return normalizeGeoJsonToFeatureCollection({
 		...baseCollection,
+		type: 'FeatureCollection',
 		features,
-	}
+	})
 }

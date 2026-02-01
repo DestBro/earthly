@@ -9,30 +9,35 @@
  */
 
 import { useState, useMemo, useEffect } from 'react'
-import { Map, Loader2, Check, Copy, AlertTriangle, Maximize, MousePointer2, PenTool } from 'lucide-react'
+import {
+	Map,
+	Loader2,
+	Check,
+	Copy,
+	AlertTriangle,
+	Maximize,
+	MousePointer2,
+	PenTool,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
 import { Checkbox } from '@/components/ui/checkbox'
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from '@/components/ui/popover'
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-	TooltipProvider,
-} from '@/components/ui/tooltip'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
 import { useEditorStore } from '../store'
 import { useNDK, useNDKCurrentUser } from '@nostr-dev-kit/react'
 import { EarthlyGeoServerClient } from '@/ctxcn/EarthlyGeoServerClient'
 import { config } from '@/config'
 
 // Area calculation helpers
-function calculateBBoxAreaSqKm(bbox: { west: number; south: number; east: number; north: number }): number {
+function calculateBBoxAreaSqKm(bbox: {
+	west: number
+	south: number
+	east: number
+	north: number
+}): number {
 	const { west, south, east, north } = bbox
 
 	// Convert to radians
@@ -91,7 +96,7 @@ export function CreateMapPopover() {
 	const [open, setOpen] = useState(false)
 	const [sourceType, setSourceType] = useState<SourceType>('viewport')
 	const [blossomUrl, setBlossomUrl] = useState(
-		config.isDevelopment ? 'http://localhost:3001' : 'https://blossom.earthly.city'
+		config.isDevelopment ? 'http://localhost:3001' : 'https://blossom.earthly.city',
 	)
 	const [maxZoom, setMaxZoom] = useState(16)
 	const [flowState, setFlowState] = useState<FlowState>('idle')
@@ -121,11 +126,9 @@ export function CreateMapPopover() {
 
 	// Compute bbox based on source type (used for extraction)
 	const bbox = useMemo((): BBox | null => {
-		console.log('CreateMapPopover: computing bbox', { sourceType, editor: !!editor, open })
 		if (sourceType === 'viewport') {
 			// Use current map viewport from editor
 			const mapBounds = editor?.getMapBounds()
-			console.log('CreateMapPopover: viewport mode', { mapBounds, editorExists: !!editor })
 			if (mapBounds) {
 				return {
 					west: mapBounds[0],
@@ -149,10 +152,12 @@ export function CreateMapPopover() {
 
 			// Get bbox from selected features on the map (clicked geometries)
 			const selectedFeatures = editor?.getSelectedFeatures() ?? []
-			console.log('CreateMapPopover: dataset mode', { selectedCount: selectedFeatures.length, selectedFeatureIds })
-			
+
 			if (selectedFeatures.length > 0) {
-				let west = Infinity, south = Infinity, east = -Infinity, north = -Infinity
+				let west = Infinity,
+					south = Infinity,
+					east = -Infinity,
+					north = -Infinity
 
 				for (const feature of selectedFeatures) {
 					const coords = getAllCoordinates(feature.geometry)
@@ -168,16 +173,19 @@ export function CreateMapPopover() {
 					return padBBoxMeters({ west, south, east, north }, DATASET_EXCERPT_PADDING_METERS)
 				}
 			}
-			
+
 			// Fallback to activeDataset bbox if available
 			if (activeDataset?.boundingBox?.length === 4) {
 				const datasetBbox = activeDataset.boundingBox
-				return padBBoxMeters({
-					west: datasetBbox[0],
-					south: datasetBbox[1],
-					east: datasetBbox[2],
-					north: datasetBbox[3],
-				}, DATASET_EXCERPT_PADDING_METERS)
+				return padBBoxMeters(
+					{
+						west: datasetBbox[0],
+						south: datasetBbox[1],
+						east: datasetBbox[2],
+						north: datasetBbox[3],
+					},
+					DATASET_EXCERPT_PADDING_METERS,
+				)
 			}
 			return null
 		} else {
@@ -201,7 +209,7 @@ export function CreateMapPopover() {
 		setSourceType(newSource)
 		clearMapAreaRect()
 		setWaitingForSelection(false)
-		
+
 		if (newSource === 'viewport') {
 			// Viewport uses current bounds, no need to close popover
 			// Keep popover open
@@ -221,7 +229,6 @@ export function CreateMapPopover() {
 			setOpen(false)
 		}
 	}
-
 
 	// Auto-reopen popover when mapAreaRect is captured after drawing
 	useEffect(() => {
@@ -270,7 +277,7 @@ export function CreateMapPopover() {
 			// Step 1: Extract PMTiles
 			// Note: CreateMapExtract method will be available after client regeneration
 			// If includeRoute is checked and we have a focused dataset, pass its naddr
-			const routeNaddr = (canIncludeRoute && includeRoute) ? focusedNaddr : undefined
+			const routeNaddr = canIncludeRoute && includeRoute ? focusedNaddr : undefined
 			const extractResult = await (client as any).CreateMapExtract(
 				bbox.west,
 				bbox.south,
@@ -371,11 +378,7 @@ export function CreateMapPopover() {
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<PopoverTrigger asChild>
-							<Button
-								variant="outline"
-								size="icon"
-								aria-label="Create Map"
-							>
+							<Button variant="outline" size="icon" aria-label="Create Map">
 								<Map className="h-4 w-4" />
 							</Button>
 						</PopoverTrigger>
@@ -524,22 +527,18 @@ export function CreateMapPopover() {
 								)}
 
 								{!currentUser && (
-									<p className="text-xs text-destructive">
-										Please log in to sign the upload
-									</p>
+									<p className="text-xs text-destructive">Please log in to sign the upload</p>
 								)}
 
-								<Button
-									onClick={handleCreate}
-									disabled={!canCreate}
-									className="w-full"
-								>
+								<Button onClick={handleCreate} disabled={!canCreate} className="w-full">
 									Create Map
 								</Button>
 							</>
 						)}
 
-						{(flowState === 'extracting' || flowState === 'signing' || flowState === 'uploading') && (
+						{(flowState === 'extracting' ||
+							flowState === 'signing' ||
+							flowState === 'uploading') && (
 							<div className="flex flex-col items-center py-4 gap-2">
 								<Loader2 className="h-8 w-8 animate-spin text-primary" />
 								<p className="text-sm text-muted-foreground">
@@ -559,16 +558,8 @@ export function CreateMapPopover() {
 								<div className="space-y-1">
 									<Label>PMTiles URL</Label>
 									<div className="flex gap-2">
-										<Input
-											value={resultUrl}
-											readOnly
-											className="text-xs"
-										/>
-										<Button
-											size="icon"
-											variant="outline"
-											onClick={handleCopyUrl}
-										>
+										<Input value={resultUrl} readOnly className="text-xs" />
+										<Button size="icon" variant="outline" onClick={handleCopyUrl}>
 											{copiedUrl ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
 										</Button>
 									</div>

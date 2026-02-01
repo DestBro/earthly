@@ -1,24 +1,22 @@
-import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
+import { cn } from '@/lib/utils'
 import { useNDK, useNDKCurrentUser } from '@nostr-dev-kit/react'
 import type { FeatureCollection } from 'geojson'
-import { X, Save, MapPin, Trash2, FileText, MessageCircle, Eye, EyeOff, Maximize2 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Eye, EyeOff, FileText, MapPin, Maximize2, MessageCircle, X } from 'lucide-react'
+import { nip19 } from 'nostr-tools'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEditorStore } from '../features/geo-editor/store'
+import { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
+import type { NDKGeoCommentEvent } from '../lib/ndk/NDKGeoCommentEvent'
+import { CommentsPanel } from './comments'
+import {
+	GeoRichTextEditor,
+	type GeoFeatureItem,
+	type GeoRichTextEditorRef,
+} from './editor/GeoRichTextEditor'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
-import {
-	GeoRichTextEditor,
-	type GeoRichTextEditorRef,
-	type GeoFeatureItem,
-} from './editor/GeoRichTextEditor'
-import { CommentsPanel } from './comments'
-import { serializeToText, parseFromText } from './editor/GeoMentionExtension'
-import { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
-import type { NDKGeoCommentEvent } from '../lib/ndk/NDKGeoCommentEvent'
-import type { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
-import { useEditorStore } from '../features/geo-editor/store'
-import { nip19 } from 'nostr-tools'
 
 type EditorTab = 'details' | 'comments'
 
@@ -73,11 +71,11 @@ export function GeoCollectionEditorPanel({
 	}, [features, selectedFeatureIds])
 
 	const canAttachGeometry = selectedFeatures.length > 0 && !attachedGeojson
-	
+
 	// Initialize form state directly from collection to avoid timing issues
 	const initialName = initialCollection?.metadata.name || ''
 	const initialDescription = initialCollection?.metadata.description || ''
-	
+
 	const [name, setName] = useState(initialName)
 	const [description, setDescription] = useState(initialDescription)
 	const [isSaving, setIsSaving] = useState(false)
