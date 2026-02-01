@@ -100,7 +100,7 @@ interface EditorState {
 	mobileActionsOpen: boolean
 	// Unified mobile panel state (replaces individual panel states)
 	mobilePanelOpen: boolean
-	mobilePanelTab: 'explore' | 'edit' | 'profile'
+	mobilePanelTab: 'datasets' | 'collections' | 'edit' | 'profile' | 'posts' | 'settings' | 'help'
 	inspectorActive: boolean
 	sidebarViewMode: 'datasets' | 'collections' | 'combined' | 'edit' | 'posts' | 'settings' | 'help' | 'user'
 
@@ -195,8 +195,8 @@ interface EditorState {
 	setMobileActiveState: (state: 'datasets' | 'info' | 'tools' | 'search' | 'actions' | null) => void
 	// Unified mobile panel setters
 	setMobilePanelOpen: (open: boolean) => void
-	setMobilePanelTab: (tab: 'explore' | 'edit' | 'profile') => void
-	openMobilePanel: (tab?: 'explore' | 'edit' | 'profile') => void
+	setMobilePanelTab: (tab: 'datasets' | 'collections' | 'edit' | 'profile' | 'posts' | 'settings' | 'help') => void
+	openMobilePanel: (tab?: 'datasets' | 'collections' | 'edit' | 'profile' | 'posts' | 'settings' | 'help') => void
 	closeMobilePanel: () => void
 	setInspectorActive: (active: boolean) => void
 	setSidebarViewMode: (
@@ -315,7 +315,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	mobileSearchOpen: false,
 	mobileActionsOpen: false,
 	mobilePanelOpen: false,
-	mobilePanelTab: 'explore',
+	mobilePanelTab: 'datasets',
 	inspectorActive: false,
 	sidebarViewMode: 'datasets',
 

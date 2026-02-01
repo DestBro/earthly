@@ -1,8 +1,10 @@
 import type { FeatureCollection } from 'geojson'
-import { Compass, Edit3, User } from 'lucide-react'
+import { Database, FolderOpen, HelpCircle, MessageSquare, Pencil, Settings2, User } from 'lucide-react'
 import { GeoDatasetsPanelContent } from '../../../components/GeoDatasetsPanel'
 import { GeoEditorInfoPanelContent } from '../../../components/GeoEditorInfoPanel'
+import { HelpPanel } from '../../../components/HelpPanel'
 import { UserProfilePanel } from '../../../components/UserProfilePanel'
+import { ShoutboxPanel } from '../../../components/shoutbox'
 import { Sheet, SheetContent } from '../../../components/ui/sheet'
 import { cn } from '../../../lib/utils'
 import type { NDKGeoCollectionEvent } from '../../../lib/ndk/NDKGeoCollectionEvent'
@@ -11,8 +13,9 @@ import type { GeoFeatureItem } from '../../../components/editor/GeoRichTextEdito
 import type { EditorFeature } from '../core'
 import type { BlossomUploadResult } from '../../../lib/blossom/blossomUpload'
 import { useEditorStore } from '../store'
+import { MapSettingsPanel } from './MapSettingsPanel'
 
-export type MobilePanelTab = 'explore' | 'edit' | 'profile'
+export type MobilePanelTab = 'datasets' | 'collections' | 'edit' | 'profile' | 'posts' | 'settings' | 'help'
 
 export interface MobilePanelProps {
 	// Data
@@ -26,6 +29,7 @@ export interface MobilePanelProps {
 	isPublishing: boolean
 	deletingKey: string | null
 	isFocused: boolean
+	multiSelectModifier?: string
 
 	// Dataset callbacks
 	onClearEditing: () => void
@@ -68,12 +72,18 @@ export interface MobilePanelProps {
 	onBlossomUploadComplete?: (result: BlossomUploadResult) => void
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	ndk?: any
+	/** Callback when filtered dataset keys change (for map visibility sync) */
+	onFilteredDatasetKeysChange?: (keys: Set<string>) => void
 }
 
-const TAB_CONFIG: { id: MobilePanelTab; label: string; icon: typeof Compass }[] = [
-	{ id: 'explore', label: 'Explore', icon: Compass },
-	{ id: 'edit', label: 'Edit', icon: Edit3 },
+const TAB_CONFIG: { id: MobilePanelTab; label: string; icon: typeof Database }[] = [
+	{ id: 'datasets', label: 'Datasets', icon: Database },
+	{ id: 'collections', label: 'Collections', icon: FolderOpen },
+	{ id: 'edit', label: 'Editor', icon: Pencil },
 	{ id: 'profile', label: 'Profile', icon: User },
+	{ id: 'posts', label: 'Posts', icon: MessageSquare },
+	{ id: 'settings', label: 'Settings', icon: Settings2 },
+	{ id: 'help', label: 'Help', icon: HelpCircle },
 ]
 
 export function MobilePanel(props: MobilePanelProps) {
@@ -88,6 +98,7 @@ export function MobilePanel(props: MobilePanelProps) {
 		isPublishing,
 		deletingKey,
 		isFocused,
+		multiSelectModifier = 'Shift',
 		onClearEditing,
 		onLoadDataset,
 		onToggleVisibility,
@@ -119,6 +130,7 @@ export function MobilePanel(props: MobilePanelProps) {
 		featureCollectionForUpload,
 		onBlossomUploadComplete,
 		ndk,
+		onFilteredDatasetKeysChange,
 	} = props
 
 	// Store state for panel
@@ -133,37 +145,39 @@ export function MobilePanel(props: MobilePanelProps) {
 		<Sheet open={mobilePanelOpen} onOpenChange={setMobilePanelOpen} modal={false}>
 			<SheetContent
 				side="bottom"
-				className="p-0 h-[45vh] sm:hidden flex flex-col"
+				className="p-0 h-[45vh] md:hidden flex flex-col"
 				onPointerDownOutside={(e) => e.preventDefault()}
 				onInteractOutside={(e) => e.preventDefault()}
 			>
-				{/* Tab Bar */}
-				<div className="flex border-b border-gray-200 bg-gray-50/80 shrink-0">
-					{TAB_CONFIG.map((tab) => {
-						const Icon = tab.icon
-						const isActive = mobilePanelTab === tab.id
-						return (
-							<button
-								key={tab.id}
-								type="button"
-								onClick={() => setMobilePanelTab(tab.id)}
-								className={cn(
-									'flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors',
-									isActive
-										? 'text-blue-600 border-b-2 border-blue-600 bg-white'
-										: 'text-gray-500 hover:text-gray-700 hover:bg-gray-100',
-								)}
-							>
-								<Icon className="h-4 w-4" />
-								<span>{tab.label}</span>
-							</button>
-						)
-					})}
+				{/* Scrollable Tab Bar */}
+				<div className="border-b border-gray-200 bg-gray-50/80 shrink-0 overflow-x-auto scrollbar-hide">
+					<div className="flex min-w-max">
+						{TAB_CONFIG.map((tab) => {
+							const Icon = tab.icon
+							const isActive = mobilePanelTab === tab.id
+							return (
+								<button
+									key={tab.id}
+									type="button"
+									onClick={() => setMobilePanelTab(tab.id)}
+									className={cn(
+										'flex items-center justify-center gap-1 px-3 py-2.5 text-xs font-medium transition-colors whitespace-nowrap',
+										isActive
+											? 'text-blue-600 border-b-2 border-blue-600 bg-white'
+											: 'text-gray-500 hover:text-gray-700 hover:bg-gray-100',
+									)}
+								>
+									<Icon className="h-3.5 w-3.5" />
+									<span>{tab.label}</span>
+								</button>
+							)
+						})}
+					</div>
 				</div>
 
 				{/* Tab Content */}
 				<div className="flex-1 overflow-y-auto px-3 pb-4 pt-2">
-					{mobilePanelTab === 'explore' && (
+					{mobilePanelTab === 'datasets' && (
 						<GeoDatasetsPanelContent
 							mode="datasets"
 							geoEvents={geoEvents}
@@ -192,6 +206,40 @@ export function MobilePanel(props: MobilePanelProps) {
 							onEditCollection={onEditCollection}
 							isFocused={isFocused}
 							onExitFocus={onExitFocus}
+							onFilteredDatasetKeysChange={onFilteredDatasetKeysChange}
+						/>
+					)}
+
+					{mobilePanelTab === 'collections' && (
+						<GeoDatasetsPanelContent
+							mode="collections"
+							geoEvents={geoEvents}
+							collectionEvents={collectionEvents}
+							activeDataset={activeDataset}
+							currentUserPubkey={currentUserPubkey}
+							datasetVisibility={datasetVisibility}
+							collectionVisibility={collectionVisibility}
+							isPublishing={isPublishing}
+							deletingKey={deletingKey}
+							onClearEditing={onClearEditing}
+							onLoadDataset={onLoadDataset}
+							onToggleVisibility={onToggleVisibility}
+							onToggleAllVisibility={onToggleAllVisibility}
+							onToggleCollectionVisibility={onToggleCollectionVisibility}
+							onToggleAllCollectionVisibility={onToggleAllCollectionVisibility}
+							onZoomToDataset={onZoomToDataset}
+							onDeleteDataset={onDeleteDataset}
+							getDatasetKey={getDatasetKey}
+							getDatasetName={getDatasetName}
+							onZoomToCollection={onZoomToCollection}
+							onInspectDataset={onInspectDataset}
+							onInspectCollection={onInspectCollection}
+							onOpenDebug={onOpenDebug}
+							onCreateCollection={onCreateCollection}
+							onEditCollection={onEditCollection}
+							isFocused={isFocused}
+							onExitFocus={onExitFocus}
+							onFilteredDatasetKeysChange={onFilteredDatasetKeysChange}
 						/>
 					)}
 
@@ -250,6 +298,24 @@ export function MobilePanel(props: MobilePanelProps) {
 							onEditCollection={onEditCollection}
 							onOpenDebug={onOpenDebug}
 						/>
+					)}
+
+					{mobilePanelTab === 'posts' && (
+						<div className="h-full -mx-3 -mt-2 -mb-4">
+							<ShoutboxPanel />
+						</div>
+					)}
+
+					{mobilePanelTab === 'settings' && (
+						<div className="h-full -mx-3 -mt-2 -mb-4">
+							<MapSettingsPanel />
+						</div>
+					)}
+
+					{mobilePanelTab === 'help' && (
+						<div className="h-full -mx-3 -mt-2 -mb-4">
+							<HelpPanel multiSelectModifier={multiSelectModifier} />
+						</div>
 					)}
 				</div>
 			</SheetContent>

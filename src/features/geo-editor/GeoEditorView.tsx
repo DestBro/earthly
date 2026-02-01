@@ -1,6 +1,6 @@
 import { useNDK, useNDKCurrentUser } from '@nostr-dev-kit/react'
 import type { FeatureCollection } from 'geojson'
-import { Layers, Lock, LockOpen, Search } from 'lucide-react'
+import { Edit3, Layers, Lock, LockOpen, Search, UploadCloud } from 'lucide-react'
 import type maplibregl from 'maplibre-gl'
 import {
 	useCallback,
@@ -194,6 +194,13 @@ export function GeoEditorView() {
 	// Unified mobile panel state
 	const mobilePanelOpen = useEditorStore((state) => state.mobilePanelOpen)
 	const setMobilePanelOpen = useEditorStore((state) => state.setMobilePanelOpen)
+	// Mobile toolbar state (for upper toolbar sections)
+	const mobileToolsOpen = useEditorStore((state) => state.mobileToolsOpen)
+	const setMobileToolsOpen = useEditorStore((state) => state.setMobileToolsOpen)
+	const mobileSearchOpen = useEditorStore((state) => state.mobileSearchOpen)
+	const setMobileSearchOpen = useEditorStore((state) => state.setMobileSearchOpen)
+	const mobileActionsOpen = useEditorStore((state) => state.mobileActionsOpen)
+	const setMobileActionsOpen = useEditorStore((state) => state.setMobileActionsOpen)
 	const panLocked = useEditorStore((state) => state.panLocked)
 	const setPanLocked = useEditorStore((state) => state.setPanLocked)
 	const canFinishDrawing = useEditorStore((state) => state.canFinishDrawing)
@@ -349,8 +356,16 @@ export function GeoEditorView() {
 	// Track filtered dataset keys from sidebar filter (for map visibility sync)
 	const [filteredDatasetKeys, setFilteredDatasetKeys] = useState<Set<string> | null>(null)
 	const handleFilteredDatasetKeysChange = useCallback((keys: Set<string>) => {
-		setFilteredDatasetKeys(keys)
+		setFilteredDatasetKeys(new Set(keys))
 	}, [])
+
+	// Mobile does not always render the datasets panel immediately; avoid getting stuck with stale/empty
+	// filter state from a previous desktop session.
+	useEffect(() => {
+		if (isMobile) {
+			setFilteredDatasetKeys(null)
+		}
+	}, [isMobile])
 
 	// Visible geo events based on visibility toggle, focus mode, AND filter state
 	const visibleGeoEvents = useMemo(() => {
@@ -1866,6 +1881,7 @@ export function GeoEditorView() {
 							isPublishing={isPublishing}
 							deletingKey={deletingKey}
 							isFocused={isFocused}
+							multiSelectModifier={multiSelectModifierLabel}
 							onClearEditing={clearEditingSession}
 							onLoadDataset={loadDatasetForEditing}
 							onToggleVisibility={handleToggleVisibilityWithExitFocus}
@@ -1897,6 +1913,7 @@ export function GeoEditorView() {
 							featureCollectionForUpload={memoizedFeatureCollection}
 							onBlossomUploadComplete={handleBlobUploadComplete}
 							ndk={ndk}
+							onFilteredDatasetKeysChange={handleFilteredDatasetKeysChange}
 						/>
 					)}
 
@@ -1986,16 +2003,58 @@ export function GeoEditorView() {
 									</div>
 								</div>
 							</div>
-							{/* Mobile panel toggle button - positioned to move up when drawer is open */}
+							{/* Mobile buttons - positioned to move up when drawer is open */}
 							<div
 								className={`fixed bottom-2 right-2 z-50 flex flex-col gap-2 md:hidden transition-all duration-300 ${
 									mobilePanelOpen ? 'bottom-[calc(45vh+0.5rem)]' : ''
 								}`}
 							>
-								{/* Unified panel toggle */}
+								{/* Draw tools toggle */}
 								<Button
 									size="icon"
-									className="shadow-lg h-12 w-12 rounded-full"
+									className="shadow-lg h-10 w-10 rounded-full"
+									variant={mobileToolsOpen ? 'default' : 'outline'}
+									onClick={() => {
+										setMobileSearchOpen(false)
+										setMobileActionsOpen(false)
+										setMobileToolsOpen(!mobileToolsOpen)
+									}}
+									aria-label="Toggle draw tools"
+								>
+									<Edit3 className="h-5 w-5" />
+								</Button>
+								{/* Search tools toggle */}
+								<Button
+									size="icon"
+									className="shadow-lg h-10 w-10 rounded-full"
+									variant={mobileSearchOpen ? 'default' : 'outline'}
+									onClick={() => {
+										setMobileToolsOpen(false)
+										setMobileActionsOpen(false)
+										setMobileSearchOpen(!mobileSearchOpen)
+									}}
+									aria-label="Toggle search"
+								>
+									<Search className="h-5 w-5" />
+								</Button>
+								{/* Actions toggle */}
+								<Button
+									size="icon"
+									className="shadow-lg h-10 w-10 rounded-full"
+									variant={mobileActionsOpen ? 'default' : 'outline'}
+									onClick={() => {
+										setMobileToolsOpen(false)
+										setMobileSearchOpen(false)
+										setMobileActionsOpen(!mobileActionsOpen)
+									}}
+									aria-label="Toggle actions"
+								>
+									<UploadCloud className="h-5 w-5" />
+								</Button>
+								{/* Panel toggle */}
+								<Button
+									size="icon"
+									className="shadow-lg h-10 w-10 rounded-full"
 									variant={mobilePanelOpen ? 'default' : 'outline'}
 									onClick={() => setMobilePanelOpen(!mobilePanelOpen)}
 									aria-label="Toggle panel"

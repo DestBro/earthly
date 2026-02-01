@@ -785,7 +785,7 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 				if (cancelled) return
 
 				// Extract bounds from header
-				const { minLon, minLat, maxLon, maxLat, minZoom } = header
+				const { minLon, minLat, maxLon, maxLat } = header
 
 				// Validate bounds
 				if (

@@ -153,6 +153,9 @@ export function GeoDatasetsPanelContent({
 	// Report filtered dataset keys to parent for map visibility sync
 	useEffect(() => {
 		if (!onFilteredDatasetKeysChange) return
+		// Only sync dataset filters to the map when the dataset list is active.
+		// (Collections view shouldn't implicitly hide datasets on the map.)
+		if (mode !== 'datasets') return
 		const keys = new Set(filteredGeoEvents.map((event) => getDatasetKey(event)))
 
 		// Only update if keys actually changed
@@ -170,7 +173,7 @@ export function GeoDatasetsPanelContent({
 
 		prevFilteredKeysRef.current = keys
 		onFilteredDatasetKeysChange(keys)
-	}, [filteredGeoEvents, getDatasetKey, onFilteredDatasetKeysChange])
+	}, [filteredGeoEvents, getDatasetKey, mode, onFilteredDatasetKeysChange])
 
 	const datasetReferenceMap = useMemo(() => {
 		const map = new Map<string, NDKGeoEvent>()
