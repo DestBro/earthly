@@ -28,6 +28,7 @@ import { GEO_EVENT_KIND } from '../../lib/ndk/kinds'
 import { Editor } from './components/Editor'
 import { ImportOsmDialog } from './components/ImportOsmDialog'
 import { LocateButton } from './components/LocateButton'
+import { FeaturePopup, type FeaturePopupData } from './components/FeaturePopup'
 import { LocationInspectorPopup } from './components/LocationInspectorPopup'
 import { Magnifier } from './components/Magnifier'
 import { UserLocationMarker } from './components/UserLocationMarker'
@@ -155,6 +156,9 @@ export function GeoEditorView() {
 		y: number
 	} | null>(null)
 	const mapContainerRef = useRef<HTMLDivElement>(null)
+
+	// Feature popup state (shown when clicking a feature on the map in view mode)
+	const [featurePopupData, setFeaturePopupData] = useState<FeaturePopupData | null>(null)
 
 	// Collection visibility state (local to view)
 	const [collectionVisibility, setCollectionVisibility] = useState<Record<string, boolean>>({})
@@ -1141,7 +1145,10 @@ export function GeoEditorView() {
 			}
 
 			// Do not inspect other datasets while in edit mode
-			if (viewMode === 'edit') return
+			if (viewMode === 'edit') {
+				setFeaturePopupData(null)
+				return
+			}
 
 			if (!feature?.properties) return
 			const sourceEventId = feature.properties.sourceEventId as string | undefined
@@ -1152,6 +1159,17 @@ export function GeoEditorView() {
 				geoEventsRef.current.find((ev) => (ev.datasetId ?? ev.id) === datasetId)
 
 			if (!dataset) return
+
+			// Show feature popup with click position
+			const isOwner = currentUser?.pubkey === dataset.pubkey
+			const datasetName = getDatasetName(dataset)
+			setFeaturePopupData({
+				dataset,
+				feature: feature as any,
+				clickPosition: { x: event.point.x, y: event.point.y },
+				isOwner,
+				datasetName,
+			})
 
 			ensureResolvedFeatureCollection(dataset).catch(() => undefined)
 			// Just inspect the dataset without triggering focus mode (no URL change)
@@ -1211,6 +1229,8 @@ export function GeoEditorView() {
 		setFocusedMapGeometry,
 		CLUSTERED_SOURCE_ID,
 		viewMode,
+		currentUser?.pubkey,
+		getDatasetName,
 	])
 
 	// Inspector click handling
@@ -1587,6 +1607,46 @@ export function GeoEditorView() {
 		[loadDatasetForEditing],
 	)
 
+	// Feature popup handlers
+	const handleFeaturePopupClose = useCallback(() => {
+		setFeaturePopupData(null)
+	}, [])
+
+	const handleFeaturePopupZoom = useCallback(
+		(feature: GeoJSON.Feature) => {
+			if (!feature?.geometry || !map.current) return
+			import('@turf/turf')
+				.then((turf) => {
+					const bbox = turf.bbox(feature) as [number, number, number, number]
+					if (bbox.every((v) => Number.isFinite(v))) {
+						handleZoomToBounds(bbox)
+					}
+				})
+				.catch((err) => {
+					console.warn('Failed to zoom to feature:', err)
+				})
+		},
+		[handleZoomToBounds],
+	)
+
+	const handleFeaturePopupEdit = useCallback(
+		(dataset: NDKGeoEvent) => {
+			handleLoadDatasetForEditing(dataset)
+			setFeaturePopupData(null)
+		},
+		[handleLoadDatasetForEditing],
+	)
+
+	const handleFeaturePopupInspect = useCallback(
+		(dataset: NDKGeoEvent) => {
+			setCollectionEditorMode('none')
+			setEditingCollection(null)
+			handleInspectDataset(dataset)
+			setFeaturePopupData(null)
+		},
+		[handleInspectDataset],
+	)
+
 	// Wrapper that clears collection editor mode when inspecting a dataset
 	const handleInspectDatasetWithModeSwitch = useCallback(
 		(event: NDKGeoEvent) => {
@@ -1743,6 +1803,16 @@ export function GeoEditorView() {
 							setReverseLookupResult(null)
 							setReverseLookupError(null)
 						}}
+					/>
+
+					{/* Feature Popup - appears when clicking a geometry on the map */}
+					<FeaturePopup
+						data={featurePopupData}
+						containerRef={mapContainerRef}
+						onInspect={handleFeaturePopupInspect}
+						onEdit={handleFeaturePopupEdit}
+						onZoom={handleFeaturePopupZoom}
+						onClose={handleFeaturePopupClose}
 					/>
 
 					{mapError && (
