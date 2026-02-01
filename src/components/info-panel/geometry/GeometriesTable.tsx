@@ -318,11 +318,11 @@ export function GeometriesTable({ className, onZoomToFeature }: GeometriesTableP
 	const handleSelect = (featureId: string, event: React.MouseEvent) => {
 		const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
 		const isMultiSelect = isMac ? event.metaKey : event.ctrlKey
-		
+
 		if (isMultiSelect) {
 			// Toggle selection
 			if (selectedFeatureIds.includes(featureId)) {
-				setSelectedFeatureIds(selectedFeatureIds.filter(id => id !== featureId))
+				setSelectedFeatureIds(selectedFeatureIds.filter((id) => id !== featureId))
 			} else {
 				setSelectedFeatureIds([...selectedFeatureIds, featureId])
 			}

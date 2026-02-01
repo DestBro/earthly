@@ -1,6 +1,4 @@
-import { Plus, Eye } from 'lucide-react'
-import { useMemo } from 'react'
-import { cn } from '@/lib/utils'
+import { useMemo, useState } from 'react'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
 import { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
 import {
@@ -19,52 +17,51 @@ import {
 	type DatasetColumnsContext,
 	type DatasetRowData,
 } from './datasets-columns'
-import type { GeoFeatureItem } from './editor/GeoRichTextEditor'
 import { Button } from './ui/button'
 import { DataTable } from './ui/data-table'
+import { UserProfile } from './user-profile/UserProfile'
 
-export interface GeoDatasetsPanelProps {
-	/** Which content to display: 'datasets' or 'collections' */
-	mode: 'datasets' | 'collections'
+export interface UserProfilePanelProps {
+	/** The pubkey of the user to display */
+	pubkey: string
+	/** All available geo events */
 	geoEvents: NDKGeoEvent[]
+	/** All available collection events */
 	collectionEvents: NDKGeoCollectionEvent[]
-	activeDataset: NDKGeoEvent | null
+	/** Current logged-in user's pubkey */
 	currentUserPubkey?: string
 	datasetVisibility: Record<string, boolean>
 	collectionVisibility: Record<string, boolean>
 	isPublishing: boolean
 	deletingKey: string | null
-	onClearEditing: () => void
+	// Dataset callbacks
 	onLoadDataset: (event: NDKGeoEvent) => void
 	onToggleVisibility: (event: NDKGeoEvent) => void
 	onToggleAllVisibility: (visible: boolean) => void
-	onToggleCollectionVisibility: (collection: NDKGeoCollectionEvent) => void
-	onToggleAllCollectionVisibility: (visible: boolean) => void
 	onZoomToDataset: (event: NDKGeoEvent) => void
 	onDeleteDataset: (event: NDKGeoEvent) => void
 	getDatasetKey: (event: NDKGeoEvent) => string
 	getDatasetName: (event: NDKGeoEvent) => string
-	onZoomToCollection?: (collection: NDKGeoCollectionEvent, events: NDKGeoEvent[]) => void
 	onInspectDataset?: (event: NDKGeoEvent) => void
+	// Collection callbacks
+	onToggleCollectionVisibility: (collection: NDKGeoCollectionEvent) => void
+	onToggleAllCollectionVisibility: (visible: boolean) => void
+	onZoomToCollection?: (collection: NDKGeoCollectionEvent, events: NDKGeoEvent[]) => void
 	onInspectCollection?: (collection: NDKGeoCollectionEvent, events: NDKGeoEvent[]) => void
-	onOpenDebug?: (event: NDKGeoEvent | NDKGeoCollectionEvent) => void
-	onCreateCollection?: () => void
 	onEditCollection?: (collection: NDKGeoCollectionEvent) => void
-	availableFeatures?: GeoFeatureItem[]
-	/** Whether focus mode is active (viewing a single dataset/collection via route) */
-	isFocused?: boolean
-	/** Callback to exit focus mode */
-	onExitFocus?: () => void
+	onOpenDebug?: (event: NDKGeoEvent | NDKGeoCollectionEvent) => void
 }
 
+type TabMode = 'datasets' | 'collections'
+
 const getDatasetDescriptionText = (event: NDKGeoEvent): string | undefined => {
-	const featureCollection = event.featureCollection as Record<string, any>
+	const featureCollection = event.featureCollection as Record<string, unknown>
 	if (!featureCollection) return undefined
 	const candidates = [
 		featureCollection?.description,
 		featureCollection?.summary,
-		featureCollection?.properties?.description,
-		featureCollection?.properties?.summary,
+		(featureCollection?.properties as Record<string, unknown>)?.description,
+		(featureCollection?.properties as Record<string, unknown>)?.summary,
 	]
 	for (const value of candidates) {
 		if (typeof value === 'string' && value.trim().length > 0) {
@@ -79,7 +76,6 @@ const getCollectionDisplayName = (collection: NDKGeoCollectionEvent): string => 
 	return metadata.name ?? collection.collectionId ?? collection.id ?? 'Untitled'
 }
 
-// Filter configs for the abstract filter system
 const createDatasetFilterConfig = (
 	getDatasetName: (event: NDKGeoEvent) => string,
 ): FilterConfig<NDKGeoEvent> => ({
@@ -95,55 +91,47 @@ const collectionFilterConfig: FilterConfig<NDKGeoCollectionEvent> = {
 	getName: (collection) => getCollectionDisplayName(collection),
 }
 
-export function GeoDatasetsPanelContent({
-	mode,
+export function UserProfilePanel({
+	pubkey,
 	geoEvents,
 	collectionEvents,
-	activeDataset,
 	currentUserPubkey,
 	datasetVisibility,
 	collectionVisibility,
 	isPublishing,
 	deletingKey,
-	onClearEditing,
 	onLoadDataset,
 	onToggleVisibility,
 	onToggleAllVisibility,
-	onToggleCollectionVisibility,
-	onToggleAllCollectionVisibility,
 	onZoomToDataset,
 	onDeleteDataset,
 	getDatasetKey,
 	getDatasetName,
-	onZoomToCollection,
 	onInspectDataset,
+	onToggleCollectionVisibility,
+	onToggleAllCollectionVisibility,
+	onZoomToCollection,
 	onInspectCollection,
-	onOpenDebug,
-	onCreateCollection,
 	onEditCollection,
-	availableFeatures = [],
-	isFocused = false,
-	onExitFocus,
-}: GeoDatasetsPanelProps) {
-	// Filter state and hooks
+	onOpenDebug,
+}: UserProfilePanelProps) {
+	const [activeTab, setActiveTab] = useState<TabMode>('datasets')
 	const filterState = useFilterState()
 
-	const datasetFilterConfig = useMemo(
-		() => createDatasetFilterConfig(getDatasetName),
-		[getDatasetName],
+	const isOwnProfile = currentUserPubkey === pubkey
+
+	// Filter events to only show items owned by this user
+	const userGeoEvents = useMemo(
+		() => geoEvents.filter((event) => event.pubkey === pubkey),
+		[geoEvents, pubkey],
 	)
 
-	const datasetResult = useSortedFilteredItems(geoEvents, datasetFilterConfig, filterState)
-
-	const collectionResult = useSortedFilteredItems(
-		collectionEvents,
-		collectionFilterConfig,
-		filterState,
+	const userCollectionEvents = useMemo(
+		() => collectionEvents.filter((event) => event.pubkey === pubkey),
+		[collectionEvents, pubkey],
 	)
 
-	const filteredGeoEvents = datasetResult.items
-	const filteredCollections = collectionResult.items
-
+	// Build reference map for collections
 	const datasetReferenceMap = useMemo(() => {
 		const map = new Map<string, NDKGeoEvent>()
 		geoEvents.forEach((event) => {
@@ -155,36 +143,43 @@ export function GeoDatasetsPanelContent({
 		return map
 	}, [geoEvents])
 
-	// Prepare dataset table data
+	// Filter configs
+	const datasetFilterConfig = useMemo(
+		() => createDatasetFilterConfig(getDatasetName),
+		[getDatasetName],
+	)
+
+	// Apply sorting/filtering to user's items
+	const datasetResult = useSortedFilteredItems(userGeoEvents, datasetFilterConfig, filterState)
+	const collectionResult = useSortedFilteredItems(
+		userCollectionEvents,
+		collectionFilterConfig,
+		filterState,
+	)
+
+	const filteredGeoEvents = datasetResult.items
+	const filteredCollections = collectionResult.items
+
+	// Dataset table data
 	const datasetTableData: DatasetRowData[] = useMemo(() => {
 		return filteredGeoEvents.map((event) => {
 			const datasetKey = getDatasetKey(event)
-			const isActive = activeDataset && getDatasetKey(activeDataset) === datasetKey
-			const isOwned = currentUserPubkey === event.pubkey
-			const primaryLabel = isActive ? 'Loaded in editor' : isOwned ? 'Edit dataset' : 'Load copy'
-			const datasetName = getDatasetName(event)
 			const isVisible = datasetVisibility[datasetKey] !== false
+			const datasetName = getDatasetName(event)
 
 			return {
 				event,
 				datasetKey,
 				datasetName,
-				isActive: !!isActive,
-				isOwned,
+				isActive: false,
+				isOwned: true, // All items in this panel are owned by the profile user
 				isVisible,
-				primaryLabel,
+				primaryLabel: isOwnProfile ? 'Edit dataset' : 'Load copy',
 			}
 		})
-	}, [
-		filteredGeoEvents,
-		activeDataset,
-		currentUserPubkey,
-		datasetVisibility,
-		getDatasetKey,
-		getDatasetName,
-	])
+	}, [filteredGeoEvents, datasetVisibility, getDatasetKey, getDatasetName, isOwnProfile])
 
-	// Compute visibility state for all filtered datasets (for header checkbox)
+	// Visibility state for datasets
 	const allVisibleState = useMemo((): 'all' | 'none' | 'some' => {
 		if (datasetTableData.length === 0) return 'none'
 		const visibleCount = datasetTableData.filter((row) => row.isVisible).length
@@ -193,12 +188,12 @@ export function GeoDatasetsPanelContent({
 		return 'some'
 	}, [datasetTableData])
 
-	// Get collection key for visibility
+	// Collection key helper
 	const getCollectionKey = (collection: NDKGeoCollectionEvent): string => {
 		return collection.dTag ?? collection.id ?? collection.collectionId ?? ''
 	}
 
-	// Prepare collection table data
+	// Collection table data
 	const collectionTableData: CollectionRowData[] = useMemo(() => {
 		return filteredCollections.map((collection) => {
 			const collectionName = getCollectionDisplayName(collection)
@@ -222,7 +217,7 @@ export function GeoDatasetsPanelContent({
 		})
 	}, [filteredCollections, datasetReferenceMap, onZoomToCollection, collectionVisibility])
 
-	// Compute visibility state for all filtered collections (for header checkbox)
+	// Visibility state for collections
 	const allCollectionVisibleState = useMemo((): 'all' | 'none' | 'some' => {
 		if (collectionTableData.length === 0) return 'none'
 		const visibleCount = collectionTableData.filter((row) => row.isVisible).length
@@ -295,59 +290,57 @@ export function GeoDatasetsPanelContent({
 		[collectionColumnsContext],
 	)
 
+	const activeResult = activeTab === 'datasets' ? datasetResult : collectionResult
+
 	return (
-		<div className="space-y-3">
-			<div className="flex items-center justify-between gap-2">
-				<div>
-					<h3 className="text-base font-semibold text-gray-800">
-						{mode === 'datasets' ? 'Datasets' : 'Collections'}
-					</h3>
-					{isFocused ? (
-						<p className="text-xs text-amber-600">Focused view — others hidden</p>
-					) : (
-						<p className="text-xs text-gray-500">
-							{mode === 'datasets'
-								? 'Remote GeoJSON datasets available to load.'
-								: 'Curated collections of datasets.'}
-						</p>
-					)}
-				</div>
-				<div className="flex items-center gap-1">
-					{isFocused && onExitFocus && (
-						<Button size="sm" variant="outline" onClick={onExitFocus} className="text-xs">
-							<Eye className="h-3.5 w-3.5 mr-1" />
-							Show all
-						</Button>
-					)}
-					{mode === 'collections' && onCreateCollection && (
-						<Button
-							size="icon"
-							variant="outline"
-							onClick={onCreateCollection}
-							aria-label="Create new collection"
-							title="Create new collection"
-						>
-							<Plus className="h-4 w-4" />
-						</Button>
-					)}
-				</div>
+		<div className="space-y-4">
+			{/* User Profile Header */}
+			<div className="px-1">
+				<UserProfile
+					pubkey={pubkey}
+					mode="avatar-name-bio"
+					size="lg"
+					showNip05Badge={true}
+					showBio={true}
+				/>
+				{isOwnProfile && (
+					<p className="text-xs text-emerald-600 mt-2">This is your profile</p>
+				)}
 			</div>
 
+			{/* Tabs */}
+			<div className="flex gap-1 border-b border-gray-200">
+				<Button
+					variant={activeTab === 'datasets' ? 'default' : 'ghost'}
+					size="sm"
+					onClick={() => setActiveTab('datasets')}
+					className="rounded-b-none"
+				>
+					Datasets ({userGeoEvents.length})
+				</Button>
+				<Button
+					variant={activeTab === 'collections' ? 'default' : 'ghost'}
+					size="sm"
+					onClick={() => setActiveTab('collections')}
+					className="rounded-b-none"
+				>
+					Collections ({userCollectionEvents.length})
+				</Button>
+			</div>
+
+			{/* Filter toolbar */}
 			<DatasetFilterToolbar
 				{...filterState}
-				totalCount={mode === 'datasets' ? datasetResult.totalCount : collectionResult.totalCount}
-				filteredCount={
-					mode === 'datasets' ? datasetResult.filteredCount : collectionResult.filteredCount
-				}
-				displayedCount={
-					mode === 'datasets' ? datasetResult.displayedCount : collectionResult.displayedCount
-				}
-				hasMore={mode === 'datasets' ? datasetResult.hasMore : collectionResult.hasMore}
+				totalCount={activeResult.totalCount}
+				filteredCount={activeResult.filteredCount}
+				displayedCount={activeResult.displayedCount}
+				hasMore={activeResult.hasMore}
 			/>
 
-			{mode === 'datasets' ? (
-				geoEvents.length === 0 ? (
-					<p className="text-xs text-gray-500">Listening for GeoJSON datasets…</p>
+			{/* Content */}
+			{activeTab === 'datasets' ? (
+				userGeoEvents.length === 0 ? (
+					<p className="text-xs text-gray-500">No datasets published by this user.</p>
 				) : filteredGeoEvents.length === 0 ? (
 					<p className="text-xs text-gray-500">No datasets match your filters.</p>
 				) : (
@@ -357,8 +350,8 @@ export function GeoDatasetsPanelContent({
 						getRowClassName={(row) => (!row.isVisible ? 'opacity-60' : undefined)}
 					/>
 				)
-			) : collectionEvents.length === 0 ? (
-				<p className="text-xs text-gray-500">Listening for GeoJSON collections…</p>
+			) : userCollectionEvents.length === 0 ? (
+				<p className="text-xs text-gray-500">No collections created by this user.</p>
 			) : filteredCollections.length === 0 ? (
 				<p className="text-xs text-gray-500">No collections match your filters.</p>
 			) : (
@@ -368,17 +361,6 @@ export function GeoDatasetsPanelContent({
 					getRowClassName={(row) => (!row.isVisible ? 'opacity-60' : undefined)}
 				/>
 			)}
-		</div>
-	)
-}
-
-export function GeoDatasetsSidebar({
-	className,
-	...props
-}: GeoDatasetsPanelProps & { className?: string }) {
-	return (
-		<div className={cn('glass-panel w-80 rounded-lg p-3', className)}>
-			<GeoDatasetsPanelContent {...props} />
 		</div>
 	)
 }

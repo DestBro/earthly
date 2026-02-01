@@ -152,7 +152,11 @@ export function usePublishing({
 		(
 			collection: FeatureCollection,
 			collectionBlobUrl: string,
-		): FeatureCollection & { name?: string; description?: string; properties?: Record<string, any> } => {
+		): FeatureCollection & {
+			name?: string
+			description?: string
+			properties?: Record<string, any>
+		} => {
 			const stubCollection: FeatureCollection & {
 				name?: string
 				description?: string
@@ -175,7 +179,8 @@ export function usePublishing({
 
 			// Copy metadata from original collection for discovery (SPEC.md section 1.5)
 			if ((collection as any).name) stubCollection.name = (collection as any).name
-			if ((collection as any).description) stubCollection.description = (collection as any).description
+			if ((collection as any).description)
+				stubCollection.description = (collection as any).description
 			if ((collection as any).properties) stubCollection.properties = (collection as any).properties
 
 			return stubCollection
@@ -508,9 +513,7 @@ export function usePublishing({
 	)
 
 	// Check if there's a collection blob reference (uploaded to Blossom)
-	const hasCollectionBlob = blobReferences.some(
-		(ref) => ref.scope === 'collection' && ref.url,
-	)
+	const hasCollectionBlob = blobReferences.some((ref) => ref.scope === 'collection' && ref.url)
 
 	// Computed permissions
 	// Can publish new if: has features, no active dataset, and (not over size OR has blob uploaded)

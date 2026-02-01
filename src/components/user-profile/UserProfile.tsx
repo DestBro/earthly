@@ -1,6 +1,7 @@
 import { useNDK, useProfileValue, useUser } from '@nostr-dev-kit/react'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { User, BadgeCheck, BadgeX, Globe, Loader2 } from 'lucide-react'
+import { nip19 } from 'nostr-tools'
 import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { cn } from '@/lib/utils'
@@ -219,26 +220,39 @@ export function UserProfile({
 				alt={displayName}
 				className="object-cover"
 			/>
-			<AvatarFallback className={cn(config.text, 'bg-gradient-to-br from-sky-400 to-emerald-400 text-white')}>
+			<AvatarFallback
+				className={cn(config.text, 'bg-gradient-to-br from-sky-400 to-emerald-400 text-white')}
+			>
 				{profile ? getFallbackText() : <User className={config.icon} />}
 			</AvatarFallback>
 		</Avatar>
 	)
 
-	// Wrapper for click handling
-	const Wrapper = ({ children }: { children: React.ReactNode }) => {
-		if (onClick) {
-			return (
-				<button
-					type="button"
-					onClick={onClick}
-					className={cn('cursor-pointer hover:opacity-80 transition-opacity', className)}
-				>
-					{children}
-				</button>
-			)
+	// Default click handler navigates to user profile
+	const handleDefaultClick = useCallback(() => {
+		const resolvedPubkey = user?.pubkey || pubkey
+		// Only navigate if we have a valid hex pubkey
+		if (resolvedPubkey && !resolvedPubkey.startsWith('npub') && !resolvedPubkey.startsWith('nprofile')) {
+			const npub = nip19.npubEncode(resolvedPubkey)
+			window.location.hash = `/user/${npub}`
+		} else if (resolvedPubkey) {
+			// Already encoded, use directly
+			window.location.hash = `/user/${resolvedPubkey}`
 		}
-		return <div className={className}>{children}</div>
+	}, [user?.pubkey, pubkey])
+
+	// Wrapper for click handling - always clickable, uses onClick or default navigation
+	const Wrapper = ({ children }: { children: React.ReactNode }) => {
+		const clickHandler = onClick ?? handleDefaultClick
+		return (
+			<button
+				type="button"
+				onClick={clickHandler}
+				className={cn('cursor-pointer hover:opacity-80 transition-opacity text-left', className)}
+			>
+				{children}
+			</button>
+		)
 	}
 
 	// Render based on mode
@@ -276,10 +290,13 @@ export function UserProfile({
 					<div className={cn('flex items-start', config.gap)}>
 						<ProfileAvatar
 							sizeClass={
-								size === 'xs' ? sizeConfig.sm.avatar :
-								size === 'sm' ? sizeConfig.md.avatar :
-								size === 'md' ? sizeConfig.lg.avatar :
-								sizeConfig.xl.avatar
+								size === 'xs'
+									? sizeConfig.sm.avatar
+									: size === 'sm'
+										? sizeConfig.md.avatar
+										: size === 'md'
+											? sizeConfig.lg.avatar
+											: sizeConfig.xl.avatar
 							}
 						/>
 						<div className="flex flex-col gap-0.5 min-w-0">
@@ -307,15 +324,17 @@ export function UserProfile({
 								<h3 className="text-lg font-bold text-gray-900">{displayName}</h3>
 								<Nip05Badge />
 							</div>
-							{profile?.nip05 && (
-								<p className="text-xs text-gray-500">{profile.nip05}</p>
-							)}
+							{profile?.nip05 && <p className="text-xs text-gray-500">{profile.nip05}</p>}
 							{showBio && profile?.about && (
 								<p className="text-sm text-gray-700 max-w-md">{profile.about}</p>
 							)}
 							{showWebsite && profile?.website && (
 								<a
-									href={profile.website.startsWith('http') ? profile.website : `https://${profile.website}`}
+									href={
+										profile.website.startsWith('http')
+											? profile.website
+											: `https://${profile.website}`
+									}
 									target="_blank"
 									rel="noopener noreferrer"
 									className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 hover:underline"

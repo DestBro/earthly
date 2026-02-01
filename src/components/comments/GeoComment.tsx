@@ -68,7 +68,6 @@ export function GeoComment({
 		return date.toLocaleDateString()
 	}, [comment.created_at])
 
-
 	const handleReply = async (text: string, geojson?: FeatureCollection) => {
 		await onReply(comment, text, geojson)
 		setShowReplyForm(false)

@@ -1,11 +1,4 @@
-import {
-	bearing,
-	polygon,
-	union,
-	difference,
-	featureCollection,
-	centerOfMass,
-} from '@turf/turf'
+import { bearing, polygon, union, difference, featureCollection, centerOfMass } from '@turf/turf'
 import type { Feature, FeatureCollection, Geometry, Position } from 'geojson'
 import type {
 	MapGeoJSONFeature,
@@ -331,7 +324,8 @@ export class GeoEditor {
 				if (
 					clickedFeature &&
 					featureId !== this.booleanOperation.firstFeatureId &&
-					(clickedFeature.geometry.type === 'Polygon' || clickedFeature.geometry.type === 'MultiPolygon')
+					(clickedFeature.geometry.type === 'Polygon' ||
+						clickedFeature.geometry.type === 'MultiPolygon')
 				) {
 					this.completeBooleanOperation(featureId)
 				}
@@ -464,13 +458,13 @@ export class GeoEditor {
 		const state = this.editMode.getState()
 		if (state.draggingVertex) {
 			const { featureId, coordinatePath } = state.draggingVertex
-			
+
 			// If we didn't move, this is a click - select the vertex
 			if (!this.vertexDragMoved) {
 				this.editMode.setSelectedVertex(featureId, coordinatePath)
 				this.renderVertices()
 			}
-			
+
 			this.editMode.clearDragging()
 			this.map.getCanvas().style.cursor = ''
 		}
@@ -647,7 +641,7 @@ export class GeoEditor {
 					return
 				}
 			}
-			
+
 			const selected = this.getSelectedFeatures()
 			if (selected.length > 0) {
 				e.preventDefault()
@@ -1233,7 +1227,7 @@ export class GeoEditor {
 	startBooleanUnion(): boolean {
 		const selected = this.getSelectedFeatures()
 		if (selected.length !== 1) return false
-		
+
 		const feature = selected[0]
 		if (feature.geometry.type !== 'Polygon' && feature.geometry.type !== 'MultiPolygon') {
 			return false
@@ -1250,7 +1244,7 @@ export class GeoEditor {
 	startBooleanDifference(): boolean {
 		const selected = this.getSelectedFeatures()
 		if (selected.length !== 1) return false
-		
+
 		const feature = selected[0]
 		if (feature.geometry.type !== 'Polygon' && feature.geometry.type !== 'MultiPolygon') {
 			return false
@@ -1275,10 +1269,10 @@ export class GeoEditor {
 
 	completeBooleanOperation(secondFeatureId: string): boolean {
 		if (!this.booleanOperation) return false
-		
+
 		const firstFeature = this.features.get(this.booleanOperation.firstFeatureId)
 		const secondFeature = this.features.get(secondFeatureId)
-		
+
 		if (!firstFeature || !secondFeature) {
 			this.cancelBooleanOperation()
 			return false

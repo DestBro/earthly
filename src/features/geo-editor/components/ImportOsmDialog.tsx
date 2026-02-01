@@ -98,7 +98,16 @@ export function ImportOsmDialog({
 	const getFeatureType = (feature: GeoJSON.Feature): string => {
 		const props = feature.properties || {}
 		// Find the main tag
-		for (const key of ['highway', 'railway', 'waterway', 'building', 'natural', 'landuse', 'amenity', 'leisure']) {
+		for (const key of [
+			'highway',
+			'railway',
+			'waterway',
+			'building',
+			'natural',
+			'landuse',
+			'amenity',
+			'leisure',
+		]) {
 			if (props[key]) {
 				return `${key}=${props[key]}`
 			}
@@ -159,12 +168,12 @@ export function ImportOsmDialog({
 		try {
 			const filters = getFiltersForPreset(nearbyPreset)
 			const response = await earthlyGeoServer.QueryOsmNearby(lat, lon, radius, filters, 50)
-			
+
 			if (!response?.result) {
 				setError('Failed to query OSM - no response received')
 				return
 			}
-			
+
 			if (response.result.features.length === 0) {
 				setError('No features found in this area')
 			} else {
@@ -203,12 +212,12 @@ export function ImportOsmDialog({
 		try {
 			const filters = getFiltersForPreset(bboxPreset)
 			const response = await earthlyGeoServer.QueryOsmBbox(west, south, east, north, filters, 50)
-			
+
 			if (!response?.result) {
 				setError('Failed to query OSM - no response received')
 				return
 			}
-			
+
 			if (response.result.features.length === 0) {
 				setError('No features found in this area')
 			} else {
@@ -244,9 +253,7 @@ export function ImportOsmDialog({
 	}
 
 	const toggleResult = (id: string) => {
-		setResults((prev) =>
-			prev.map((r) => (r.id === id ? { ...r, selected: !r.selected } : r)),
-		)
+		setResults((prev) => prev.map((r) => (r.id === id ? { ...r, selected: !r.selected } : r)))
 	}
 
 	const selectAll = () => {
@@ -292,12 +299,14 @@ export function ImportOsmDialog({
 						<Map className="h-5 w-5" />
 						Import from OpenStreetMap
 					</DialogTitle>
-					<DialogDescription>
-						Query OSM features and import them as GeoJSON
-					</DialogDescription>
+					<DialogDescription>Query OSM features and import them as GeoJSON</DialogDescription>
 				</DialogHeader>
 
-				<Tabs value={activeTab} onValueChange={(v: string) => setActiveTab(v as typeof activeTab)} className="flex-1 flex flex-col min-h-0">
+				<Tabs
+					value={activeTab}
+					onValueChange={(v: string) => setActiveTab(v as typeof activeTab)}
+					className="flex-1 flex flex-col min-h-0"
+				>
 					<TabsList className="grid grid-cols-3">
 						<TabsTrigger value="id">By ID</TabsTrigger>
 						<TabsTrigger value="nearby">Nearby</TabsTrigger>
@@ -461,9 +470,7 @@ export function ImportOsmDialog({
 						</Button>
 					</div>
 
-					{error && (
-						<div className="text-sm text-red-600 p-2 bg-red-50 rounded">{error}</div>
-					)}
+					{error && <div className="text-sm text-red-600 p-2 bg-red-50 rounded">{error}</div>}
 
 					{results.length > 0 && (
 						<div className="flex-1 min-h-0 flex flex-col mt-4">

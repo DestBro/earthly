@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 import { useNDK, useNDKCurrentUser } from '@nostr-dev-kit/react'
 import type { FeatureCollection } from 'geojson'
-import { Eye, EyeOff, FileText, MapPin, Maximize2, MessageCircle, X } from 'lucide-react'
+import { Eye, EyeOff, FileText, MapPin, Maximize2, MessageCircle } from 'lucide-react'
 import { nip19 } from 'nostr-tools'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useEditorStore } from '../features/geo-editor/store'
@@ -228,13 +228,10 @@ export function GeoCollectionEditorPanel({
 	return (
 		<div className={cn('flex flex-col h-full overflow-hidden', className)}>
 			{/* Header */}
-			<div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+			<div className="flex items-center px-4 py-3 border-b border-gray-100">
 				<h2 className="text-base font-semibold text-gray-900">
 					{initialCollection ? 'Edit Collection' : 'New Collection'}
 				</h2>
-				<Button size="icon-xs" variant="ghost" onClick={onClose}>
-					<X className="h-4 w-4" />
-				</Button>
 			</div>
 
 			{/* Tab buttons - only show for existing collections */}

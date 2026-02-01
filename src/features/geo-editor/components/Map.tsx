@@ -807,16 +807,21 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 					[maxLon + lonPadding, maxLat + latPadding],
 				]
 
-				console.log(`🔒 Locking map to PMTiles bounds: [${minLon.toFixed(3)}, ${minLat.toFixed(3)}] - [${maxLon.toFixed(3)}, ${maxLat.toFixed(3)}] (with 50% padding)`)
+				console.log(
+					`🔒 Locking map to PMTiles bounds: [${minLon.toFixed(3)}, ${minLat.toFixed(3)}] - [${maxLon.toFixed(3)}, ${maxLat.toFixed(3)}] (with 50% padding)`,
+				)
 
 				try {
 					map.setMaxBounds(bounds)
 					// Don't set minZoom - let maxBounds naturally limit zoom-out
 					// Fit to the actual PMTiles bounds (not the padded ones)
-					map.fitBounds([
-						[minLon, minLat],
-						[maxLon, maxLat],
-					], { padding: 40, duration: 500 })
+					map.fitBounds(
+						[
+							[minLon, minLat],
+							[maxLon, maxLat],
+						],
+						{ padding: 40, duration: 500 },
+					)
 				} catch (err) {
 					console.warn('Failed to set map bounds:', err)
 				}
@@ -828,7 +833,14 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 		return () => {
 			cancelled = true
 		}
-	}, [isLoaded, mapSource.type, mapSource.url, mapSource.file, mapSource.location, mapSource.boundsLocked])
+	}, [
+		isLoaded,
+		mapSource.type,
+		mapSource.url,
+		mapSource.file,
+		mapSource.location,
+		mapSource.boundsLocked,
+	])
 
 	return (
 		<MapContext.Provider value={{ map: mapRef.current, isLoaded }}>

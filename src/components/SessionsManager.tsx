@@ -80,10 +80,7 @@ function SessionItem({
 			}`}
 		>
 			<Avatar className="w-10 h-10">
-				<AvatarImage
-					src={profile?.image || profile?.picture}
-					alt={displayName}
-				/>
+				<AvatarImage src={profile?.image || profile?.picture} alt={displayName} />
 				<AvatarFallback className="text-sm">
 					{profile ? getFallbackText() : <User2Icon className="w-5 h-5" />}
 				</AvatarFallback>
@@ -93,9 +90,7 @@ function SessionItem({
 				<div className="flex items-center gap-2">
 					<span className="font-medium truncate">{displayName}</span>
 					{isActive && (
-						<span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded">
-							Active
-						</span>
+						<span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded">Active</span>
 					)}
 				</div>
 				<span className="text-xs text-muted-foreground font-mono">{shortNpub}</span>

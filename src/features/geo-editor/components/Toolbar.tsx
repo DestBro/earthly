@@ -208,7 +208,12 @@ function FileDropdown({ onImportClick, onExport, canExport, disabled, small }: F
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<DropdownMenuTrigger asChild>
-							<Button variant="outline" size="sm" className={`${buttonSize} gap-1 px-2`} disabled={disabled}>
+							<Button
+								variant="outline"
+								size="sm"
+								className={`${buttonSize} gap-1 px-2`}
+								disabled={disabled}
+							>
 								<FileUp className={iconSize} />
 								<ChevronDown className="h-3 w-3" />
 							</Button>
@@ -573,11 +578,7 @@ function SessionButton({ viewMode, onStartNew, onCancel, small }: SessionButtonP
 						className={`${buttonSize} ${!isEditing ? 'bg-violet-600 hover:bg-violet-700' : ''}`}
 						aria-label={isEditing ? 'Cancel editing' : 'New dataset'}
 					>
-						{isEditing ? (
-							<XCircle className={iconSize} />
-						) : (
-							<PlusCircle className={iconSize} />
-						)}
+						{isEditing ? <XCircle className={iconSize} /> : <PlusCircle className={iconSize} />}
 					</Button>
 				</TooltipTrigger>
 				<TooltipContent side="bottom" sideOffset={8}>
@@ -785,8 +786,10 @@ export function Toolbar({
 
 	// Check if single polygon is selected (required for boolean ops)
 	const selectedFeatures = editor?.getSelectedFeatures() ?? []
-	const singlePolygonSelected = selectedFeatures.length === 1 && 
-		(selectedFeatures[0]?.geometry.type === 'Polygon' || selectedFeatures[0]?.geometry.type === 'MultiPolygon')
+	const singlePolygonSelected =
+		selectedFeatures.length === 1 &&
+		(selectedFeatures[0]?.geometry.type === 'Polygon' ||
+			selectedFeatures[0]?.geometry.type === 'MultiPolygon')
 	const booleanOpActive = editor?.getBooleanOperation()
 	const canConnectLines = editor?.canConnectSelectedLines() ?? false
 
@@ -1182,11 +1185,7 @@ export function Toolbar({
 									<Tooltip>
 										<TooltipTrigger asChild>
 											<PopoverTrigger asChild>
-												<Button
-													variant="default"
-													size="icon"
-													aria-label="Share"
-												>
+												<Button variant="default" size="icon" aria-label="Share">
 													<Share2 className="h-4 w-4" />
 												</Button>
 											</PopoverTrigger>
@@ -1200,7 +1199,8 @@ export function Toolbar({
 											<div>
 												<h4 className="text-sm font-semibold mb-1">Share this view</h4>
 												<p className="text-xs text-gray-500">
-													Others will see only this {focusedType === 'collection' ? 'collection' : 'dataset'}.
+													Others will see only this{' '}
+													{focusedType === 'collection' ? 'collection' : 'dataset'}.
 												</p>
 											</div>
 											<div className="flex flex-col gap-2">

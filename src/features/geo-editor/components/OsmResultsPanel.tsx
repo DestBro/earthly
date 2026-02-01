@@ -32,7 +32,16 @@ export function OsmResultsPanel({ onImport, onClose }: OsmResultsPanelProps) {
 
 	const getFeatureType = (feature: GeoJSON.Feature): string => {
 		const props = feature.properties || {}
-		for (const key of ['highway', 'railway', 'waterway', 'building', 'natural', 'landuse', 'amenity', 'leisure']) {
+		for (const key of [
+			'highway',
+			'railway',
+			'waterway',
+			'building',
+			'natural',
+			'landuse',
+			'amenity',
+			'leisure',
+		]) {
 			if (props[key]) {
 				return `${key}=${props[key]}`
 			}
@@ -98,18 +107,11 @@ export function OsmResultsPanel({ onImport, onClose }: OsmResultsPanelProps) {
 	}
 
 	return (
-		<div
-			className="z-50 w-72 glass-panel rounded-lg shadow-lg overflow-hidden"
-			style={panelStyle}
-		>
+		<div className="z-50 w-72 glass-panel rounded-lg shadow-lg overflow-hidden" style={panelStyle}>
 			{/* Header */}
 			<div className="flex items-center justify-between px-3 py-2 border-b bg-muted/50">
 				<span className="text-sm font-medium">OSM Features</span>
-				<button
-					type="button"
-					onClick={handleClose}
-					className="p-1 hover:bg-muted rounded"
-				>
+				<button type="button" onClick={handleClose} className="p-1 hover:bg-muted rounded">
 					<X className="h-4 w-4" />
 				</button>
 			</div>
@@ -117,19 +119,13 @@ export function OsmResultsPanel({ onImport, onClose }: OsmResultsPanelProps) {
 			{/* Content */}
 			<div className="p-2">
 				{loading && (
-					<div className="text-sm text-muted-foreground text-center py-4">
-						Searching...
-					</div>
+					<div className="text-sm text-muted-foreground text-center py-4">Searching...</div>
 				)}
 
-				{error && (
-					<div className="text-sm text-red-600 p-2 bg-red-50 rounded">{error}</div>
-				)}
+				{error && <div className="text-sm text-red-600 p-2 bg-red-50 rounded">{error}</div>}
 
 				{!loading && !error && results.length === 0 && (
-					<div className="text-sm text-muted-foreground text-center py-4">
-						No features found
-					</div>
+					<div className="text-sm text-muted-foreground text-center py-4">No features found</div>
 				)}
 
 				{!loading && results.length > 0 && (
@@ -172,14 +168,20 @@ export function OsmResultsPanel({ onImport, onClose }: OsmResultsPanelProps) {
 											isSelected ? 'bg-primary/10' : ''
 										}`}
 									>
-										<div className={`w-4 h-4 rounded border flex items-center justify-center ${
-											isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-input'
-										}`}>
+										<div
+											className={`w-4 h-4 rounded border flex items-center justify-center ${
+												isSelected
+													? 'bg-primary border-primary text-primary-foreground'
+													: 'border-input'
+											}`}
+										>
 											{isSelected && <Check className="h-3 w-3" />}
 										</div>
 										<div className="flex-1 min-w-0">
 											<div className="font-medium text-sm truncate">{getFeatureName(feature)}</div>
-											<div className="text-xs text-muted-foreground truncate">{getFeatureType(feature)}</div>
+											<div className="text-xs text-muted-foreground truncate">
+												{getFeatureType(feature)}
+											</div>
 										</div>
 									</button>
 								)

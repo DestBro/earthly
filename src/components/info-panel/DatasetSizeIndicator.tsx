@@ -1,9 +1,9 @@
 /**
  * Dataset Size Indicator
- * 
+ *
  * Shows the current dataset size with a progress bar relative to the upload threshold.
  * Displays a warning when over limit and offers to upload to Blossom.
- * 
+ *
  * NOTE: This component does NOT auto-publish. It only uploads the blob and calls
  * onUploadComplete with the result. The parent component decides what to do with it.
  */
@@ -13,13 +13,11 @@ import { useMemo, useState, useCallback } from 'react'
 import { toast } from 'sonner'
 import { Progress } from '../ui/progress'
 import { Button } from '../ui/button'
-import { 
-	BLOSSOM_UPLOAD_THRESHOLD_BYTES, 
-} from '../../features/geo-editor/constants'
-import { 
-	formatBytes, 
+import { BLOSSOM_UPLOAD_THRESHOLD_BYTES } from '../../features/geo-editor/constants'
+import {
+	formatBytes,
 	uploadGeoJsonToBlossom,
-	type BlossomUploadResult 
+	type BlossomUploadResult,
 } from '../../lib/blossom/blossomUpload'
 import type { FeatureCollection } from 'geojson'
 import { cn } from '@/lib/utils'
@@ -110,7 +108,7 @@ export function DatasetSizeIndicator({
 			setUploadResult(result)
 			// Notify parent - should add blob reference to store, NOT publish
 			onUploadComplete?.(result)
-			
+
 			toast.success('Upload complete!', {
 				description: `Blob stored. Click "Publish" when ready.`,
 			})
@@ -118,7 +116,7 @@ export function DatasetSizeIndicator({
 			const errorMessage = error instanceof Error ? error.message : 'Upload failed'
 			setUploadError(errorMessage)
 			setUploadState('error')
-			
+
 			toast.error('Upload failed', {
 				description: errorMessage,
 			})
@@ -146,20 +144,25 @@ export function DatasetSizeIndicator({
 				) : (
 					<AlertTriangle className="h-3 w-3" />
 				)}
-				<span className="text-[10px]">{formatBytes(size)} / {formatBytes(BLOSSOM_UPLOAD_THRESHOLD_BYTES)}</span>
+				<span className="text-[10px]">
+					{formatBytes(size)} / {formatBytes(BLOSSOM_UPLOAD_THRESHOLD_BYTES)}
+				</span>
 			</div>
 		)
 	}
 
 	return (
-		<div className={cn('space-y-2 rounded-md border p-2', 
-			isOverLimit
-				? isStoredExternally
-					? 'border-green-200 bg-green-50'
-					: 'border-amber-200 bg-amber-50'
-				: 'border-gray-200 bg-gray-50',
-			className
-		)}>
+		<div
+			className={cn(
+				'space-y-2 rounded-md border p-2',
+				isOverLimit
+					? isStoredExternally
+						? 'border-green-200 bg-green-50'
+						: 'border-amber-200 bg-amber-50'
+					: 'border-gray-200 bg-gray-50',
+				className,
+			)}
+		>
 			{/* Header */}
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-1.5">
@@ -173,7 +176,11 @@ export function DatasetSizeIndicator({
 						<CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
 					)}
 					<span className="text-xs font-medium">
-						{isOverLimit ? (isStoredExternally ? 'Stored externally' : 'Dataset too large') : 'Dataset size OK'}
+						{isOverLimit
+							? isStoredExternally
+								? 'Stored externally'
+								: 'Dataset too large'
+							: 'Dataset size OK'}
 					</span>
 				</div>
 				<span className="text-[10px] text-gray-500">
@@ -182,12 +189,12 @@ export function DatasetSizeIndicator({
 			</div>
 
 			{/* Progress bar */}
-			<Progress 
-				value={Math.min(percentOfLimit, 100)} 
+			<Progress
+				value={Math.min(percentOfLimit, 100)}
 				className={cn(
 					'h-1.5',
 					isOverLimit && !isStoredExternally && '[&>div]:bg-amber-500',
-					(!isOverLimit || isStoredExternally) && '[&>div]:bg-green-500'
+					(!isOverLimit || isStoredExternally) && '[&>div]:bg-green-500',
 				)}
 			/>
 
@@ -196,17 +203,18 @@ export function DatasetSizeIndicator({
 				<div className="space-y-2">
 					{isStoredExternally ? (
 						<p className="text-[10px] text-green-700">
-							This dataset exceeds the Nostr event limit, but it already has an external blob reference.
+							This dataset exceeds the Nostr event limit, but it already has an external blob
+							reference.
 						</p>
 					) : (
 						<p className="text-[10px] text-amber-700">
 							This dataset exceeds the Nostr event limit. Upload to Blossom to store externally.
 						</p>
 					)}
-					
+
 					{uploadState === 'idle' && !isStoredExternally && (
-						<Button 
-							size="sm" 
+						<Button
+							size="sm"
 							variant="outline"
 							onClick={handleUpload}
 							className="w-full gap-1.5 h-7 text-xs border-amber-300 hover:bg-amber-100"
@@ -222,52 +230,55 @@ export function DatasetSizeIndicator({
 						</Button>
 					)}
 
-				{((uploadState === 'success' && uploadResult) ||
-					(uploadState === 'idle' && effectiveExistingBlob)) && (
-					<div className="space-y-2">
-						<div className="text-[10px] text-green-600 flex items-center gap-1">
-							<CheckCircle2 className="h-3 w-3" />
-							{uploadState === 'success' ? 'Uploaded! Click Publish when ready.' : 'External blob reference detected.'}
+					{((uploadState === 'success' && uploadResult) ||
+						(uploadState === 'idle' && effectiveExistingBlob)) && (
+						<div className="space-y-2">
+							<div className="text-[10px] text-green-600 flex items-center gap-1">
+								<CheckCircle2 className="h-3 w-3" />
+								{uploadState === 'success'
+									? 'Uploaded! Click Publish when ready.'
+									: 'External blob reference detected.'}
+							</div>
+							<div className="flex items-center gap-1 bg-white rounded border border-green-200 p-1.5">
+								<code className="text-[9px] text-green-700 break-all flex-1 select-all truncate">
+									{(uploadState === 'success' ? uploadResult?.url : effectiveExistingBlob?.url) ??
+										''}
+								</code>
+							</div>
+							<div className="flex items-center gap-1">
+								<Button
+									size="sm"
+									variant="outline"
+									className="h-6 text-[10px] gap-1 px-2"
+									onClick={handleCopyUrl}
+								>
+									<Copy className="h-2.5 w-2.5" />
+									{copied ? 'Copied!' : 'Copy'}
+								</Button>
+								<Button size="sm" variant="outline" className="h-6 text-[10px] gap-1 px-2" asChild>
+									<a href={effectiveResult?.url ?? ''} target="_blank" rel="noopener noreferrer">
+										<ExternalLink className="h-2.5 w-2.5" />
+										Open
+									</a>
+								</Button>
+								<Button
+									size="sm"
+									variant="outline"
+									className="h-6 text-[10px] gap-1 px-2"
+									onClick={handleUpload}
+								>
+									<CloudUpload className="h-2.5 w-2.5" />
+									Re-upload
+								</Button>
+							</div>
 						</div>
-						<div className="flex items-center gap-1 bg-white rounded border border-green-200 p-1.5">
-							<code className="text-[9px] text-green-700 break-all flex-1 select-all truncate">
-								{(uploadState === 'success' ? uploadResult?.url : effectiveExistingBlob?.url) ?? ''}
-							</code>
-						</div>
-						<div className="flex items-center gap-1">
-							<Button
-								size="sm"
-								variant="outline"
-								className="h-6 text-[10px] gap-1 px-2"
-								onClick={handleCopyUrl}
-							>
-								<Copy className="h-2.5 w-2.5" />
-								{copied ? 'Copied!' : 'Copy'}
-							</Button>
-							<Button size="sm" variant="outline" className="h-6 text-[10px] gap-1 px-2" asChild>
-								<a href={effectiveResult?.url ?? ''} target="_blank" rel="noopener noreferrer">
-									<ExternalLink className="h-2.5 w-2.5" />
-									Open
-								</a>
-							</Button>
-							<Button
-								size="sm"
-								variant="outline"
-								className="h-6 text-[10px] gap-1 px-2"
-								onClick={handleUpload}
-							>
-								<CloudUpload className="h-2.5 w-2.5" />
-								Re-upload
-							</Button>
-						</div>
-					</div>
-				)}
+					)}
 
 					{uploadState === 'error' && uploadError && (
 						<div className="space-y-1">
 							<p className="text-[10px] text-red-600">{uploadError}</p>
-							<Button 
-								size="sm" 
+							<Button
+								size="sm"
 								variant="outline"
 								onClick={handleUpload}
 								className="w-full h-7 text-xs"

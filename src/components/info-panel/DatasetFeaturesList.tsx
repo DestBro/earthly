@@ -24,12 +24,12 @@ function ReadOnlyFeatureRow({
 	const hasGeometry = feature.geometry !== null
 
 	return (
-		<div className={cn(
-			'rounded border text-xs',
-			isExternalPlaceholder 
-				? 'border-sky-200 bg-sky-50/50' 
-				: 'border-gray-200 bg-white'
-		)}>
+		<div
+			className={cn(
+				'rounded border text-xs',
+				isExternalPlaceholder ? 'border-sky-200 bg-sky-50/50' : 'border-gray-200 bg-white',
+			)}
+		>
 			{/* Row header */}
 			<div className="flex items-center gap-1 px-1.5 py-1">
 				<button
@@ -39,15 +39,19 @@ function ReadOnlyFeatureRow({
 					disabled={!hasGeometry}
 				>
 					{hasGeometry ? (
-						isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />
+						isExpanded ? (
+							<ChevronDown className="h-3 w-3" />
+						) : (
+							<ChevronRight className="h-3 w-3" />
+						)
 					) : (
 						<Cloud className="h-3 w-3 text-sky-400" />
 					)}
 				</button>
 
-				<GeometryBadge 
-					geometry={feature.geometry} 
-					isAnnotation={isAnnotation} 
+				<GeometryBadge
+					geometry={feature.geometry}
+					isAnnotation={isAnnotation}
 					isExternal={isExternal || isExternalPlaceholder}
 				/>
 
@@ -74,9 +78,7 @@ function ReadOnlyFeatureRow({
 				<div className="border-t border-gray-100 px-2 py-2 bg-gray-50/50 space-y-2">
 					{/* Annotation text */}
 					{isAnnotation && feature.properties?.text && (
-						<div className="text-xs text-gray-600 italic">
-							"{feature.properties.text}"
-						</div>
+						<div className="text-xs text-gray-600 italic">"{feature.properties.text}"</div>
 					)}
 
 					{/* Name if different from display */}
@@ -140,7 +142,7 @@ export function DatasetFeaturesList({ featureCollection, className }: DatasetFea
 			{features.map((feature, index) => {
 				const isAnnotation = feature.properties?.featureType === 'annotation'
 				const isExternalPlaceholder = feature.properties?.externalPlaceholder === true
-				
+
 				let name = feature.properties?.name as string | undefined
 				if (!name) {
 					if (isExternalPlaceholder) {
@@ -168,4 +170,3 @@ export function DatasetFeaturesList({ featureCollection, className }: DatasetFea
 		</div>
 	)
 }
-

@@ -134,10 +134,11 @@ export const GeoRichTextEditor = forwardRef<GeoRichTextEditorRef, GeoRichTextEdi
 
 		// Create a name resolver that looks up names from available features by address
 		const createNameResolver = useCallback(
-			() => (address: string): string | undefined => {
-				const feature = availableFeaturesRef.current.find((f) => f.address === address)
-				return feature?.name
-			},
+			() =>
+				(address: string): string | undefined => {
+					const feature = availableFeaturesRef.current.find((f) => f.address === address)
+					return feature?.name
+				},
 			[],
 		)
 

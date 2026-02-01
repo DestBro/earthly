@@ -230,7 +230,7 @@ if (!isProduction) {
 		console.log(`🚀 Server running at ${server.url} (production)`)
 	} else {
 		// Development: Use Bun's bundler with HMR
-		const index = (await import('./index.html')).default 
+		const index = (await import('./index.html')).default
 
 		const servePublicFile = async (req: Request) => {
 			const url = new URL(req.url)

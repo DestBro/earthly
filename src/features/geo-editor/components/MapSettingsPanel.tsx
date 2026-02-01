@@ -233,10 +233,7 @@ export function MapSettingsPanel() {
 								})
 							}
 						/>
-						<label
-							htmlFor="bounds-lock"
-							className="text-sm cursor-pointer"
-						>
+						<label htmlFor="bounds-lock" className="text-sm cursor-pointer">
 							Lock to map bounds
 						</label>
 					</div>
@@ -318,7 +315,9 @@ export function MapSettingsPanel() {
 												<span className="text-xs text-muted-foreground w-14">Opacity</span>
 												<Slider
 													value={[layer.opacity]}
-													onValueChange={(values: number[]) => handleLayerOpacity(layer.id, values[0] ?? layer.opacity)}
+													onValueChange={(values: number[]) =>
+														handleLayerOpacity(layer.id, values[0] ?? layer.opacity)
+													}
 													min={0}
 													max={1}
 													step={0.05}

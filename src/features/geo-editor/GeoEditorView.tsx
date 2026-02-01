@@ -344,6 +344,7 @@ export function GeoEditorView() {
 		encodeGeoEventNaddr,
 		encodeCollectionNaddr,
 		isFocused,
+		userPubkey,
 	} = useRouting()
 
 	// Store focus state
@@ -1671,6 +1672,8 @@ export function GeoEditorView() {
 					featureCollectionForUpload={memoizedFeatureCollection}
 					onBlossomUploadComplete={handleBlobUploadComplete}
 					ndk={ndk}
+					// User profile props
+					userPubkey={userPubkey}
 				/>
 			)}
 

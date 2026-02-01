@@ -501,10 +501,7 @@ export function Nip46LoginDialog({ trigger, onLogin }: Nip46LoginDialogProps) {
 							checked={rememberMe}
 							onCheckedChange={(checked) => setRememberMe(checked === true)}
 						/>
-						<label
-							htmlFor="nip46-remember-me"
-							className="text-sm cursor-pointer select-none"
-						>
+						<label htmlFor="nip46-remember-me" className="text-sm cursor-pointer select-none">
 							Stay logged in
 						</label>
 					</div>

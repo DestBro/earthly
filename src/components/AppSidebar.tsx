@@ -7,12 +7,14 @@ import {
 	PanelTop,
 	Pencil,
 	Settings2,
+	User,
 } from 'lucide-react'
 import type { FeatureCollection } from 'geojson'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
 import { ShoutboxPanel } from './shoutbox'
 import { GeoDatasetsPanelContent } from './GeoDatasetsPanel'
+import { UserProfilePanel } from './UserProfilePanel'
 import { GeoEditorInfoPanelContent } from './GeoEditorInfoPanel'
 import { HelpPanel } from './HelpPanel'
 import { LoginSessionButtons } from './LoginSessionButtom'
@@ -45,6 +47,7 @@ const mainNavItems: {
 	{ mode: 'collections', title: 'Collections', icon: FolderOpen },
 	{ mode: 'combined', title: 'List & Editor', icon: PanelTop },
 	{ mode: 'edit', title: 'Editor', icon: Pencil },
+	{ mode: 'user', title: 'Profile', icon: User },
 ]
 
 /** Navigation items for footer (settings and help) */
@@ -110,6 +113,8 @@ interface AppSidebarProps {
 	onBlossomUploadComplete?: (result: { sha256: string; url: string; size: number }) => void
 	/** NDK instance for authenticated uploads */
 	ndk?: import('@nostr-dev-kit/ndk').default | null
+	/** User pubkey from route (for user profile pages) */
+	userPubkey?: string
 }
 
 export function AppSidebar({
@@ -156,6 +161,8 @@ export function AppSidebar({
 	featureCollectionForUpload,
 	onBlossomUploadComplete,
 	ndk,
+	// User profile props
+	userPubkey,
 }: AppSidebarProps) {
 	const { setOpen } = useSidebar()
 	const viewMode = useEditorStore((state) => state.sidebarViewMode)
@@ -185,11 +192,35 @@ export function AppSidebar({
 		onInspectDataset,
 		onInspectCollection,
 		onOpenDebug,
-		onClose: () => {},
 		onCreateCollection,
 		onEditCollection,
 		isFocused,
 		onExitFocus,
+	}
+
+	/** Common props for UserProfilePanel */
+	const userProfilePanelProps = {
+		geoEvents,
+		collectionEvents,
+		currentUserPubkey,
+		datasetVisibility,
+		collectionVisibility,
+		isPublishing,
+		deletingKey,
+		onLoadDataset,
+		onToggleVisibility,
+		onToggleAllVisibility,
+		onZoomToDataset,
+		onDeleteDataset,
+		getDatasetKey,
+		getDatasetName,
+		onInspectDataset,
+		onToggleCollectionVisibility,
+		onToggleAllCollectionVisibility,
+		onZoomToCollection,
+		onInspectCollection,
+		onEditCollection,
+		onOpenDebug,
 	}
 
 	/** Common props for GeoEditorInfoPanelContent */
@@ -262,6 +293,19 @@ export function AppSidebar({
 
 			case 'help':
 				return <HelpPanel multiSelectModifier={multiSelectModifier} />
+
+			case 'user': {
+				// Show user profile panel - use route pubkey if available, otherwise current user
+				const profilePubkey = userPubkey ?? currentUserPubkey
+				if (!profilePubkey) {
+					return (
+						<div className="p-4 text-center text-gray-500">
+							<p>Connect to view your profile</p>
+						</div>
+					)
+				}
+				return <UserProfilePanel pubkey={profilePubkey} {...userProfilePanelProps} />
+			}
 
 			default:
 				return null

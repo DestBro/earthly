@@ -34,7 +34,10 @@ export interface PolygonStyleProperties {
 	label?: string
 }
 
-export type StyleProperties = PointStyleProperties | LineStringStyleProperties | PolygonStyleProperties
+export type StyleProperties =
+	| PointStyleProperties
+	| LineStringStyleProperties
+	| PolygonStyleProperties
 
 // Union of all possible style property keys
 export type StylePropertyKey =

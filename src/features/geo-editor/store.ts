@@ -99,7 +99,7 @@ interface EditorState {
 	mobileSearchOpen: boolean
 	mobileActionsOpen: boolean
 	inspectorActive: boolean
-	sidebarViewMode: 'datasets' | 'collections' | 'combined' | 'edit' | 'posts' | 'settings' | 'help'
+	sidebarViewMode: 'datasets' | 'collections' | 'combined' | 'edit' | 'posts' | 'settings' | 'help' | 'user'
 
 	// Search State
 	searchQuery: string

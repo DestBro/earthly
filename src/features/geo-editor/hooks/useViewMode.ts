@@ -98,7 +98,13 @@ export function useViewMode({
 		// Clear URL and focus state
 		clearFocused()
 		window.location.hash = '/'
-	}, [setViewingDataset, setViewingCollection, setViewingCollectionEvents, setViewMode, clearFocused])
+	}, [
+		setViewingDataset,
+		setViewingCollection,
+		setViewingCollectionEvents,
+		setViewMode,
+		clearFocused,
+	])
 
 	const handleInspectDataset = useCallback(
 		(event: NDKGeoEvent) => {
@@ -210,5 +216,3 @@ export function useViewMode({
 		resolveEventsForCollection,
 	}
 }
-
-

@@ -530,24 +530,14 @@ export class LayerManager {
 					source: this.SOURCE_VERTICES,
 					filter: ['==', ['get', 'meta'], 'vertex'],
 					paint: {
-						'circle-radius': [
-							'case',
-							['==', ['get', 'selected'], true],
-							7,
-							5,
-						],
+						'circle-radius': ['case', ['==', ['get', 'selected'], true], 7, 5],
 						'circle-color': [
 							'case',
 							['==', ['get', 'selected'], true],
 							'#ef4444', // Red for selected
 							'#fbb03b', // Orange for normal
 						],
-						'circle-stroke-width': [
-							'case',
-							['==', ['get', 'selected'], true],
-							3,
-							2,
-						],
+						'circle-stroke-width': ['case', ['==', ['get', 'selected'], true], 3, 2],
 						'circle-stroke-color': '#fff',
 					},
 				})

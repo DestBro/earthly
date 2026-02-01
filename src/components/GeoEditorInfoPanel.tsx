@@ -1,4 +1,4 @@
-import { X, Eye, Pencil } from 'lucide-react'
+import { Eye } from 'lucide-react'
 import type { FeatureCollection } from 'geojson'
 import { cn } from '@/lib/utils'
 import { useEditorStore } from '../features/geo-editor/store'
@@ -73,7 +73,6 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 		currentUserPubkey,
 		deletingKey,
 		onExitViewMode,
-		onClose,
 		getDatasetKey,
 		getDatasetName,
 		onCommentGeometryVisibility,
@@ -150,7 +149,6 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 				onZoomToCollection={onZoomToCollection}
 				deletingKey={deletingKey}
 				onExitViewMode={onExitViewMode}
-				onClose={onClose}
 				getDatasetKey={getDatasetKey}
 				getDatasetName={getDatasetName}
 				onCommentGeometryVisibility={onCommentGeometryVisibility}
@@ -183,18 +181,11 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 						</Button>
 					)}
 				</div>
-				<div className="flex items-center gap-1">
-					{activeDatasetInfo && (
-						<span className="text-[10px] text-gray-500 truncate max-w-[100px]">
-							{activeDatasetInfo.name} {activeDatasetInfo.isOwner ? '' : '(copy)'}
-						</span>
-					)}
-					{onClose && (
-						<Button size="icon-xs" variant="ghost" onClick={onClose} aria-label="Close">
-							<X className="h-3 w-3" />
-						</Button>
-					)}
-				</div>
+				{activeDatasetInfo && (
+					<span className="text-[10px] text-gray-500 truncate max-w-[100px]">
+						{activeDatasetInfo.name} {activeDatasetInfo.isOwner ? '' : '(copy)'}
+					</span>
+				)}
 			</div>
 
 			{/* Stats row - inline */}
@@ -245,7 +236,10 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 			{/* Geometries table */}
 			<div className="flex flex-col min-h-0">
 				<div className="text-xs font-medium text-gray-700 py-1">Geometries ({features.length})</div>
-				<GeometriesTable className="max-h-[50vh] overflow-y-auto" onZoomToFeature={onZoomToFeature} />
+				<GeometriesTable
+					className="max-h-[50vh] overflow-y-auto"
+					onZoomToFeature={onZoomToFeature}
+				/>
 			</div>
 
 			{/* Publishing Status */}

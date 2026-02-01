@@ -69,7 +69,10 @@ function isLoopbackRelayUrl(relayUrl: string): boolean {
 function buildRelayUrls({
 	relayUrl,
 	isDevelopment,
-}: { relayUrl: string; isDevelopment: boolean }): string[] {
+}: {
+	relayUrl: string
+	isDevelopment: boolean
+}): string[] {
 	const locationInfo = getBrowserLocation()
 	const isLocalOrigin = locationInfo ? isLoopbackHostname(locationInfo.hostname) : false
 	const isHttps = locationInfo ? locationInfo.protocol === 'https:' : false

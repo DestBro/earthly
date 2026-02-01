@@ -34,11 +34,7 @@ interface OsmQueryPopoverProps {
 	onAdvanced: () => void
 }
 
-export function OsmQueryPopover({
-	onQueryClick,
-	onQueryView,
-	onAdvanced,
-}: OsmQueryPopoverProps) {
+export function OsmQueryPopover({ onQueryClick, onQueryView, onAdvanced }: OsmQueryPopoverProps) {
 	const osmQueryMode = useEditorStore((state) => state.osmQueryMode)
 	const osmQueryFilter = useEditorStore((state) => state.osmQueryFilter)
 	const setOsmQueryFilter = useEditorStore((state) => state.setOsmQueryFilter)

@@ -81,25 +81,28 @@ export const Editor: React.FC<EditorProps> = ({ snapping = true }) => {
 		editor.on('create', (e: any) => {
 			const store = useEditorStore.getState()
 			if (!store.isDrawingMapArea) return
-			
+
 			const features = e.features as any[] | undefined
 			if (!features || features.length === 0) return
-			
-			const polygon = features.find(f => f.geometry?.type === 'Polygon')
+
+			const polygon = features.find((f) => f.geometry?.type === 'Polygon')
 			if (!polygon) return
-			
+
 			// Compute bbox from polygon coordinates
 			const coords = polygon.geometry.coordinates[0] as [number, number][]
 			if (!coords || coords.length < 4) return
-			
-			let west = Infinity, south = Infinity, east = -Infinity, north = -Infinity
+
+			let west = Infinity,
+				south = Infinity,
+				east = -Infinity,
+				north = -Infinity
 			for (const [lon, lat] of coords) {
 				if (lon < west) west = lon
 				if (lon > east) east = lon
 				if (lat < south) south = lat
 				if (lat > north) north = lat
 			}
-			
+
 			// Calculate area in sqkm
 			const R = 6371 // Earth radius in km
 			const lat1 = (south * Math.PI) / 180
@@ -109,13 +112,13 @@ export const Editor: React.FC<EditorProps> = ({ snapping = true }) => {
 			const width = R * Math.cos((lat1 + lat2) / 2) * Math.abs(lon2 - lon1)
 			const height = R * Math.abs(lat2 - lat1)
 			const areaSqKm = width * height
-			
+
 			// Store the map area rect
 			store.setMapAreaRect({
 				bbox: [west, south, east, north],
 				areaSqKm,
 			})
-			
+
 			// Remove the polygon from the editor (it's just for visualization)
 			setTimeout(() => {
 				editor.deleteFeatures([polygon.id])
@@ -174,16 +177,16 @@ export const Editor: React.FC<EditorProps> = ({ snapping = true }) => {
 
 	// Sync selection from store to editor (for sidebar → map sync)
 	const storeSelectedFeatureIds = useEditorStore((state) => state.selectedFeatureIds)
-	
+
 	useEffect(() => {
 		if (!editorRef.current) return
-		
+
 		const currentSelection = editorRef.current.selection.getSelected()
 		const storeSet = new Set(storeSelectedFeatureIds)
 		const currentSet = new Set(currentSelection)
-		
+
 		// Check if selections are different
-		if (storeSet.size !== currentSet.size || ![...storeSet].every(id => currentSet.has(id))) {
+		if (storeSet.size !== currentSet.size || ![...storeSet].every((id) => currentSet.has(id))) {
 			// Use selectFeature for the first one (clears) then additive for the rest
 			if (storeSelectedFeatureIds.length === 0) {
 				editorRef.current.selection.clearSelection()

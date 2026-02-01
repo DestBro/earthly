@@ -374,10 +374,7 @@ export function SignupDialog({ open, onOpenChange, onConfirm }: SignupDialogProp
 							checked={rememberMe}
 							onCheckedChange={(checked) => setRememberMe(checked === true)}
 						/>
-						<label
-							htmlFor="remember-me"
-							className="text-sm cursor-pointer select-none"
-						>
+						<label htmlFor="remember-me" className="text-sm cursor-pointer select-none">
 							Stay logged in
 						</label>
 					</div>

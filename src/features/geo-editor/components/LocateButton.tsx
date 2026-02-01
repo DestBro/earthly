@@ -90,7 +90,7 @@ export function LocateButton({ onLocate, className = '' }: LocateButtonProps) {
 				enableHighAccuracy: true,
 				timeout: 10000,
 				maximumAge: 5000,
-			}
+			},
 		)
 	}, [onLocate])
 

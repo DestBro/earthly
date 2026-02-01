@@ -6,7 +6,6 @@ import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { StylePropertiesSection } from './StylePropertiesSection'
 
-
 export interface FeaturePropertiesSectionProps {
 	feature: EditorFeature
 }

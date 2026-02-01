@@ -329,13 +329,14 @@ export function GeometryBadge({
 	}
 
 	return (
-		<span className={cn(
-			'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium', 
-			colors[geometry.type]
-		)}>
+		<span
+			className={cn(
+				'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
+				colors[geometry.type],
+			)}
+		>
 			{isExternal && <Cloud className="h-2.5 w-2.5 text-sky-500" />}
 			{typeShort[geometry.type] ?? geometry.type}
 		</span>
 	)
 }
-

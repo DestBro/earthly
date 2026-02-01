@@ -32,12 +32,14 @@ export interface GeoMentionNodeOptions {
 function GeoMentionNodeView({ node, deleteNode, editor }: NodeViewProps) {
 	const attrs = node.attrs as GeoMentionAttrs
 	const { address, featureId, displayName } = attrs
-	
+
 	// Get callbacks from extension storage (type-safe access)
-	const extension = editor.extensionManager.extensions.find(ext => ext.name === 'geoMention')
-	const callbacks = (extension?.storage?.callbacks ?? extension?.options?.callbacks) as GeoMentionCallbacks | undefined
+	const extension = editor.extensionManager.extensions.find((ext) => ext.name === 'geoMention')
+	const callbacks = (extension?.storage?.callbacks ?? extension?.options?.callbacks) as
+		| GeoMentionCallbacks
+		| undefined
 	const isEditable = editor.isEditable
-	
+
 	// Local visibility state for UI feedback
 	const [isVisible, setIsVisible] = useState(false)
 

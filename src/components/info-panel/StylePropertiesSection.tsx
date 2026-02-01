@@ -55,9 +55,7 @@ export function StylePropertiesSection({ feature }: StylePropertiesSectionProps)
 	return (
 		<div className="space-y-2 p-2 bg-blue-50/70 rounded-md border border-blue-200">
 			<div className="flex items-center justify-between">
-				<span className="text-[10px] text-blue-700 uppercase tracking-wide font-medium">
-					Style
-				</span>
+				<span className="text-[10px] text-blue-700 uppercase tracking-wide font-medium">Style</span>
 				<Button
 					size="icon-xs"
 					variant="ghost"

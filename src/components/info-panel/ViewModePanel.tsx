@@ -1,4 +1,4 @@
-import { Maximize2, X, FileText, MessageCircle, MapPin, Pencil } from 'lucide-react'
+import { Maximize2, FileText, MessageCircle, MapPin, Pencil } from 'lucide-react'
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import type { FeatureCollection } from 'geojson'
 import { useEditorStore } from '../../features/geo-editor/store'
@@ -28,7 +28,6 @@ export interface ViewModePanelProps {
 	onZoomToCollection?: (collection: NDKGeoCollectionEvent, events: NDKGeoEvent[]) => void
 	deletingKey: string | null
 	onExitViewMode?: () => void
-	onClose?: () => void
 	getDatasetKey: (event: NDKGeoEvent) => string
 	getDatasetName: (event: NDKGeoEvent) => string
 	/** Callback to add/remove comment GeoJSON overlay on map */
@@ -74,7 +73,6 @@ export function ViewModePanel({
 	onZoomToCollection,
 	deletingKey,
 	onExitViewMode,
-	onClose,
 	getDatasetKey,
 	getDatasetName,
 	onCommentGeometryVisibility,
@@ -261,18 +259,6 @@ export function ViewModePanel({
 						</Button>
 					)}
 				</div>
-				<div className="flex gap-2">
-					{onClose && (
-						<Button
-							size="icon"
-							variant="ghost"
-							onClick={onClose}
-							aria-label="Close properties panel"
-						>
-							<X className="h-4 w-4" />
-						</Button>
-					)}
-				</div>
 			</div>
 
 			{/* Tab buttons */}
@@ -455,11 +441,7 @@ export function ViewModePanel({
 									>
 										{datasetVisibility[getDatasetKey(viewDataset)] !== false ? 'Hide' : 'Show'}
 									</Button>
-									<Button
-										size="sm"
-										variant="outline"
-										onClick={() => onZoomToDataset(viewDataset)}
-									>
+									<Button size="sm" variant="outline" onClick={() => onZoomToDataset(viewDataset)}>
 										Zoom
 									</Button>
 								</div>

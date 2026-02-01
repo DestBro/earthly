@@ -206,10 +206,11 @@ export class RenderingManager {
 			// Add vertices
 			const vertices = extractVerticesWithPaths(feature)
 			vertices.forEach(({ position, path }) => {
-				const isSelected = selectedVertex &&
+				const isSelected =
+					selectedVertex &&
 					selectedVertex.featureId === feature.id &&
 					JSON.stringify(selectedVertex.coordinatePath) === JSON.stringify(path)
-				
+
 				vertexFeatures.push({
 					type: 'Feature',
 					geometry: {

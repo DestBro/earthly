@@ -107,10 +107,7 @@ export function UserLocationMarker({ map, coordinates, accuracy }: UserLocationM
 			accuracyCircleRef.current = sourceId
 
 			// Create a circle polygon for accuracy
-			const circleFeature = createCirclePolygon(
-				[coordinates.lon, coordinates.lat],
-				accuracy
-			)
+			const circleFeature = createCirclePolygon([coordinates.lon, coordinates.lat], accuracy)
 
 			if (map.getSource(sourceId)) {
 				// Update existing source
@@ -132,7 +129,7 @@ export function UserLocationMarker({ map, coordinates, accuracy }: UserLocationM
 						},
 					},
 					// Add below the marker
-					undefined
+					undefined,
 				)
 			}
 		}
@@ -166,7 +163,7 @@ export function UserLocationMarker({ map, coordinates, accuracy }: UserLocationM
 function createCirclePolygon(
 	center: [number, number],
 	radiusMeters: number,
-	points = 64
+	points = 64,
 ): GeoJSON.Feature<GeoJSON.Polygon> {
 	const coords: [number, number][] = []
 	const distanceX = radiusMeters / (111320 * Math.cos((center[1] * Math.PI) / 180))

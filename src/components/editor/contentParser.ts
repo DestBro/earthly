@@ -41,7 +41,7 @@ const YOUTUBE_PATTERNS = [
 ]
 
 /** General URL pattern for detection */
-const URL_PATTERN = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/gi
+const URL_PATTERN = /https?:\/\/[^\s<>"{}|\\^`[\]]+/gi
 
 /**
  * Detect the media type of a URL

@@ -26,16 +26,16 @@ const failedUrls = new Set<string>()
 async function fetchBlobReference(reference: GeoBlobReference): Promise<BlobPayload | null> {
 	const cached = blobCache.get(reference.url)
 	if (cached) return cached
-	
+
 	// Skip URLs that have previously failed
 	if (failedUrls.has(reference.url)) {
 		return null
 	}
-	
+
 	if (!globalThis.fetch) {
 		throw new Error('fetch API is not available in this environment.')
 	}
-	
+
 	try {
 		const response = await fetch(reference.url)
 		if (!response.ok) {
@@ -70,16 +70,16 @@ export async function resolveGeoEventFeatureCollection(
 		return baseCollection
 	}
 
-	let features = normalizeGeoJsonToFeatureCollection(baseCollection).features
-		.filter((feature) => Boolean(feature.geometry))
+	let features = normalizeGeoJsonToFeatureCollection(baseCollection)
+		.features.filter((feature) => Boolean(feature.geometry))
 		.map((feature) => cloneFeature(feature as Feature))
 
 	for (const reference of event.blobReferences) {
 		const payload = await fetchBlobReference(reference)
-		
+
 		// Skip if blob couldn't be resolved (already logged in fetchBlobReference)
 		if (!payload) continue
-		
+
 		const resolvedFeatures = normalizeToFeatureArray(payload).map(cloneFeature)
 		if (resolvedFeatures.length === 0) continue
 

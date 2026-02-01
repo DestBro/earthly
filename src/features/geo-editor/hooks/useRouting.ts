@@ -11,6 +11,7 @@ export type SidebarViewMode =
 	| 'posts'
 	| 'settings'
 	| 'help'
+	| 'user'
 
 /** All valid sidebar view mode values */
 const SIDEBAR_VIEW_MODES: SidebarViewMode[] = [
@@ -21,6 +22,7 @@ const SIDEBAR_VIEW_MODES: SidebarViewMode[] = [
 	'posts',
 	'settings',
 	'help',
+	'user',
 ]
 
 /** Aliases for sidebar views (e.g., shoutbox → posts) */
@@ -35,6 +37,8 @@ export interface RouteState {
 	naddr?: string
 	/** Current sidebar view mode */
 	sidebarView: SidebarViewMode
+	/** User pubkey for user profile routes (hex format) */
+	userPubkey?: string
 }
 
 /**
@@ -87,6 +91,27 @@ function parseHash(): RouteState {
 		}
 	}
 
+	// Handle user profile route: #/user/{npub_or_pubkey}
+	if (first === 'user' && segments[1]) {
+		let userPubkey = segments[1]
+		// Decode npub to hex if needed
+		if (userPubkey.startsWith('npub')) {
+			try {
+				const decoded = nip19.decode(userPubkey)
+				if (decoded.type === 'npub') {
+					userPubkey = decoded.data
+				}
+			} catch {
+				// Invalid npub, use as-is
+			}
+		}
+		return {
+			focusType: 'none',
+			sidebarView: 'user',
+			userPubkey,
+		}
+	}
+
 	// Resolve alias (e.g., shoutbox → posts)
 	const resolvedFirst = VIEW_ALIASES[first] ?? first
 
@@ -119,7 +144,11 @@ function parseHash(): RouteState {
 /**
  * Build a hash string from route components
  */
-function buildHash(sidebarView: SidebarViewMode, focusType?: 'geoevent' | 'collection', naddr?: string): string {
+function buildHash(
+	sidebarView: SidebarViewMode,
+	focusType?: 'geoevent' | 'collection',
+	naddr?: string,
+): string {
 	if (focusType && naddr) {
 		return `/${sidebarView}/${focusType}/${naddr}`
 	}
@@ -209,10 +238,23 @@ export function useRouting() {
 	}, [])
 
 	/**
+	 * Navigate to a user's profile page
+	 */
+	const navigateToUser = useCallback((pubkey: string) => {
+		const npub = nip19.npubEncode(pubkey)
+		window.location.hash = `/user/${npub}`
+	}, [])
+
+	/**
 	 * Generate naddr for a geo event
 	 */
 	const encodeGeoEventNaddr = useCallback(
-		(event: { kind?: number; pubkey: string; datasetId?: string; dTag?: string }): string | null => {
+		(event: {
+			kind?: number
+			pubkey: string
+			datasetId?: string
+			dTag?: string
+		}): string | null => {
 			const identifier = event.datasetId ?? event.dTag
 			if (!identifier || !event.kind) return null
 
@@ -254,6 +296,7 @@ export function useRouting() {
 		route,
 		navigateToView,
 		navigateTo,
+		navigateToUser,
 		clearFocus,
 		navigateHome,
 		encodeGeoEventNaddr,
@@ -262,5 +305,7 @@ export function useRouting() {
 		isFocused: route.focusType !== 'none',
 		/** Current sidebar view mode from the route */
 		sidebarView: route.sidebarView,
+		/** User pubkey from route (for user profile pages) */
+		userPubkey: route.userPubkey,
 	}
 }

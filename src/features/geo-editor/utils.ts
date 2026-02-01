@@ -122,7 +122,9 @@ export function ensureFeatureCollection(payload: any): FeatureCollection {
 		return normalizeGeoJsonToFeatureCollection(payload)
 	}
 
-	throw new Error('Payload is not a GeoJSON Feature, FeatureCollection, Geometry, or Feature-like object.')
+	throw new Error(
+		'Payload is not a GeoJSON Feature, FeatureCollection, Geometry, or Feature-like object.',
+	)
 }
 
 export function summarizeFeatureCollection(collection: FeatureCollection): {
