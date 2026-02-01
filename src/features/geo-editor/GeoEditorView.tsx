@@ -1,6 +1,6 @@
 import { useNDK, useNDKCurrentUser } from '@nostr-dev-kit/react'
 import type { FeatureCollection } from 'geojson'
-import { Edit3, FilePenLine, Layers, Lock, LockOpen, Search, UploadCloud } from 'lucide-react'
+import { Layers, Lock, LockOpen, Search } from 'lucide-react'
 import type maplibregl from 'maplibre-gl'
 import {
 	useCallback,
@@ -13,10 +13,7 @@ import {
 import { AppSidebar } from '../../components/AppSidebar'
 import { BlossomUploadDialog } from '../../components/BlossomUploadDialog'
 import { DebugDialog } from '../../components/DebugDialog'
-import { GeoDatasetsPanelContent } from '../../components/GeoDatasetsPanel'
-import { GeoEditorInfoPanelContent } from '../../components/GeoEditorInfoPanel'
 import { Button } from '../../components/ui/button'
-import { Sheet, SheetContent } from '../../components/ui/sheet'
 import { SidebarInset, SidebarProvider } from '../../components/ui/sidebar'
 import { earthlyGeoServer, type ReverseLookupOutput } from '../../ctxcn'
 import { useAvailableGeoFeatures } from '../../lib/hooks/useAvailableGeoFeatures'
@@ -31,6 +28,7 @@ import { LocateButton } from './components/LocateButton'
 import { FeaturePopup, type FeaturePopupData } from './components/FeaturePopup'
 import { LocationInspectorPopup } from './components/LocationInspectorPopup'
 import { Magnifier } from './components/Magnifier'
+import { MobilePanel } from './components/MobilePanel'
 import { UserLocationMarker } from './components/UserLocationMarker'
 import { GeoEditorMap as MapComponent } from './components/Map'
 import { OsmResultsPanel } from './components/OsmResultsPanel'
@@ -192,18 +190,10 @@ export function GeoEditorView() {
 	const setShowDatasetsPanel = useEditorStore((state) => state.setShowDatasetsPanel)
 	const showInfoPanel = useEditorStore((state) => state.showInfoPanel)
 	const setShowInfoPanel = useEditorStore((state) => state.setShowInfoPanel)
-	const mobileDatasetsOpen = useEditorStore((state) => state.mobileDatasetsOpen)
-	const setMobileDatasetsOpen = useEditorStore((state) => state.setMobileDatasetsOpen)
-	const mobileInfoOpen = useEditorStore((state) => state.mobileInfoOpen)
-	const setMobileInfoOpen = useEditorStore((state) => state.setMobileInfoOpen)
 	const setShowTips = useEditorStore((state) => state.setShowTips)
-	const mobileToolsOpen = useEditorStore((state) => state.mobileToolsOpen)
-	const setMobileToolsOpen = useEditorStore((state) => state.setMobileToolsOpen)
-	const mobileSearchOpen = useEditorStore((state) => state.mobileSearchOpen)
-	const setMobileSearchOpen = useEditorStore((state) => state.setMobileSearchOpen)
-	const mobileActionsOpen = useEditorStore((state) => state.mobileActionsOpen)
-	const setMobileActionsOpen = useEditorStore((state) => state.setMobileActionsOpen)
-	const setMobileActiveState = useEditorStore((state) => state.setMobileActiveState)
+	// Unified mobile panel state
+	const mobilePanelOpen = useEditorStore((state) => state.mobilePanelOpen)
+	const setMobilePanelOpen = useEditorStore((state) => state.setMobilePanelOpen)
 	const panLocked = useEditorStore((state) => state.panLocked)
 	const setPanLocked = useEditorStore((state) => state.setPanLocked)
 	const canFinishDrawing = useEditorStore((state) => state.canFinishDrawing)
@@ -237,13 +227,14 @@ export function GeoEditorView() {
 	const isMobile = useIsMobile()
 
 	// Callback for ensuring info panel is visible
+	const openMobilePanel = useEditorStore((state) => state.openMobilePanel)
 	const ensureInfoPanelVisible = useCallback(() => {
 		if (isMobile) {
-			setMobileInfoOpen(true)
+			openMobilePanel('edit')
 		} else {
 			setShowInfoPanel(true)
 		}
-	}, [isMobile, setMobileInfoOpen, setShowInfoPanel])
+	}, [isMobile, openMobilePanel, setShowInfoPanel])
 
 	// Custom hooks
 	const {
@@ -599,10 +590,10 @@ export function GeoEditorView() {
 	}, [geoEvents, getDatasetKey, setDatasetVisibility])
 
 	// Initialize mobile/desktop UI
+	const closeMobilePanel = useEditorStore((state) => state.closeMobilePanel)
 	useEffect(() => {
 		if (isMobile) {
-			setMobileDatasetsOpen(false)
-			setMobileInfoOpen(false)
+			closeMobilePanel()
 			setShowToolbar(false)
 			setShowTips(false)
 		} else {
@@ -611,14 +602,7 @@ export function GeoEditorView() {
 			setShowToolbar(true)
 			setShowTips(true)
 		}
-	}, [
-		isMobile,
-		setMobileDatasetsOpen,
-		setMobileInfoOpen,
-		setShowTips,
-		setShowDatasetsPanel,
-		setShowInfoPanel,
-	])
+	}, [isMobile, closeMobilePanel, setShowTips, setShowDatasetsPanel, setShowInfoPanel])
 
 	// Handle pmtiles URL param on app load
 	const setMapSource = useEditorStore((state) => state.setMapSource)
@@ -1869,91 +1853,51 @@ export function GeoEditorView() {
 						</div>
 					)}
 
+					{/* Mobile Panel - unified tabbed drawer */}
 					{isMobile && (
-						<>
-							{/* Datasets Sheet - bottom drawer for browsing datasets */}
-							<Sheet open={mobileDatasetsOpen} onOpenChange={setMobileDatasetsOpen} modal={false}>
-								<SheetContent
-									side="bottom"
-									className="p-0 h-[40vh] sm:hidden"
-									onPointerDownOutside={(e) => e.preventDefault()}
-									onInteractOutside={(e) => e.preventDefault()}
-								>
-									<div className="h-full w-full overflow-y-auto px-4 pb-6 pt-3">
-										<GeoDatasetsPanelContent
-											mode="datasets"
-											geoEvents={geoEvents}
-											collectionEvents={collectionEvents}
-											activeDataset={activeDataset}
-											currentUserPubkey={currentUser?.pubkey}
-											datasetVisibility={effectiveVisibility}
-											collectionVisibility={collectionVisibility}
-											isPublishing={isPublishing}
-											deletingKey={deletingKey}
-											onClearEditing={clearEditingSession}
-											onLoadDataset={loadDatasetForEditing}
-											onToggleVisibility={handleToggleVisibilityWithExitFocus}
-											onToggleAllVisibility={handleToggleAllVisibilityWithExitFocus}
-											onToggleCollectionVisibility={handleToggleCollectionVisibility}
-											onToggleAllCollectionVisibility={handleToggleAllCollectionVisibility}
-											onZoomToDataset={zoomToDataset}
-											onDeleteDataset={onDeleteDataset}
-											getDatasetKey={getDatasetKey}
-											getDatasetName={getDatasetName}
-											onZoomToCollection={zoomToCollection}
-											onInspectDataset={handleInspectDatasetWithModeSwitch}
-											onInspectCollection={handleInspectCollectionWithModeSwitch}
-											onOpenDebug={handleOpenDebug}
-											onClose={() => setMobileDatasetsOpen(false)}
-											onCreateCollection={handleCreateCollection}
-											onEditCollection={handleEditCollection}
-											isFocused={isFocused}
-											onExitFocus={navigateHome}
-										/>
-									</div>
-								</SheetContent>
-							</Sheet>
-
-							{/* Info/Editor Sheet - bottom drawer for viewing/editing */}
-							<Sheet open={mobileInfoOpen} onOpenChange={setMobileInfoOpen} modal={false}>
-								<SheetContent
-									side="bottom"
-									className="p-0 h-[40vh] sm:hidden"
-									onPointerDownOutside={(e) => e.preventDefault()}
-									onInteractOutside={(e) => e.preventDefault()}
-								>
-									<div className="h-full w-full overflow-y-auto px-4 pb-6 pt-3">
-										<GeoEditorInfoPanelContent
-											currentUserPubkey={currentUser?.pubkey}
-											onLoadDataset={loadDatasetForEditing}
-											onToggleVisibility={toggleDatasetVisibility}
-											onZoomToDataset={zoomToDataset}
-											onDeleteDataset={onDeleteDataset}
-											onZoomToCollection={zoomToCollection}
-											deletingKey={deletingKey}
-											onExitViewMode={exitViewMode}
-											onClose={() => setMobileInfoOpen(false)}
-											getDatasetKey={getDatasetKey}
-											getDatasetName={getDatasetName}
-											onCommentGeometryVisibility={handleCommentGeometryVisibility}
-											onZoomToBounds={handleZoomToBounds}
-											availableFeatures={availableFeatures}
-											onMentionVisibilityToggle={handleMentionVisibilityToggle}
-											onMentionZoomTo={handleMentionZoomTo}
-											onEditCollection={handleEditCollection}
-											collectionEditorMode={collectionEditorMode}
-											editingCollection={editingCollection}
-											onSaveCollection={handleSaveCollection}
-											onCloseCollectionEditor={handleCloseCollectionEditor}
-											onZoomToFeature={handleZoomToFeature}
-											featureCollectionForUpload={memoizedFeatureCollection}
-											onBlossomUploadComplete={handleBlobUploadComplete}
-											ndk={ndk}
-										/>
-									</div>
-								</SheetContent>
-							</Sheet>
-						</>
+						<MobilePanel
+							geoEvents={geoEvents}
+							collectionEvents={collectionEvents}
+							activeDataset={activeDataset}
+							currentUserPubkey={currentUser?.pubkey}
+							userPubkey={userPubkey}
+							datasetVisibility={effectiveVisibility}
+							collectionVisibility={collectionVisibility}
+							isPublishing={isPublishing}
+							deletingKey={deletingKey}
+							isFocused={isFocused}
+							onClearEditing={clearEditingSession}
+							onLoadDataset={loadDatasetForEditing}
+							onToggleVisibility={handleToggleVisibilityWithExitFocus}
+							onToggleAllVisibility={handleToggleAllVisibilityWithExitFocus}
+							onZoomToDataset={zoomToDataset}
+							onDeleteDataset={onDeleteDataset}
+							getDatasetKey={getDatasetKey}
+							getDatasetName={getDatasetName}
+							onInspectDataset={handleInspectDatasetWithModeSwitch}
+							onExitFocus={navigateHome}
+							onToggleCollectionVisibility={handleToggleCollectionVisibility}
+							onToggleAllCollectionVisibility={handleToggleAllCollectionVisibility}
+							onZoomToCollection={zoomToCollection}
+							onInspectCollection={handleInspectCollectionWithModeSwitch}
+							onCreateCollection={handleCreateCollection}
+							onEditCollection={handleEditCollection}
+							onOpenDebug={handleOpenDebug}
+							onExitViewMode={exitViewMode}
+							onCommentGeometryVisibility={handleCommentGeometryVisibility}
+							onZoomToBounds={handleZoomToBounds}
+							availableFeatures={availableFeatures}
+							onMentionVisibilityToggle={handleMentionVisibilityToggle}
+							onMentionZoomTo={handleMentionZoomTo}
+							collectionEditorMode={collectionEditorMode}
+							editingCollection={editingCollection}
+							onSaveCollection={handleSaveCollection}
+							onCloseCollectionEditor={handleCloseCollectionEditor}
+							onZoomToFeature={handleZoomToFeature}
+							featureCollectionForUpload={memoizedFeatureCollection}
+							onBlossomUploadComplete={handleBlobUploadComplete}
+							ndk={ndk}
+						/>
 					)}
 
 					{isMobile && (
@@ -2042,79 +1986,21 @@ export function GeoEditorView() {
 									</div>
 								</div>
 							</div>
-							{/* Mobile buttons - positioned to move up when drawer is open */}
+							{/* Mobile panel toggle button - positioned to move up when drawer is open */}
 							<div
 								className={`fixed bottom-2 right-2 z-50 flex flex-col gap-2 md:hidden transition-all duration-300 ${
-									mobileDatasetsOpen || mobileInfoOpen ? 'bottom-[calc(40vh+0.5rem)]' : ''
+									mobilePanelOpen ? 'bottom-[calc(45vh+0.5rem)]' : ''
 								}`}
 							>
-								{/* Draw tools */}
+								{/* Unified panel toggle */}
 								<Button
 									size="icon"
-									className="shadow-lg h-10 w-10 rounded-full"
-									variant={mobileToolsOpen ? 'default' : 'outline'}
-									onClick={() => {
-										// Close other toolbars, keep drawers
-										setMobileSearchOpen(false)
-										setMobileActionsOpen(false)
-										setMobileToolsOpen(!mobileToolsOpen)
-									}}
-								>
-									<Edit3 className="h-5 w-5" />
-								</Button>
-								{/* Search tools */}
-								<Button
-									size="icon"
-									className="shadow-lg h-10 w-10 rounded-full"
-									variant={mobileSearchOpen ? 'default' : 'outline'}
-									onClick={() => {
-										// Close other toolbars, keep drawers
-										setMobileToolsOpen(false)
-										setMobileActionsOpen(false)
-										setMobileSearchOpen(!mobileSearchOpen)
-									}}
-								>
-									<Search className="h-5 w-5" />
-								</Button>
-								{/* Upload/settings/etc */}
-								<Button
-									size="icon"
-									className="shadow-lg h-10 w-10 rounded-full"
-									variant={mobileActionsOpen ? 'default' : 'outline'}
-									onClick={() => {
-										// Close other toolbars, keep drawers
-										setMobileToolsOpen(false)
-										setMobileSearchOpen(false)
-										setMobileActionsOpen(!mobileActionsOpen)
-									}}
-								>
-									<UploadCloud className="h-5 w-5" />
-								</Button>
-								{/* Drawer 1 (datasets) */}
-								<Button
-									size="icon"
-									className="shadow-lg h-10 w-10 rounded-full"
-									variant={mobileDatasetsOpen ? 'default' : 'outline'}
-									onClick={() => {
-										// Close other drawer, keep toolbars
-										setMobileInfoOpen(false)
-										setMobileDatasetsOpen(!mobileDatasetsOpen)
-									}}
+									className="shadow-lg h-12 w-12 rounded-full"
+									variant={mobilePanelOpen ? 'default' : 'outline'}
+									onClick={() => setMobilePanelOpen(!mobilePanelOpen)}
+									aria-label="Toggle panel"
 								>
 									<Layers className="h-5 w-5" />
-								</Button>
-								{/* Drawer 2 (editor) */}
-								<Button
-									size="icon"
-									className="shadow-lg h-10 w-10 rounded-full"
-									variant={mobileInfoOpen ? 'default' : 'outline'}
-									onClick={() => {
-										// Close other drawer, keep toolbars
-										setMobileDatasetsOpen(false)
-										setMobileInfoOpen(!mobileInfoOpen)
-									}}
-								>
-									<FilePenLine className="h-5 w-5" />
 								</Button>
 							</div>
 						</>
