@@ -5,6 +5,7 @@ import { useCallback, useRef } from 'react'
 import { resolveGeoEventFeatureCollection } from '../../../lib/geo/resolveBlobReferences'
 import type { NDKGeoCollectionEvent } from '../../../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent, GeoBlobReference } from '../../../lib/ndk/NDKGeoEvent'
+import { GEO_EVENT_KIND } from '../../../lib/ndk/kinds'
 import { useEditorStore } from '../store'
 import type { EditorBlobReference } from '../types'
 import {
@@ -184,7 +185,7 @@ export function useDatasetManagement(
 					: geoEventsRef.current.filter((event) => {
 							const datasetId = event.datasetId ?? event.dTag ?? event.id
 							if (!datasetId) return false
-							const coordinate = `${event.kind ?? 31991}:${event.pubkey}:${datasetId}`
+							const coordinate = `${event.kind ?? GEO_EVENT_KIND}:${event.pubkey}:${datasetId}`
 							return collection.datasetReferences.includes(coordinate)
 						})
 
@@ -407,7 +408,7 @@ export function useDatasetManagement(
 			return geoEventsRef.current.filter((event) => {
 				const datasetId = event.datasetId ?? event.dTag ?? event.id
 				if (!datasetId) return false
-				const coordinate = `${event.kind ?? 31991}:${event.pubkey}:${datasetId}`
+				const coordinate = `${event.kind ?? GEO_EVENT_KIND}:${event.pubkey}:${datasetId}`
 				return references.has(coordinate)
 			})
 		},

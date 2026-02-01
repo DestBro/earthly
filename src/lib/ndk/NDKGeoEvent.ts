@@ -1,6 +1,7 @@
 import NDK, { NDKEvent, NDKKind, type NDKSigner, registerEventClass } from '@nostr-dev-kit/react'
 import { bbox, centroid } from '@turf/turf'
 import type { FeatureCollection, Position } from 'geojson'
+import { GEO_EVENT_KIND } from './kinds'
 
 export type GeoBoundingBox = [number, number, number, number]
 
@@ -24,7 +25,7 @@ const DEFAULT_COLLECTION: FeatureCollection = {
  * utility helpers to keep the derived metadata in sync with the content.
  */
 export class NDKGeoEvent extends NDKEvent {
-	static kinds = [31991]
+	static kinds = [GEO_EVENT_KIND]
 
 	static from(event: NDKEvent): NDKGeoEvent {
 		const wrapped = new NDKGeoEvent(event.ndk, event)

@@ -344,7 +344,7 @@ sequenceDiagram
 
     User->>Panel: View dataset comments
     Panel->>Hook: Subscribe to comments
-    Hook->>Relay: NDK subscription (kind 1111)
+    Hook->>Relay: NDK subscription (kind 37517)
     Relay-->>Hook: Existing comments
     Hook-->>Panel: Comment list
 
@@ -466,9 +466,9 @@ graph TB
     end
 
     subgraph "NDK Wrappers"
-        NDKGEO[NDKGeoEvent<br/>kind 31991]
-        NDKCOL[NDKGeoCollectionEvent<br/>kind 30406]
-        NDKCOMM[NDKGeoCommentEvent<br/>kind 1111]
+        NDKGEO[NDKGeoEvent<br/>kind 37515]
+        NDKCOL[NDKGeoCollectionEvent<br/>kind 37516]
+        NDKCOMM[NDKGeoCommentEvent<br/>kind 37517]
         NDKMAP[NDKMapLayerSetEvent]
     end
 

@@ -24,6 +24,7 @@ import { useIsMobile } from '../../lib/hooks/useIsMobile'
 import { useGeoCollections, useStations } from '../../lib/hooks/useStations'
 import type { NDKGeoCollectionEvent } from '../../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
+import { GEO_EVENT_KIND } from '../../lib/ndk/kinds'
 import { Editor } from './components/Editor'
 import { ImportOsmDialog } from './components/ImportOsmDialog'
 import { LocateButton } from './components/LocateButton'
@@ -367,7 +368,7 @@ export function GeoEditorView() {
 				return geoEvents.filter((event) => {
 					const datasetId = event.datasetId ?? event.dTag ?? event.id
 					if (!datasetId) return false
-					const coordinate = `${event.kind ?? 31991}:${event.pubkey}:${datasetId}`
+					const coordinate = `${event.kind ?? GEO_EVENT_KIND}:${event.pubkey}:${datasetId}`
 					const inCollection = references.has(coordinate)
 					if (!inCollection) return false
 					

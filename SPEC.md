@@ -4,10 +4,10 @@ Goal – Define a minimal, interoperable way to publish, catalogue and consume G
 
 ⸻
 
-1 GeoJSON Data Event (kind 31991)
+1 GeoJSON Data Event (kind 37515)
 
 Field Purpose
-kind 31991 identifies the event as a GeoJSON dataset.
+kind 37515 identifies the event as a GeoJSON dataset.
 content JSON.stringify(...) of a valid RFC 7946 FeatureCollection (may include extra fields). Stored verbatim – no base64.
 tags Metadata and discovery (see below).
 
@@ -27,7 +27,7 @@ size ["size", "142359"] Uncompressed byte length of content.
 v ["v", "2"] Semantic version or monotonically increasing integer for this dataset.
 r ["r", "wss://geo.relay.org"] Relay where future updates will be published.
 t ["t", "parks"] Hashtags / thematic categories. Multiple allowed.
-collection ["collection", "30406:npub1pubkey…:city_parks_2025"] (Optional) Back-link to a parent collection event.
+collection ["collection", "37516:npub1pubkey…:city_parks_2025"] (Optional) Back-link to a parent collection event.
 
 1.3 Optional Tags
 
@@ -38,7 +38,7 @@ Free-form tags permitted for domain-specific metadata, e.g. srid, license, sourc
 {
 "id": "…",
 "pubkey": "npub1pubkeyexample…", // publisher's **public** key (never nsec!)
-"kind": 31991,
+"kind": 37515,
 "content": "{\"type\":\"FeatureCollection\",\"name\":\"Vienna Trailheads 2025\",…}",
 "tags": [
 ["d","a9d5ea20-2e3f-4b67-93e9-7c60a9f9f4f4"],
@@ -111,12 +111,12 @@ Tags for this event would include `["blob","feature:canada_provinces_blob","http
 
 ⸻
 
-2 GeoJSON Collection Event (kind 30406)
+2 GeoJSON Collection Event (kind 37516)
 
 A lightweight catalogue pointing to multiple GeoJSON datasets.
 
 Field Purpose
-kind 30406 identifies a collection.
+kind 37516 identifies a collection.
 content JSON with human-readable metadata: { name, description, picture?, ownerPk?, license?, tags? }.
 tags One a tag per dataset plus structural metadata.
 
@@ -124,7 +124,7 @@ tags One a tag per dataset plus structural metadata.
 
 Tag Example Notes
 d ["d", "city_parks_2025"] Random UUID for this collection event.
-a ["a", "31991:npub1pubkey…:a9d5ea20…"] Coordinate of a GeoJSON Data Event using publisher’s npub. Multiple.
+a ["a", "37515:npub1pubkey…:a9d5ea20…"] Coordinate of a GeoJSON Data Event using publisher’s npub. Multiple.
 bbox Combined extent of all members (optional).
 g ["g", "u2yh7"] Geohash of collection centroid.
 t Hashtags categorising the collection.
@@ -135,14 +135,14 @@ r Recommended relay.
 {
 "id": "…",
 "pubkey": "npub1maintainer…",
-"kind": 30406,
+"kind": 37516,
 "content": "{\"name\":\"City Parks Dataset\",\"description\":\"Boundaries and amenities for Vienna parks\",\"picture\":\"https://…/parks.png\",\"license\":\"CC-BY-4.0\"}",
 "tags": [
 ["d","city_parks_2025"],
 ["bbox","16.1,48.1,16.7,48.4"],
 ["g","u2yh7"],
-["a","31991:npub1pubkey…:a9d5ea20…"],
-["a","31991:npub1otherpubkey…:bb17c530…"],
+["a","37515:npub1pubkey…:a9d5ea20…"],
+["a","37515:npub1otherpubkey…:bb17c530…"],
 ["t","parks"]
 ]
 }
@@ -182,14 +182,14 @@ Kind Purpose
 
 ⸻
 
-8 GeoJSON Comment Event (kind 31992)
+8 GeoJSON Comment Event (kind 37517)
 
 Comments allow users to discuss datasets and collections, optionally attaching GeoJSON annotations. Comments follow NIP-22 threading semantics for replies.
 
 8.1 Event Structure
 
 Field Purpose
-kind 31992 identifies a geo comment.
+kind 37517 identifies a geo comment.
 content JSON with { "text": "...", "geojson": {...} }. The geojson field is optional.
 tags NIP-22 threading tags plus geo-specific tags.
 
@@ -211,8 +211,8 @@ The `text` field contains the human-readable comment. The optional `geojson` fie
 
 Tag Purpose
 d Unique identifier for addressability.
-K Root scope kind (e.g. "31991" for datasets, "30406" for collections).
-k Parent item kind (same as K for top-level comments, "31992" for replies).
+K Root scope kind (e.g. "37515" for datasets, "37516" for collections).
+k Parent item kind (same as K for top-level comments, "37517" for replies).
 A Root scope address: <kind>:<pubkey>:<d-tag>
 a Parent address (same as A for top-level, or the parent comment's address).
 E Root event ID (if referencing by ID instead of address).
@@ -230,7 +230,7 @@ g ["g", "u2yh7"] Geohash of comment's GeoJSON centroid.
 
 Comments may reference datasets or specific features inline using NIP-21 style URIs:
 
-• Dataset reference: `nostr:naddr1...` pointing to a kind 31991 event.
+• Dataset reference: `nostr:naddr1...` pointing to a kind 37515 event.
 • Feature reference: `nostr:naddr1...#featureId` to reference a specific feature within a dataset.
 
 Clients SHOULD render these as interactive elements with:
@@ -241,14 +241,14 @@ Clients SHOULD render these as interactive elements with:
 
 ```json
 {
-  "kind": 31992,
+  "kind": 37517,
   "content": "{\"text\":\"Great dataset! The eastern boundary needs adjustment.\",\"geojson\":{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"geometry\":{\"type\":\"Point\",\"coordinates\":[16.4,48.2]},\"properties\":{\"note\":\"Issue here\"}}]}}",
   "tags": [
     ["d", "comment-uuid-1"],
-    ["A", "31991:npub1pubkey...:dataset-uuid"],
-    ["K", "31991"],
-    ["a", "31991:npub1pubkey...:dataset-uuid"],
-    ["k", "31991"],
+    ["A", "37515:npub1pubkey...:dataset-uuid"],
+    ["K", "37515"],
+    ["a", "37515:npub1pubkey...:dataset-uuid"],
+    ["k", "37515"],
     ["P", "npub1pubkey..."],
     ["p", "npub1pubkey..."],
     ["bbox", "16.3,48.1,16.5,48.3"],
@@ -261,14 +261,14 @@ Clients SHOULD render these as interactive elements with:
 
 ```json
 {
-  "kind": 31992,
+  "kind": 37517,
   "content": "{\"text\":\"I agree, here's my suggested correction.\"}",
   "tags": [
     ["d", "comment-uuid-2"],
-    ["A", "31991:npub1pubkey...:dataset-uuid"],
-    ["K", "31991"],
-    ["a", "31992:npub1commenter...:comment-uuid-1"],
-    ["k", "31992"],
+    ["A", "37515:npub1pubkey...:dataset-uuid"],
+    ["K", "37515"],
+    ["a", "37517:npub1commenter...:comment-uuid-1"],
+    ["k", "37517"],
     ["e", "parent-comment-event-id", "wss://relay.example"],
     ["P", "npub1pubkey..."],
     ["p", "npub1commenter..."]
@@ -292,7 +292,7 @@ Example reaction to a dataset:
   "kind": 7,
   "content": "❤️",
   "tags": [
-    ["a", "31991:npub1pubkey...:dataset-uuid"],
+    ["a", "37515:npub1pubkey...:dataset-uuid"],
     ["p", "npub1pubkey..."]
   ]
 }

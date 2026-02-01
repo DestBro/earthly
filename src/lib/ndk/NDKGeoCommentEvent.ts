@@ -1,6 +1,7 @@
 import NDK, { NDKEvent, NDKKind, type NDKSigner, registerEventClass } from '@nostr-dev-kit/react'
 import { bbox, centroid } from '@turf/turf'
 import type { FeatureCollection, Position } from 'geojson'
+import { GEO_COMMENT_KIND } from './kinds'
 import type { GeoBoundingBox } from './NDKGeoEvent'
 
 export interface GeoCommentContent {
@@ -24,7 +25,7 @@ export interface GeoCommentThreading {
  * It follows NIP-22 threading semantics with optional GeoJSON attachments.
  */
 export class NDKGeoCommentEvent extends NDKEvent {
-	static kinds = [31992]
+	static kinds = [GEO_COMMENT_KIND]
 
 	static from(event: NDKEvent): NDKGeoCommentEvent {
 		const wrapped = new NDKGeoCommentEvent(event.ndk, event)
@@ -142,10 +143,10 @@ export class NDKGeoCommentEvent extends NDKEvent {
 		this.removeTag('P')
 		this.removeTag('p')
 
-		const parentAddress = `31992:${parentComment.pubkey}:${parentComment.commentId}`
+		const parentAddress = `${GEO_COMMENT_KIND}:${parentComment.pubkey}:${parentComment.commentId}`
 
 		this.tags.push(['K', String(rootKind)])
-		this.tags.push(['k', '31992'])
+		this.tags.push(['k', String(GEO_COMMENT_KIND)])
 		this.tags.push(['A', rootAddress])
 		this.tags.push(['a', parentAddress])
 		if (parentComment.id) {
@@ -184,7 +185,7 @@ export class NDKGeoCommentEvent extends NDKEvent {
 	 * Check if this is a reply to another comment (vs a top-level comment).
 	 */
 	get isReply(): boolean {
-		return this.threading.parentKind === '31992'
+		return this.threading.parentKind === String(GEO_COMMENT_KIND)
 	}
 
 	/**

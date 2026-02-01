@@ -4,6 +4,7 @@ import NDK, {
 	type NDKPrivateKeySigner,
 	type NDKTag,
 } from "@nostr-dev-kit/ndk";
+import { GEO_COLLECTION_KIND } from "../src/lib/ndk/kinds";
 
 // Helper to generate a geohash (simplified version - same as in gen_geo_events.ts)
 function generateGeohash(
@@ -53,7 +54,7 @@ export interface CollectionMetadata {
 }
 
 export function generateCollectionData(geoEventRefs: string[] = []): {
-	kind: 30406;
+	kind: typeof GEO_COLLECTION_KIND;
 	content: string;
 	tags: NDKTag[];
 	created_at: number;
@@ -131,7 +132,7 @@ export function generateCollectionData(geoEventRefs: string[] = []): {
 	}
 
 	return {
-		kind: 30406,
+		kind: GEO_COLLECTION_KIND,
 		content: JSON.stringify(metadata),
 		tags,
 		created_at: Math.floor(Date.now() / 1000),

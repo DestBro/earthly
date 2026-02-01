@@ -5,7 +5,7 @@ import { NDKGeoCollectionEvent } from '../ndk/NDKGeoCollectionEvent'
 import { NDKGeoEvent } from '../ndk/NDKGeoEvent'
 
 /**
- * Subscribe to GeoJSON dataset events (kind 31991) and wrap them into our custom NDKGeoEvent class.
+ * Subscribe to GeoJSON dataset events (kind 37515) and wrap them into our custom NDKGeoEvent class.
  *
  * @param additionalFilters - Optional additional NDK filters to apply (limit, authors, etc.)
  * @returns Object containing the geo events array and end-of-stream status

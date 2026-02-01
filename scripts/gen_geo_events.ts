@@ -4,6 +4,7 @@ import NDK, {
 	type NDKPrivateKeySigner,
 	type NDKTag,
 } from "@nostr-dev-kit/ndk";
+import { GEO_EVENT_KIND } from "../src/lib/ndk/kinds";
 import { simplify, truncate } from "@turf/turf";
 import { createHash } from "crypto";
 import type {
@@ -944,7 +945,7 @@ export async function generateGeoEventData(
 		stateName?: string;
 	},
 ): Promise<{
-	kind: 31991;
+	kind: typeof GEO_EVENT_KIND;
 	content: string;
 	tags: NDKTag[];
 	created_at: number;
@@ -1055,7 +1056,7 @@ export async function generateGeoEventData(
 	}
 
 	return {
-		kind: 31991,
+		kind: GEO_EVENT_KIND,
 		content,
 		tags,
 		created_at: Math.floor(Date.now() / 1000),

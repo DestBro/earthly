@@ -1,6 +1,7 @@
 import { NDKEvent, registerEventClass } from '@nostr-dev-kit/react'
 
 import type { BBox } from '@/lib/worldGeohash'
+import { MAP_LAYER_SET_KIND } from './kinds'
 
 export type MapChunkAnnouncementRecord = Record<
 	string,
@@ -46,7 +47,7 @@ const DEFAULT_PAYLOAD: MapLayerSetAnnouncementPayload = { version: 1, layers: []
  * Signed by the server identity; clients should filter by `authors: [SERVER_PUBKEY]`.
  */
 export class NDKMapLayerSetEvent extends NDKEvent {
-	static kinds = [15000]
+	static kinds = [MAP_LAYER_SET_KIND]
 
 	static from(event: NDKEvent): NDKMapLayerSetEvent {
 		const wrapped = new NDKMapLayerSetEvent(event.ndk, event)

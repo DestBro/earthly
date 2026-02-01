@@ -2,6 +2,7 @@ import { useNDK, useSubscribe } from '@nostr-dev-kit/react'
 import type { NDKEvent } from '@nostr-dev-kit/react'
 import { useMemo, useState, useCallback } from 'react'
 import { NDKGeoCommentEvent } from '../ndk/NDKGeoCommentEvent'
+import { GEO_COMMENT_KIND } from '../ndk/kinds'
 import type { NDKGeoEvent } from '../ndk/NDKGeoEvent'
 import type { NDKGeoCollectionEvent } from '../ndk/NDKGeoCollectionEvent'
 import type { FeatureCollection } from 'geojson'
@@ -66,7 +67,7 @@ export function useGeoComments({
 
 		return [
 			{
-				kinds: [31992 as number],
+				kinds: [GEO_COMMENT_KIND],
 				'#A': [address],
 			},
 		]
@@ -78,7 +79,7 @@ export function useGeoComments({
 	// Convert events to NDKGeoCommentEvent instances
 	const allComments = useMemo(() => {
 		return events
-			.filter((e: NDKEvent) => e.kind === 31992)
+			.filter((e: NDKEvent) => e.kind === GEO_COMMENT_KIND)
 			.map((e: NDKEvent) => NDKGeoCommentEvent.from(e))
 			.sort(
 				(a: NDKGeoCommentEvent, b: NDKGeoCommentEvent) => (a.created_at ?? 0) - (b.created_at ?? 0),

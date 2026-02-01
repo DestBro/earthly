@@ -78,9 +78,9 @@ Frontend (React/Bun) ←→ Nostr Relay (Go/Khatru) ←→ Other Nostr Clients
      ↓                        ↓
 MapLibre GL Editor      Blossom Blob Storage
      ↓
-GeoJSON Events (kind 31991)
-Collections (kind 30406)
-Comments (kind 1111)
+GeoJSON Events (kind 37515)
+Collections (kind 37516)
+Comments (kind 37517)
 ```
 
 ### Core Components
@@ -104,9 +104,9 @@ Comments (kind 1111)
 - Uses extracted hooks: useDatasetManagement, usePublishing, useMapLayers, useViewMode, useRouting
 
 **4. Nostr Event Classes (`src/lib/ndk/`)**
-- `NDKGeoEvent` (kind 31991) - GeoJSON datasets (~370 lines)
-- `NDKGeoCollectionEvent` (kind 30406) - Dataset collections (~150 lines)
-- `NDKGeoCommentEvent` (kind 1111) - Comments on datasets (~390 lines)
+- `NDKGeoEvent` (kind 37515) - GeoJSON datasets (~370 lines)
+- `NDKGeoCollectionEvent` (kind 37516) - Dataset collections (~150 lines)
+- `NDKGeoCommentEvent` (kind 37517) - Comments on datasets (~390 lines)
 - `NDKMapLayerSetEvent` - Map layer configuration (~70 lines)
 
 **5. Social Features**
@@ -160,7 +160,7 @@ Comments (kind 1111)
 
 ### Nostr Event Specification
 
-**Kind 31991 - GeoJSON Data Event**
+**Kind 37515 - GeoJSON Data Event**
 - `content`: RFC 7946 FeatureCollection (JSON string)
 - Mandatory tags: `d` (UUID), `bbox` (west,south,east,north)
 - Recommended tags: `g` (geohash), `checksum`, `v` (version), `t` (hashtags)
@@ -168,11 +168,11 @@ Comments (kind 1111)
   - Scope: `collection` or `feature:<id>`
   - Used for large datasets exceeding relay limits
 
-**Kind 30406 - Collection Event**
+**Kind 37516 - Collection Event**
 - `content`: JSON metadata (name, description, picture, license)
-- Tags: `d` (collection ID), `a` (references to 31991 events), `bbox`, `g`
+- Tags: `d` (collection ID), `a` (references to 37515 events), `bbox`, `g`
 
-**Kind 1111 - Geo Comment Event**
+**Kind 37517 - Geo Comment Event**
 - `content`: Comment text (supports rich text, mentions)
 - Tags: `a` (reference to dataset), `e` (parent comment for threading)
 

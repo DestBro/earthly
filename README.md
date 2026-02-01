@@ -4,7 +4,7 @@ Earthly is a Nostr-native collaborative mapping application for creating, publis
 
 ## ✨ Features
 
-- 🧵 Nostr-based GeoJSON datasets and collections (kinds 31991, 30406, 31992; see SPEC.md)
+- 🧵 Nostr-based GeoJSON datasets and collections (kinds 37515, 37516, 37517; see SPEC.md)
 - 🌸 Blossom-hosted PMTiles basemaps and overlay layers, announced via Nostr
 - 🧩 Chunked Protomaps basemap: 120GB+ global tiles split into geohash-based PMTiles chunks
 - 🗺️ MapLibre GL editor with touch-first drawing tools (points, lines, polygons, multi-geometries)
@@ -116,9 +116,9 @@ Editor orchestration lives in `src/features/geo-editor/GeoEditorView.tsx`, with 
 
 Earthly treats maps as social, shareable objects on Nostr:
 
-- 🗂️ GeoJSON datasets (kind 31991) store FeatureCollections plus spatial metadata, checksums, and optional external blob references.
-- 📚 Collections (kind 30406) group multiple datasets with human-readable metadata.
-- 💬 Geo comments (kind 31992) carry text and optional GeoJSON annotations, following NIP-22 threading.
+- 🗂️ GeoJSON datasets (kind 37515) store FeatureCollections plus spatial metadata, checksums, and optional external blob references.
+- 📚 Collections (kind 37516) group multiple datasets with human-readable metadata.
+- 💬 Geo comments (kind 37517) carry text and optional GeoJSON annotations, following NIP-22 threading.
 - ⚡ Standard reactions (kind 7) and zaps (kind 9735) can target datasets, collections, and comments.
 
 Typical use cases include:

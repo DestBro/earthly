@@ -1,4 +1,5 @@
 import NDK, { NDKEvent, NDKKind, type NDKSigner, registerEventClass } from '@nostr-dev-kit/react'
+import { GEO_COLLECTION_KIND } from './kinds'
 import type { GeoBoundingBox } from './NDKGeoEvent'
 
 export interface GeoCollectionMetadata {
@@ -20,7 +21,7 @@ const DEFAULT_METADATA: GeoCollectionMetadata = {
 }
 
 export class NDKGeoCollectionEvent extends NDKEvent {
-	static kinds = [30406]
+	static kinds = [GEO_COLLECTION_KIND]
 
 	static from(event: NDKEvent): NDKGeoCollectionEvent {
 		const wrapped = new NDKGeoCollectionEvent(event.ndk, event)
