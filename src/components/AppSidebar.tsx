@@ -115,6 +115,8 @@ interface AppSidebarProps {
 	ndk?: import('@nostr-dev-kit/ndk').default | null
 	/** User pubkey from route (for user profile pages) */
 	userPubkey?: string
+	/** Callback when filtered dataset keys change (for map visibility sync) */
+	onFilteredDatasetKeysChange?: (keys: Set<string>) => void
 }
 
 export function AppSidebar({
@@ -163,6 +165,8 @@ export function AppSidebar({
 	ndk,
 	// User profile props
 	userPubkey,
+	// Filter sync
+	onFilteredDatasetKeysChange,
 }: AppSidebarProps) {
 	const { setOpen } = useSidebar()
 	const viewMode = useEditorStore((state) => state.sidebarViewMode)
@@ -196,6 +200,7 @@ export function AppSidebar({
 		onEditCollection,
 		isFocused,
 		onExitFocus,
+		onFilteredDatasetKeysChange,
 	}
 
 	/** Common props for UserProfilePanel */

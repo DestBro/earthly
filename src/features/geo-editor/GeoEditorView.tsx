@@ -351,8 +351,24 @@ export function GeoEditorView() {
 	const focusedNaddr = useEditorStore((state) => state.focusedNaddr)
 	const focusedType = useEditorStore((state) => state.focusedType)
 
-	// Visible geo events based on visibility toggle and focus mode
+	// Track filtered dataset keys from sidebar filter (for map visibility sync)
+	const [filteredDatasetKeys, setFilteredDatasetKeys] = useState<Set<string> | null>(null)
+	const handleFilteredDatasetKeysChange = useCallback((keys: Set<string>) => {
+		setFilteredDatasetKeys(keys)
+	}, [])
+
+	// Visible geo events based on visibility toggle, focus mode, AND filter state
 	const visibleGeoEvents = useMemo(() => {
+		// Helper: check if event passes visibility + filter criteria
+		const isEventVisible = (event: NDKGeoEvent) => {
+			const key = getDatasetKey(event)
+			// Must be marked visible
+			if (datasetVisibility[key] === false) return false
+			// Must pass filter (if filter is active)
+			if (filteredDatasetKeys !== null && !filteredDatasetKeys.has(key)) return false
+			return true
+		}
+
 		// If in focused mode, filter to show only the focused item(s)
 		if (focusedNaddr && focusedType) {
 			if (focusedType === 'geoevent') {
@@ -382,8 +398,8 @@ export function GeoEditorView() {
 				})
 			}
 		}
-		// Default: filter by visibility toggles
-		return geoEvents.filter((event) => datasetVisibility[getDatasetKey(event)] !== false)
+		// Default: filter by visibility toggles AND sidebar filter
+		return geoEvents.filter(isEventVisible)
 	}, [
 		geoEvents,
 		collectionEvents,
@@ -393,6 +409,7 @@ export function GeoEditorView() {
 		focusedType,
 		encodeGeoEventNaddr,
 		encodeCollectionNaddr,
+		filteredDatasetKeys,
 	])
 
 	// Effective visibility for sidebar - shows actual visibility state including focus mode
@@ -1674,6 +1691,8 @@ export function GeoEditorView() {
 					ndk={ndk}
 					// User profile props
 					userPubkey={userPubkey}
+					// Filter visibility sync
+					onFilteredDatasetKeysChange={handleFilteredDatasetKeysChange}
 				/>
 			)}
 

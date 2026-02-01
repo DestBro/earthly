@@ -1,10 +1,33 @@
 import { useNDK, useProfileValue, useUser } from '@nostr-dev-kit/react'
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { User, BadgeCheck, BadgeX, Globe, Loader2 } from 'lucide-react'
 import { nip19 } from 'nostr-tools'
 import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { cn } from '@/lib/utils'
+
+type ProfileData = {
+	name?: string
+	displayName?: string
+	image?: string
+	picture?: string
+	about?: string
+	nip05?: string
+	website?: string
+}
+
+// Calculate how "complete" a profile is (used to prevent flickering)
+function getProfileScore(p: ProfileData | null | undefined): number {
+	if (!p) return 0
+	let score = 0
+	if (p.name) score += 2
+	if (p.displayName) score += 1
+	if (p.image || p.picture) score += 2
+	if (p.about) score += 1
+	if (p.nip05) score += 1
+	if (p.website) score += 1
+	return score
+}
 
 /**
  * Display modes for UserProfile:
@@ -70,9 +93,26 @@ export function UserProfile({
 	const ndk = useNDK()
 	// useUser handles npub, nprofile, nip05, and hex pubkey resolution
 	const user = useUser(pubkey)
-	const profile = useProfileValue(user)
+	const rawProfile = useProfileValue(user)
 	const [nip05Valid, setNip05Valid] = useState<boolean | null>(null)
 	const [isValidating, setIsValidating] = useState(false)
+
+	// Track the best profile data we've received to prevent flickering
+	// Only update when we get "better" data (more fields filled)
+	const committedProfileRef = useRef<ProfileData | null>(null)
+
+	// Commit new profile data only if it's better than what we have
+	const profile = useMemo(() => {
+		const newScore = getProfileScore(rawProfile)
+		const oldScore = getProfileScore(committedProfileRef.current)
+
+		// Always accept new data if it's at least as good
+		if (rawProfile && newScore >= oldScore) {
+			committedProfileRef.current = rawProfile
+		}
+
+		return committedProfileRef.current ?? rawProfile
+	}, [rawProfile])
 
 	// Validate NIP-05 if present
 	useEffect(() => {

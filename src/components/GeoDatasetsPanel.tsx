@@ -1,5 +1,5 @@
 import { Plus, Eye } from 'lucide-react'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
 import { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
@@ -55,6 +55,8 @@ export interface GeoDatasetsPanelProps {
 	isFocused?: boolean
 	/** Callback to exit focus mode */
 	onExitFocus?: () => void
+	/** Callback when filtered dataset keys change (for map visibility sync) */
+	onFilteredDatasetKeysChange?: (keys: Set<string>) => void
 }
 
 const getDatasetDescriptionText = (event: NDKGeoEvent): string | undefined => {
@@ -124,6 +126,7 @@ export function GeoDatasetsPanelContent({
 	availableFeatures = [],
 	isFocused = false,
 	onExitFocus,
+	onFilteredDatasetKeysChange,
 }: GeoDatasetsPanelProps) {
 	// Filter state and hooks
 	const filterState = useFilterState()
@@ -143,6 +146,31 @@ export function GeoDatasetsPanelContent({
 
 	const filteredGeoEvents = datasetResult.items
 	const filteredCollections = collectionResult.items
+
+	// Track previous keys to avoid infinite update loops
+	const prevFilteredKeysRef = useRef<Set<string> | null>(null)
+
+	// Report filtered dataset keys to parent for map visibility sync
+	useEffect(() => {
+		if (!onFilteredDatasetKeysChange) return
+		const keys = new Set(filteredGeoEvents.map((event) => getDatasetKey(event)))
+
+		// Only update if keys actually changed
+		const prevKeys = prevFilteredKeysRef.current
+		if (prevKeys && keys.size === prevKeys.size) {
+			let same = true
+			for (const k of keys) {
+				if (!prevKeys.has(k)) {
+					same = false
+					break
+				}
+			}
+			if (same) return
+		}
+
+		prevFilteredKeysRef.current = keys
+		onFilteredDatasetKeysChange(keys)
+	}, [filteredGeoEvents, getDatasetKey, onFilteredDatasetKeysChange])
 
 	const datasetReferenceMap = useMemo(() => {
 		const map = new Map<string, NDKGeoEvent>()
