@@ -5,6 +5,7 @@ import { PMTiles, Protocol, TileType } from 'pmtiles'
 import type React from 'react'
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useSubscribe } from '@nostr-dev-kit/react'
+import { config } from '@/config/env.client'
 import { type BBox, lonLatToWorldGeohash, tileCenterLonLat } from '@/lib/worldGeohash'
 import {
 	NDKMapLayerSetEvent,
@@ -129,7 +130,31 @@ const pmworldState = {
 	announcement: null as AnnouncementRecord | null,
 	precision: 1,
 	maxZoom: 8,
-	blossomServer: 'https://blossom.earthly.city',
+	blossomServer: config.blossomServer,
+}
+
+/**
+ * Find the announcement record for a geohash using longest-prefix matching.
+ * Tries progressively shorter prefixes until a match is found.
+ *
+ * This allows mixed-precision announcements where some geohashes are subdivided
+ * (e.g., "u0", "u1", ..., "uz") and others are not (e.g., "v", "w").
+ */
+function findLongestPrefixMatch(
+	announcement: AnnouncementRecord | null,
+	geohash: string,
+): AnnouncementRecord[string] | undefined {
+	if (!announcement) return undefined
+
+	// Try from longest (full geohash) to shortest (single char)
+	for (let len = geohash.length; len >= 1; len--) {
+		const prefix = geohash.slice(0, len)
+		if (announcement[prefix]) {
+			return announcement[prefix]
+		}
+	}
+
+	return undefined
 }
 
 export const GeoEditorMap: React.FC<MapProps> = ({
@@ -229,7 +254,8 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 
 				const center = tileCenterLonLat(z, x, y)
 				const gh = lonLatToWorldGeohash(pmworldState.precision, center.lon, center.lat)
-				const record = pmworldState.announcement?.[gh]
+				// Use longest-prefix matching to support mixed-precision announcements
+				const record = findLongestPrefixMatch(pmworldState.announcement, gh)
 				if (!record) return { data: new Uint8Array() }
 
 				const pmtilesUrl = `${pmworldState.blossomServer}/${record.file}`
@@ -325,9 +351,12 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 				? chunkedVectorLayer.blossomServer.trim()
 				: undefined
 
-		const blossomServer =
-			(mapSourceServer && mapSourceServer.length > 0 ? mapSourceServer : announcedServer) ||
-			'https://blossom.earthly.city'
+		// In development, always use the local blossom server (config handles this).
+		// In production, prefer: mapSource override > announced server > config default.
+		const blossomServer = config.isDevelopment
+			? config.blossomServer
+			: (mapSourceServer && mapSourceServer.length > 0 ? mapSourceServer : announcedServer) ||
+				config.blossomServer
 
 		pmworldState.blossomServer = blossomServer
 
@@ -362,9 +391,14 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 				}
 				if (cancelled) return
 
-				const firstKey = Object.keys(data)[0]
-				if (firstKey && firstKey.length > 0) {
-					pmworldState.precision = firstKey.length
+				// For mixed-precision announcements, use the maximum precision.
+				// This ensures we generate geohash lookups long enough to match
+				// any entry, relying on longest-prefix matching for coarser entries.
+				const geohashes = Object.keys(data)
+				const firstKey = geohashes[0]
+				if (geohashes.length > 0) {
+					const maxPrecision = Math.max(...geohashes.map((gh) => gh.length))
+					pmworldState.precision = maxPrecision
 				}
 
 				const announcedMaxZoom = Object.values(data).reduce((acc, v) => Math.max(acc, v.maxZoom), 0)

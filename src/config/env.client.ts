@@ -12,9 +12,11 @@ const DEV_DEFAULTS = {
 	RELAY_URL: 'wss://relay.wavefunc.live',
 	SERVER_PUBKEY: 'ceadb7d5b739189fb3ecb7023a0c3f55d8995404d7750f5068865decf8b304cc',
 	CLIENT_KEY: '4e842ce1a820603c44f6ce3c4acd6527fdeb4898a9023d84bed51c1b4417eb5c',
+	BLOSSOM_SERVER: 'https://blossom.earthly.city',
 } as const
 
 const LOCAL_DEV_RELAY_URL = 'ws://localhost:3334'
+const LOCAL_DEV_BLOSSOM_URL = 'http://localhost:3001'
 
 /**
  * Safely access process.env with fallback.
@@ -100,8 +102,19 @@ function buildRelayUrls({
  * IMPORTANT: Each process.env.X must be a static access for bundler replacement to work.
  */
 const relayUrl = safeEnv(() => process.env.RELAY_URL as string, DEV_DEFAULTS.RELAY_URL)
+const blossomServer = safeEnv(() => process.env.BLOSSOM_SERVER as string, DEV_DEFAULTS.BLOSSOM_SERVER)
 const isProduction = safeEnv(() => process.env.NODE_ENV === 'production', false)
 const isDevelopment = safeEnv(() => process.env.NODE_ENV !== 'production', true)
+
+function buildBlossomServer({ blossomServer, isDevelopment }: { blossomServer: string; isDevelopment: boolean }): string {
+	const locationInfo = getBrowserLocation()
+	const isLocalOrigin = locationInfo ? isLoopbackHostname(locationInfo.hostname) : false
+	// Use local blossom in development when running on localhost
+	if (isDevelopment && isLocalOrigin) {
+		return LOCAL_DEV_BLOSSOM_URL
+	}
+	return blossomServer
+}
 
 export const config = {
 	/** Primary relay WebSocket URL */
@@ -115,6 +128,9 @@ export const config = {
 
 	/** Relay URLs to use (sanitized for the current runtime) */
 	relayUrls: buildRelayUrls({ relayUrl, isDevelopment }),
+
+	/** Blossom server URL for fetching PMTiles chunks */
+	blossomServer: buildBlossomServer({ blossomServer, isDevelopment }),
 
 	/** Whether running in production mode */
 	isProduction,

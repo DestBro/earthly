@@ -20,7 +20,13 @@ export const envSchema = z.object({
 	// ─────────────────────────────────────────────────────────────────────────
 
 	/** Primary relay WebSocket URL */
-	RELAY_URL: z.string().default('wss://relay.wavefunc.live'),
+	RELAY_URL: z
+		.string()
+		.default(
+			process.env.NODE_ENV === 'production'
+				? 'wss://relay.wavefunc.live'
+				: 'ws://localhost:3334',
+		),
 
 	// ─────────────────────────────────────────────────────────────────────────
 	// ContextVM / MCP Configuration
@@ -49,7 +55,13 @@ export const envSchema = z.object({
 	APP_PRIVATE_KEY: z.string().length(64).optional(),
 
 	/** Blossom base URL used by the server when publishing map layer set announcements (backend only) */
-	BLOSSOM_SERVER: z.string().default('https://blossom.earthly.city'),
+	BLOSSOM_SERVER: z
+		.string()
+		.default(
+			process.env.NODE_ENV === 'production'
+				? 'https://blossom.earthly.city'
+				: 'http://localhost:3001',
+		),
 
 	/** Runtime environment */
 	NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

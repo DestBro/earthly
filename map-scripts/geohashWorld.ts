@@ -127,3 +127,43 @@ function encodeGeohashFromIndices(args: {
   return out;
 }
 
+/**
+ * Convert a geohash string back to its bounding box.
+ * Inverse of the geohash encoding: decodes each character's bits
+ * to progressively narrow the lon/lat bounds.
+ */
+export function geohashToBBox(geohash: string): BBox {
+  let minLon = -180;
+  let maxLon = 180;
+  let minLat = -90;
+  let maxLat = 90;
+  let isEven = true;
+
+  for (const char of geohash.toLowerCase()) {
+    const idx = BASE32.indexOf(char);
+    if (idx === -1) continue;
+
+    for (let bit = 4; bit >= 0; bit--) {
+      const bitVal = (idx >> bit) & 1;
+      if (isEven) {
+        const mid = (minLon + maxLon) / 2;
+        if (bitVal === 1) {
+          minLon = mid;
+        } else {
+          maxLon = mid;
+        }
+      } else {
+        const mid = (minLat + maxLat) / 2;
+        if (bitVal === 1) {
+          minLat = mid;
+        } else {
+          maxLat = mid;
+        }
+      }
+      isEven = !isEven;
+    }
+  }
+
+  return [minLon, minLat, maxLon, maxLat];
+}
+

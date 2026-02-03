@@ -1,44 +1,47 @@
-import { NDKEvent, registerEventClass } from '@nostr-dev-kit/react'
+import { NDKEvent, registerEventClass } from "@nostr-dev-kit/react";
 
-import type { BBox } from '@/lib/worldGeohash'
-import { MAP_LAYER_SET_KIND } from './kinds'
+import type { BBox } from "@/lib/worldGeohash";
+import { MAP_LAYER_SET_KIND } from "./kinds";
 
 export type MapChunkAnnouncementRecord = Record<
-	string,
-	{ bbox: BBox; file: string; maxZoom: number }
->
+  string,
+  { bbox: BBox; file: string; maxZoom: number }
+>;
 
 export type MapLayerDescriptor =
-	| {
-			id: string
-			title: string
-			kind: 'chunked-vector'
-			/** Base URL for fetching chunk files (e.g. Blossom server). */
-			blossomServer: string
-			/** Geohash -> chunk file mapping. */
-			announcement: MapChunkAnnouncementRecord
-			defaultEnabled?: boolean
-			defaultOpacity?: number
-	  }
-	| {
-			id: string
-			title: string
-			kind: 'pmtiles'
-			/** Base URL for fetching PMTiles (e.g. Blossom server). */
-			blossomServer: string
-			/** File name or sha-based blob path on the blossom server. */
-			file: string
-			pmtilesType?: 'raster' | 'vector'
-			defaultEnabled?: boolean
-			defaultOpacity?: number
-	  }
+  | {
+      id: string;
+      title: string;
+      kind: "chunked-vector";
+      /** Base URL for fetching chunk files (e.g. Blossom server). */
+      blossomServer: string;
+      /** Geohash -> chunk file mapping. */
+      announcement: MapChunkAnnouncementRecord;
+      defaultEnabled?: boolean;
+      defaultOpacity?: number;
+    }
+  | {
+      id: string;
+      title: string;
+      kind: "pmtiles";
+      /** Base URL for fetching PMTiles (e.g. Blossom server). */
+      blossomServer: string;
+      /** File name or sha-based blob path on the blossom server. */
+      file: string;
+      pmtilesType?: "raster" | "vector";
+      defaultEnabled?: boolean;
+      defaultOpacity?: number;
+    };
 
 export interface MapLayerSetAnnouncementPayload {
-	version: 1
-	layers: MapLayerDescriptor[]
+  version: 1;
+  layers: MapLayerDescriptor[];
 }
 
-const DEFAULT_PAYLOAD: MapLayerSetAnnouncementPayload = { version: 1, layers: [] }
+const DEFAULT_PAYLOAD: MapLayerSetAnnouncementPayload = {
+  version: 1,
+  layers: [],
+};
 
 /**
  * Earthly Map Layer Set Announcement
@@ -47,26 +50,28 @@ const DEFAULT_PAYLOAD: MapLayerSetAnnouncementPayload = { version: 1, layers: []
  * Signed by the server identity; clients should filter by `authors: [SERVER_PUBKEY]`.
  */
 export class NDKMapLayerSetEvent extends NDKEvent {
-	static kinds = [MAP_LAYER_SET_KIND]
+  static kinds = [MAP_LAYER_SET_KIND];
 
-	static from(event: NDKEvent): NDKMapLayerSetEvent {
-		const wrapped = new NDKMapLayerSetEvent(event.ndk, event)
-		wrapped.kind = event.kind ?? NDKMapLayerSetEvent.kinds[0]
-		return wrapped
-	}
+  static from(event: NDKEvent): NDKMapLayerSetEvent {
+    const wrapped = new NDKMapLayerSetEvent(event.ndk, event);
+    wrapped.kind = event.kind ?? NDKMapLayerSetEvent.kinds[0];
+    return wrapped;
+  }
 
-	get payload(): MapLayerSetAnnouncementPayload {
-		if (!this.content) return DEFAULT_PAYLOAD
-		try {
-			const parsed = JSON.parse(this.content) as Partial<MapLayerSetAnnouncementPayload>
-			if (parsed && parsed.version === 1 && Array.isArray(parsed.layers)) {
-				return parsed as MapLayerSetAnnouncementPayload
-			}
-			return DEFAULT_PAYLOAD
-		} catch {
-			return DEFAULT_PAYLOAD
-		}
-	}
+  get payload(): MapLayerSetAnnouncementPayload {
+    if (!this.content) return DEFAULT_PAYLOAD;
+    try {
+      const parsed = JSON.parse(
+        this.content,
+      ) as Partial<MapLayerSetAnnouncementPayload>;
+      if (parsed && parsed.version === 1 && Array.isArray(parsed.layers)) {
+        return parsed as MapLayerSetAnnouncementPayload;
+      }
+      return DEFAULT_PAYLOAD;
+    } catch {
+      return DEFAULT_PAYLOAD;
+    }
+  }
 }
 
-registerEventClass(NDKMapLayerSetEvent)
+registerEventClass(NDKMapLayerSetEvent);
