@@ -21,6 +21,7 @@ import {
 } from '../../lib/blossom/blossomUpload'
 import type { FeatureCollection } from 'geojson'
 import { cn } from '@/lib/utils'
+import type NDK from '@nostr-dev-kit/react'
 
 interface DatasetSizeIndicatorProps {
 	/** The current feature collection to measure */
@@ -33,7 +34,7 @@ interface DatasetSizeIndicatorProps {
 	compact?: boolean
 	className?: string
 	/** NDK instance for authenticated uploads */
-	ndk?: import('@nostr-dev-kit/ndk').default | null
+	ndk?: NDK
 }
 
 export function DatasetSizeIndicator({
@@ -240,7 +241,7 @@ export function DatasetSizeIndicator({
 									: 'External blob reference detected.'}
 							</div>
 							<div className="flex items-center gap-1 bg-white rounded border border-green-200 p-1.5">
-								<code className="text-[9px] text-green-700 break-all flex-1 select-all truncate">
+								<code className="text-[9px] text-green-700 break-all flex-1 select-all">
 									{(uploadState === 'success' ? uploadResult?.url : effectiveExistingBlob?.url) ??
 										''}
 								</code>
