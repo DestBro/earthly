@@ -50,6 +50,8 @@ export interface UserProfilePanelProps {
 	onInspectCollection?: (collection: NDKGeoCollectionEvent, events: NDKGeoEvent[]) => void
 	onEditCollection?: (collection: NDKGeoCollectionEvent) => void
 	onOpenDebug?: (event: NDKGeoEvent | NDKGeoCollectionEvent) => void
+	/** Set of dataset keys currently resolving blob references */
+	resolvingDatasets?: Set<string>
 }
 
 type TabMode = 'datasets' | 'collections'
@@ -114,6 +116,7 @@ export function UserProfilePanel({
 	onInspectCollection,
 	onEditCollection,
 	onOpenDebug,
+	resolvingDatasets = new Set<string>(),
 }: UserProfilePanelProps) {
 	const [activeTab, setActiveTab] = useState<TabMode>('datasets')
 	const filterState = useFilterState()
@@ -239,6 +242,7 @@ export function UserProfilePanel({
 			isPublishing,
 			deletingKey,
 			allVisibleState,
+			resolvingDatasets,
 		}),
 		[
 			onLoadDataset,
@@ -251,6 +255,7 @@ export function UserProfilePanel({
 			isPublishing,
 			deletingKey,
 			allVisibleState,
+			resolvingDatasets,
 		],
 	)
 

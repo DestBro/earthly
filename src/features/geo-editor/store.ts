@@ -49,6 +49,7 @@ interface EditorState {
 	collectionMeta: CollectionMeta
 	activeDataset: NDKGeoEvent | null
 	datasetVisibility: Record<string, boolean>
+	resolvingDatasets: Set<string>
 
 	// Publishing State
 	isPublishing: boolean
@@ -147,6 +148,7 @@ interface EditorState {
 			| Record<string, boolean>
 			| ((prev: Record<string, boolean>) => Record<string, boolean>),
 	) => void
+	setDatasetResolving: (datasetKey: string, resolving: boolean) => void
 
 	setIsPublishing: (isPublishing: boolean) => void
 	setPublishMessage: (message: string | null) => void
@@ -276,6 +278,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	},
 	activeDataset: null,
 	datasetVisibility: {},
+	resolvingDatasets: new Set<string>(),
 
 	isPublishing: false,
 	publishMessage: null,
@@ -383,6 +386,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 		set((state) => ({
 			datasetVisibility: typeof update === 'function' ? update(state.datasetVisibility) : update,
 		})),
+	setDatasetResolving: (datasetKey, resolving) =>
+		set((state) => {
+			const next = new Set(state.resolvingDatasets)
+			if (resolving) {
+				next.add(datasetKey)
+			} else {
+				next.delete(datasetKey)
+			}
+			return { resolvingDatasets: next }
+		}),
 
 	setIsPublishing: (isPublishing) => set({ isPublishing }),
 	setPublishMessage: (publishMessage) => set({ publishMessage }),

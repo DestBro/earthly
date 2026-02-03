@@ -51,6 +51,7 @@ export function useDatasetManagement(
 	const setViewMode = useEditorStore((state) => state.setViewMode)
 	const setViewDataset = useEditorStore((state) => state.setViewDataset)
 	const setViewCollection = useEditorStore((state) => state.setViewCollection)
+	const setDatasetResolving = useEditorStore((state) => state.setDatasetResolving)
 
 	const getDatasetKey = useCallback(
 		(event: NDKGeoEvent) => `${event.pubkey}:${event.datasetId ?? event.id}`,
@@ -81,14 +82,20 @@ export function useDatasetManagement(
 			if (cached && cached.eventId === event.id) {
 				return cached.featureCollection
 			}
-			const resolved = await resolveGeoEventFeatureCollection(event)
-			resolvedCollectionsRef.current.set(datasetKey, {
-				eventId: event.id,
-				featureCollection: resolved,
-			})
-			return resolved
+			// Track resolving state for UI feedback
+			setDatasetResolving(datasetKey, true)
+			try {
+				const resolved = await resolveGeoEventFeatureCollection(event)
+				resolvedCollectionsRef.current.set(datasetKey, {
+					eventId: event.id,
+					featureCollection: resolved,
+				})
+				return resolved
+			} finally {
+				setDatasetResolving(datasetKey, false)
+			}
 		},
-		[getDatasetKey],
+		[getDatasetKey, setDatasetResolving],
 	)
 
 	const convertGeoBlobReferencesToEditor = useCallback(

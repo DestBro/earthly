@@ -1,5 +1,5 @@
 import type { ColumnDef } from '@tanstack/react-table'
-import { Bug, Download, Maximize2, Pencil, Search, Trash2 } from 'lucide-react'
+import { Bug, Download, Loader2, Maximize2, Pencil, Search, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
 import { Button } from './ui/button'
@@ -28,6 +28,7 @@ export interface DatasetColumnsContext {
 	isPublishing: boolean
 	deletingKey: string | null
 	allVisibleState: 'all' | 'none' | 'some'
+	resolvingDatasets: Set<string>
 }
 
 export const createDatasetColumns = (
@@ -131,6 +132,7 @@ export const createDatasetColumns = (
 		header: '',
 		cell: ({ row }) => {
 			const { event, isActive, isOwned, datasetKey } = row.original
+			const isResolving = context.resolvingDatasets.has(datasetKey)
 			return (
 				<div className="flex items-center gap-0.5">
 					<Button
@@ -141,11 +143,17 @@ export const createDatasetColumns = (
 								: 'bg-blue-600 text-white hover:bg-blue-700',
 						)}
 						onClick={() => context.onLoadDataset(event)}
-						disabled={context.isPublishing}
-						aria-label={isActive ? 'Loaded in editor' : isOwned ? 'Edit dataset' : 'Load copy'}
-						title={isActive ? 'Loaded in editor' : isOwned ? 'Edit dataset' : 'Load copy'}
+						disabled={context.isPublishing || isResolving}
+						aria-label={isResolving ? 'Loading blob data...' : isActive ? 'Loaded in editor' : isOwned ? 'Edit dataset' : 'Load copy'}
+						title={isResolving ? 'Loading blob data...' : isActive ? 'Loaded in editor' : isOwned ? 'Edit dataset' : 'Load copy'}
 					>
-						{isOwned ? <Pencil className="h-3 w-3" /> : <Download className="h-3 w-3" />}
+						{isResolving ? (
+							<Loader2 className="h-3 w-3 animate-spin" />
+						) : isOwned ? (
+							<Pencil className="h-3 w-3" />
+						) : (
+							<Download className="h-3 w-3" />
+						)}
 					</Button>
 					{isOwned && (
 						<Button

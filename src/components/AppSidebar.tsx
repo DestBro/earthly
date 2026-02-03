@@ -170,6 +170,7 @@ export function AppSidebar({
 }: AppSidebarProps) {
 	const { setOpen } = useSidebar()
 	const viewMode = useEditorStore((state) => state.sidebarViewMode)
+	const resolvingDatasets = useEditorStore((state) => state.resolvingDatasets)
 	const { navigateToView } = useRouting()
 
 	/** Common props for GeoDatasetsPanelContent */
@@ -201,6 +202,7 @@ export function AppSidebar({
 		isFocused,
 		onExitFocus,
 		onFilteredDatasetKeysChange,
+		resolvingDatasets,
 	}
 
 	/** Common props for UserProfilePanel */
@@ -226,6 +228,7 @@ export function AppSidebar({
 		onInspectCollection,
 		onEditCollection,
 		onOpenDebug,
+		resolvingDatasets,
 	}
 
 	/** Common props for GeoEditorInfoPanelContent */
