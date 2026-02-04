@@ -1,14 +1,14 @@
 export interface OGMeta {
-  title: string
-  description: string
-  image?: string
-  url: string
-  type?: 'website' | 'article'
-  siteName?: string
+  title: string;
+  description: string;
+  image?: string;
+  url: string;
+  type?: "website" | "article";
+  siteName?: string;
 }
 
-const DEFAULT_IMAGE = '/images/og-default.png'
-const SITE_NAME = 'Earthly'
+const DEFAULT_IMAGE = "/static/og-default.png";
+const SITE_NAME = "Earthly";
 
 /**
  * Generate an HTML page with Open Graph meta tags for social media crawlers
@@ -19,16 +19,16 @@ export function generateOGHtml(meta: OGMeta): string {
     description,
     image = DEFAULT_IMAGE,
     url,
-    type = 'website',
+    type = "website",
     siteName = SITE_NAME,
-  } = meta
+  } = meta;
 
-  const safeTitle = escapeHtml(title)
-  const safeDescription = escapeHtml(description)
+  const safeTitle = escapeHtml(title);
+  const safeDescription = escapeHtml(description);
   const truncatedDescription =
     safeDescription.length > 200
       ? `${safeDescription.slice(0, 197)}...`
-      : safeDescription
+      : safeDescription;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -67,7 +67,7 @@ export function generateOGHtml(meta: OGMeta): string {
   </noscript>
   <script>window.location.href = "${url}";</script>
 </body>
-</html>`
+</html>`;
 }
 
 /**
@@ -75,12 +75,12 @@ export function generateOGHtml(meta: OGMeta): string {
  */
 export function generateHomeOGHtml(baseUrl: string): string {
   return generateOGHtml({
-    title: 'Earthly',
+    title: "Earthly",
     description:
-      'Collaborative geographic mapping on Nostr. Create, share, and explore GeoJSON datasets with a decentralized community.',
+      "Collaborative geographic mapping on Nostr. Create, share, and explore GeoJSON datasets with a decentralized community.",
     url: baseUrl,
-    image: `${baseUrl}/images/og-default.png`,
-  })
+    image: `${baseUrl}/static/og-default.png`,
+  });
 }
 
 /**
@@ -94,13 +94,14 @@ export function generateGeoEventOGHtml(
   image?: string,
 ): string {
   return generateOGHtml({
-    title: title || 'Geographic Dataset',
+    title: title || "Geographic Dataset",
     description:
-      description || 'View this geographic dataset on Earthly, a collaborative mapping platform on Nostr.',
+      description ||
+      "View this geographic dataset on Earthly, a collaborative mapping platform on Nostr.",
     url: `${baseUrl}/#/geoevent/${naddr}`,
-    image: image || `${baseUrl}/images/og-default.png`,
-    type: 'article',
-  })
+    image: image || `${baseUrl}/static/og-default.png`,
+    type: "article",
+  });
 }
 
 /**
@@ -114,20 +115,20 @@ export function generateCollectionOGHtml(
   image?: string,
 ): string {
   return generateOGHtml({
-    title: name || 'Map Collection',
+    title: name || "Map Collection",
     description:
-      description || 'View this collection of geographic datasets on Earthly.',
+      description || "View this collection of geographic datasets on Earthly.",
     url: `${baseUrl}/#/collection/${naddr}`,
-    image: image || `${baseUrl}/images/og-default.png`,
-    type: 'article',
-  })
+    image: image || `${baseUrl}/static/og-default.png`,
+    type: "article",
+  });
 }
 
 function escapeHtml(text: string): string {
   return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }

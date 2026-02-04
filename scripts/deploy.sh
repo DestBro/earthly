@@ -40,7 +40,7 @@ tar -czf deploy.tar.gz \
     --exclude='relay/data' \
     --exclude='src-tauri' \
     --exclude='pmtiles-cli' \
-    dist/ src/ relay/ contextvm/ scripts/ map-scripts/ \
+    dist/ src/ public/ relay/ contextvm/ scripts/ map-scripts/ \
     $INCLUDE_LEGACY_DB \
     ecosystem.config.cjs \
     Caddyfile \

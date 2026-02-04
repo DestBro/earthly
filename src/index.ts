@@ -227,18 +227,6 @@ async function handleCollectionRoute(req: BunRouteRequest): Promise<Response> {
   return Response.redirect(`${baseUrl}/#/collection/${naddr}`, 302);
 }
 
-async function handleHomeRoute(req: BunRouteRequest): Promise<Response | null> {
-  if (isCrawler(req)) {
-    const baseUrl = getBaseUrl(req);
-    const html = generateHomeOGHtml(baseUrl);
-    return new Response(html, {
-      headers: { "Content-Type": "text/html; charset=utf-8" },
-    });
-  }
-  // Return null to let the catch-all handler serve the SPA
-  return null;
-}
-
 // Define route handlers that work in both modes
 const apiRoutes: Record<string, BunRoute> = {
   "/api/hello": {
@@ -282,18 +270,30 @@ if (!isProduction) {
   // Publish nostr-based map announcement (best-effort; does not block server startup).
   publishMapLayerSetAnnouncement().catch(() => undefined);
 
-  // OG routes for social media crawlers
-  const ogRoutes: Record<string, BunRoute> = {
-    "/geoevent/:naddr": handleGeoEventRoute,
-    "/collection/:naddr": handleCollectionRoute,
+  // Serve static files from public/static/ (stable URLs, no hashing)
+  const serveStaticFile = async (req: Request): Promise<Response> => {
+    const url = new URL(req.url);
+    const staticFile = file(join(process.cwd(), "public", url.pathname));
+    if (await staticFile.exists()) {
+      return new Response(staticFile);
+    }
+    return new Response("Not found", { status: 404 });
   };
 
   if (isProduction) {
+    // OG routes for social media crawlers (production only)
+    const ogRoutes: Record<string, BunRoute> = {
+      "/geoevent/:naddr": handleGeoEventRoute,
+      "/collection/:naddr": handleCollectionRoute,
+    };
+
     // Production: Serve static files from dist/ and public/
     const server = serve({
       routes: {
         ...apiRoutes,
         ...ogRoutes,
+        // Explicit static file route for stable URLs
+        "/static/*": serveStaticFile,
         "/*": async (req) => {
           const url = new URL(req.url);
 
@@ -333,29 +333,15 @@ if (!isProduction) {
     console.log(`🚀 Server running at ${server.url} (production)`);
   } else {
     // Development: Use Bun's bundler with HMR
+    // Assets in src/assets/ are bundled automatically by Bun
     const index = (await import("./index.html")).default;
-
-    const servePublicFile = async (req: Request) => {
-      const url = new URL(req.url);
-      const filePath = join(process.cwd(), "public", url.pathname);
-      const staticFile = file(filePath);
-
-      if (await staticFile.exists()) {
-        return new Response(staticFile);
-      }
-
-      return new Response("Not found", { status: 404 });
-    };
 
     const server = serve({
       routes: {
         ...apiRoutes,
-        ...ogRoutes,
-        // Serve static files from public/ directory (e.g. /assets/*, /favicon.ico)
-        "/assets/*": servePublicFile,
-        "/images/*": servePublicFile,
-        "/favicon.ico": servePublicFile,
-        // Catch-all for SPA routing
+        // Serve static files from public/static/ (stable URLs for OG images, etc.)
+        "/static/*": serveStaticFile,
+        // Catch-all for SPA routing (Bun handles assets from src/assets/)
         "/*": index,
       },
 
