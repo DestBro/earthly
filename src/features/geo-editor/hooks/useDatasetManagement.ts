@@ -52,6 +52,7 @@ export function useDatasetManagement(
 	const setViewDataset = useEditorStore((state) => state.setViewDataset)
 	const setViewCollection = useEditorStore((state) => state.setViewCollection)
 	const setDatasetResolving = useEditorStore((state) => state.setDatasetResolving)
+	const setDatasetResolvingProgress = useEditorStore((state) => state.setDatasetResolvingProgress)
 
 	const getDatasetKey = useCallback(
 		(event: NDKGeoEvent) => `${event.pubkey}:${event.datasetId ?? event.id}`,
@@ -84,8 +85,23 @@ export function useDatasetManagement(
 			}
 			// Track resolving state for UI feedback
 			setDatasetResolving(datasetKey, true)
+
+			// Throttle progress updates to prevent excessive re-renders
+			let lastProgressUpdate = 0
+			const THROTTLE_MS = 100
+
 			try {
-				const resolved = await resolveGeoEventFeatureCollection(event)
+				const resolved = await resolveGeoEventFeatureCollection(event, {
+					onProgress: (loaded, total) => {
+						const now = Date.now()
+						const isComplete = loaded >= total
+						// Update immediately on first call, completion, or if throttle time has passed
+						if (lastProgressUpdate === 0 || isComplete || now - lastProgressUpdate >= THROTTLE_MS) {
+							lastProgressUpdate = now
+							setDatasetResolvingProgress(datasetKey, loaded, total)
+						}
+					},
+				})
 				resolvedCollectionsRef.current.set(datasetKey, {
 					eventId: event.id,
 					featureCollection: resolved,
@@ -95,7 +111,7 @@ export function useDatasetManagement(
 				setDatasetResolving(datasetKey, false)
 			}
 		},
-		[getDatasetKey, setDatasetResolving],
+		[getDatasetKey, setDatasetResolving, setDatasetResolvingProgress],
 	)
 
 	const convertGeoBlobReferencesToEditor = useCallback(

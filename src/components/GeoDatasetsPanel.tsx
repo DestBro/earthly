@@ -57,8 +57,6 @@ export interface GeoDatasetsPanelProps {
 	onExitFocus?: () => void
 	/** Callback when filtered dataset keys change (for map visibility sync) */
 	onFilteredDatasetKeysChange?: (keys: Set<string>) => void
-	/** Set of dataset keys currently resolving blob references */
-	resolvingDatasets?: Set<string>
 }
 
 const getDatasetDescriptionText = (event: NDKGeoEvent): string | undefined => {
@@ -129,7 +127,6 @@ export function GeoDatasetsPanelContent({
 	isFocused = false,
 	onExitFocus,
 	onFilteredDatasetKeysChange,
-	resolvingDatasets = new Set<string>(),
 }: GeoDatasetsPanelProps) {
 	// Filter state and hooks
 	const filterState = useFilterState()
@@ -266,6 +263,7 @@ export function GeoDatasetsPanelContent({
 	}, [collectionTableData])
 
 	// Dataset columns context
+	// Note: resolvingDatasets/resolvingProgress not included - DatasetLoadButton subscribes directly to store
 	const datasetColumnsContext: DatasetColumnsContext = useMemo(
 		() => ({
 			onLoadDataset,
@@ -278,7 +276,6 @@ export function GeoDatasetsPanelContent({
 			isPublishing,
 			deletingKey,
 			allVisibleState,
-			resolvingDatasets,
 		}),
 		[
 			onLoadDataset,
@@ -288,7 +285,6 @@ export function GeoDatasetsPanelContent({
 			onZoomToDataset,
 			onInspectDataset,
 			onOpenDebug,
-			resolvingDatasets,
 			isPublishing,
 			deletingKey,
 			allVisibleState,

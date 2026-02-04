@@ -6,8 +6,12 @@ import {
   isGeoJsonGeometry,
   normalizeGeoJsonToFeatureCollection,
 } from "./normalizeGeoJSON";
+import { parseJsonInWorker } from "./workerJsonParse";
 
 type BlobPayload = FeatureCollection | Feature | Geometry;
+
+/** Progress callback for tracking blob download */
+export type BlobProgressCallback = (loaded: number, total: number) => void;
 
 const blobCache = new Map<string, BlobPayload>();
 
@@ -25,11 +29,17 @@ function normalizeToFeatureArray(payload: BlobPayload): Feature[] {
 // Track failed URLs to avoid repeated requests
 const failedUrls = new Set<string>();
 
-async function fetchWithRetry(
+/**
+ * Fetch with streaming progress reporting.
+ * Uses ReadableStream to track download progress against known total size.
+ */
+async function fetchWithProgress(
   url: string,
+  knownSize: number | undefined,
+  onProgress?: BlobProgressCallback,
   maxRetries = 3,
-  timeoutMs = 30000,
-): Promise<Response> {
+  timeoutMs = 60000, // Increased for large files
+): Promise<string> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -39,7 +49,47 @@ async function fetchWithRetry(
     try {
       const response = await fetch(url, { signal: controller.signal });
       clearTimeout(timeoutId);
-      return response;
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      // Get total size from Content-Length header or known size from blob reference
+      const contentLength = response.headers.get("Content-Length");
+      const total = knownSize ?? (contentLength ? parseInt(contentLength, 10) : 0);
+
+      // If no body or no progress callback, fall back to simple text()
+      if (!response.body || !onProgress || total === 0) {
+        const text = await response.text();
+        if (onProgress && total > 0) {
+          onProgress(total, total);
+        }
+        return text;
+      }
+
+      // Stream the response with progress tracking
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let loaded = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        chunks.push(value);
+        loaded += value.length;
+        onProgress(loaded, total);
+      }
+
+      // Combine chunks and decode to string
+      const combined = new Uint8Array(loaded);
+      let offset = 0;
+      for (const chunk of chunks) {
+        combined.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      return new TextDecoder().decode(combined);
     } catch (error) {
       clearTimeout(timeoutId);
       lastError = error as Error;
@@ -63,6 +113,7 @@ async function fetchWithRetry(
 
 async function fetchBlobReference(
   reference: GeoBlobReference,
+  onProgress?: BlobProgressCallback,
 ): Promise<BlobPayload | null> {
   const cached = blobCache.get(reference.url);
   if (cached) return cached;
@@ -77,16 +128,14 @@ async function fetchBlobReference(
   }
 
   try {
-    const response = await fetchWithRetry(reference.url);
-    if (!response.ok) {
-      // Mark as failed and log warning (don't throw)
-      failedUrls.add(reference.url);
-      console.warn(
-        `Failed to resolve blob reference ${reference.url}: ${response.status}`,
-      );
-      return null;
-    }
-    const json = await response.json();
+    const text = await fetchWithProgress(
+      reference.url,
+      reference.size,
+      onProgress,
+    );
+
+    const json = await parseJsonInWorker(text);
+
     if (
       !isGeoJsonFeatureCollection(json) &&
       !isGeoJsonFeature(json) &&
@@ -108,8 +157,14 @@ async function fetchBlobReference(
   }
 }
 
+export interface ResolveOptions {
+  /** Called with aggregated progress across all blob references */
+  onProgress?: BlobProgressCallback;
+}
+
 export async function resolveGeoEventFeatureCollection(
   event: NDKGeoEvent,
+  options?: ResolveOptions,
 ): Promise<FeatureCollection> {
   const baseCollection = event.featureCollection;
   if (event.blobReferences.length === 0) {
@@ -120,8 +175,32 @@ export async function resolveGeoEventFeatureCollection(
     .features.filter((feature) => Boolean(feature.geometry))
     .map((feature) => cloneFeature(feature as Feature));
 
+  // Calculate total size across all blob references for aggregate progress
+  const totalSize = event.blobReferences.reduce(
+    (sum, ref) => sum + (ref.size ?? 0),
+    0,
+  );
+  let completedSize = 0;
+  let currentRefProgress = 0;
+
   for (const reference of event.blobReferences) {
-    const payload = await fetchBlobReference(reference);
+    const refSize = reference.size ?? 0;
+
+    // Progress callback for this specific reference
+    const onProgress = options?.onProgress;
+    const refProgress: BlobProgressCallback | undefined = onProgress
+      ? (loaded, total) => {
+          currentRefProgress = loaded;
+          const aggregateLoaded = completedSize + currentRefProgress;
+          onProgress(aggregateLoaded, totalSize || total);
+        }
+      : undefined;
+
+    const payload = await fetchBlobReference(reference, refProgress);
+
+    // Mark this reference as complete
+    completedSize += refSize;
+    currentRefProgress = 0;
 
     // Skip if blob couldn't be resolved (already logged in fetchBlobReference)
     if (!payload) continue;

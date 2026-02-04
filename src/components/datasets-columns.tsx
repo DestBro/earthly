@@ -6,6 +6,8 @@ import { Button } from './ui/button'
 import { UserProfile } from './user-profile'
 import { nip19 } from 'nostr-tools'
 import type { GeoFeatureItem } from './editor/GeoRichTextEditor'
+import { useEditorStore } from '../features/geo-editor/store'
+import { memo } from 'react'
 
 export interface DatasetRowData {
 	event: NDKGeoEvent
@@ -28,8 +30,102 @@ export interface DatasetColumnsContext {
 	isPublishing: boolean
 	deletingKey: string | null
 	allVisibleState: 'all' | 'none' | 'some'
-	resolvingDatasets: Set<string>
+	// Note: resolvingDatasets and resolvingProgress removed - DatasetLoadButton subscribes directly to store
 }
+
+/**
+ * Self-subscribing load button that only re-renders when its own progress changes.
+ * This prevents the entire table from re-rendering on every progress update.
+ */
+const DatasetLoadButton = memo(function DatasetLoadButton({
+	datasetKey,
+	event,
+	isActive,
+	isOwned,
+	isPublishing,
+	onLoadDataset,
+}: {
+	datasetKey: string
+	event: NDKGeoEvent
+	isActive: boolean
+	isOwned: boolean
+	isPublishing: boolean
+	onLoadDataset: (event: NDKGeoEvent) => void
+}) {
+	// Subscribe directly to this dataset's resolving state
+	const isResolving = useEditorStore((state) => state.resolvingDatasets.has(datasetKey))
+	const progress = useEditorStore((state) => state.resolvingProgress.get(datasetKey))
+
+	const progressPercent =
+		progress && progress.total > 0 ? Math.round((progress.loaded / progress.total) * 100) : 0
+
+	const getProgressLabel = () => {
+		if (!isResolving) {
+			return isActive ? 'Loaded in editor' : isOwned ? 'Edit dataset' : 'Load copy'
+		}
+		if (progress && progress.total > 0) {
+			const sizeMB = (progress.total / 1024 / 1024).toFixed(1)
+			return `Loading ${progressPercent}% of ${sizeMB}MB...`
+		}
+		return 'Loading blob data...'
+	}
+
+	if (isResolving && progress && progress.total > 0) {
+		return (
+			<div
+				className="relative h-6 w-6 flex items-center justify-center"
+				title={getProgressLabel()}
+			>
+				{/* Circular progress indicator */}
+				<svg className="h-5 w-5 -rotate-90" viewBox="0 0 20 20" aria-hidden="true">
+					<circle
+						cx="10"
+						cy="10"
+						r="8"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="2"
+						className="text-gray-200"
+					/>
+					<circle
+						cx="10"
+						cy="10"
+						r="8"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="2"
+						strokeDasharray={`${progressPercent * 0.5} 50`}
+						className="text-blue-600 transition-all duration-150"
+					/>
+				</svg>
+				<span className="absolute text-[8px] font-medium text-blue-600">{progressPercent}</span>
+			</div>
+		)
+	}
+
+	return (
+		<Button
+			size="icon-sm"
+			className={cn(
+				isActive
+					? 'bg-green-600 text-white hover:bg-green-700'
+					: 'bg-blue-600 text-white hover:bg-blue-700',
+			)}
+			onClick={() => onLoadDataset(event)}
+			disabled={isPublishing || isResolving}
+			aria-label={getProgressLabel()}
+			title={getProgressLabel()}
+		>
+			{isResolving ? (
+				<Loader2 className="h-3 w-3 animate-spin" />
+			) : isOwned ? (
+				<Pencil className="h-3 w-3" />
+			) : (
+				<Download className="h-3 w-3" />
+			)}
+		</Button>
+	)
+})
 
 export const createDatasetColumns = (
 	context: DatasetColumnsContext,
@@ -132,32 +228,19 @@ export const createDatasetColumns = (
 		header: '',
 		cell: ({ row }) => {
 			const { event, isActive, isOwned, datasetKey } = row.original
-			const isResolving = context.resolvingDatasets.has(datasetKey)
 			return (
 				<div className="flex items-center gap-0.5">
-					<Button
-						size="icon-xs"
-						className={cn(
-							isActive
-								? 'bg-green-600 text-white hover:bg-green-700'
-								: 'bg-blue-600 text-white hover:bg-blue-700',
-						)}
-						onClick={() => context.onLoadDataset(event)}
-						disabled={context.isPublishing || isResolving}
-						aria-label={isResolving ? 'Loading blob data...' : isActive ? 'Loaded in editor' : isOwned ? 'Edit dataset' : 'Load copy'}
-						title={isResolving ? 'Loading blob data...' : isActive ? 'Loaded in editor' : isOwned ? 'Edit dataset' : 'Load copy'}
-					>
-						{isResolving ? (
-							<Loader2 className="h-3 w-3 animate-spin" />
-						) : isOwned ? (
-							<Pencil className="h-3 w-3" />
-						) : (
-							<Download className="h-3 w-3" />
-						)}
-					</Button>
+					<DatasetLoadButton
+						datasetKey={datasetKey}
+						event={event}
+						isActive={isActive}
+						isOwned={isOwned}
+						isPublishing={context.isPublishing}
+						onLoadDataset={context.onLoadDataset}
+					/>
 					{isOwned && (
 						<Button
-							size="icon-xs"
+							size="icon-sm"
 							variant="destructive"
 							onClick={() => context.onDeleteDataset(event)}
 							disabled={context.deletingKey === datasetKey}
@@ -168,7 +251,7 @@ export const createDatasetColumns = (
 						</Button>
 					)}
 					<Button
-						size="icon-xs"
+						size="icon-sm"
 						variant="outline"
 						onClick={() => context.onInspectDataset?.(event)}
 						aria-label="Inspect dataset"
@@ -177,7 +260,7 @@ export const createDatasetColumns = (
 						<Search className="h-3 w-3" />
 					</Button>
 					<Button
-						size="icon-xs"
+						size="icon-sm"
 						variant="outline"
 						onClick={() => context.onZoomToDataset(event)}
 						aria-label="Zoom to dataset"
@@ -187,7 +270,7 @@ export const createDatasetColumns = (
 					</Button>
 					{context.onOpenDebug && (
 						<Button
-							size="icon-xs"
+							size="icon-sm"
 							variant="ghost"
 							aria-label="Open debug"
 							title="Open debug"

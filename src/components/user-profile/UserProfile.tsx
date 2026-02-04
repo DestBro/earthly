@@ -272,7 +272,11 @@ export function UserProfile({
 	const handleDefaultClick = useCallback(() => {
 		const resolvedPubkey = user?.pubkey || pubkey
 		// Only navigate if we have a valid hex pubkey
-		if (resolvedPubkey && !resolvedPubkey.startsWith('npub') && !resolvedPubkey.startsWith('nprofile')) {
+		if (
+			resolvedPubkey &&
+			!resolvedPubkey.startsWith('npub') &&
+			!resolvedPubkey.startsWith('nprofile')
+		) {
 			const npub = nip19.npubEncode(resolvedPubkey)
 			window.location.hash = `/user/${npub}`
 		} else if (resolvedPubkey) {

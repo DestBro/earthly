@@ -50,6 +50,7 @@ interface EditorState {
 	activeDataset: NDKGeoEvent | null
 	datasetVisibility: Record<string, boolean>
 	resolvingDatasets: Set<string>
+	resolvingProgress: Map<string, { loaded: number; total: number }>
 
 	// Publishing State
 	isPublishing: boolean
@@ -149,6 +150,7 @@ interface EditorState {
 			| ((prev: Record<string, boolean>) => Record<string, boolean>),
 	) => void
 	setDatasetResolving: (datasetKey: string, resolving: boolean) => void
+	setDatasetResolvingProgress: (datasetKey: string, loaded: number, total: number) => void
 
 	setIsPublishing: (isPublishing: boolean) => void
 	setPublishMessage: (message: string | null) => void
@@ -279,6 +281,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	activeDataset: null,
 	datasetVisibility: {},
 	resolvingDatasets: new Set<string>(),
+	resolvingProgress: new Map<string, { loaded: number; total: number }>(),
 
 	isPublishing: false,
 	publishMessage: null,
@@ -389,12 +392,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	setDatasetResolving: (datasetKey, resolving) =>
 		set((state) => {
 			const next = new Set(state.resolvingDatasets)
+			const nextProgress = new Map(state.resolvingProgress)
 			if (resolving) {
 				next.add(datasetKey)
 			} else {
 				next.delete(datasetKey)
+				nextProgress.delete(datasetKey)
 			}
-			return { resolvingDatasets: next }
+			return { resolvingDatasets: next, resolvingProgress: nextProgress }
+		}),
+	setDatasetResolvingProgress: (datasetKey, loaded, total) =>
+		set((state) => {
+			const next = new Map(state.resolvingProgress)
+			next.set(datasetKey, { loaded, total })
+			return { resolvingProgress: next }
 		}),
 
 	setIsPublishing: (isPublishing) => set({ isPublishing }),

@@ -138,7 +138,6 @@ export function MobilePanel(props: MobilePanelProps) {
 	const mobilePanelTab = useEditorStore((state) => state.mobilePanelTab)
 	const setMobilePanelOpen = useEditorStore((state) => state.setMobilePanelOpen)
 	const setMobilePanelTab = useEditorStore((state) => state.setMobilePanelTab)
-	const resolvingDatasets = useEditorStore((state) => state.resolvingDatasets)
 
 	const handleClose = () => setMobilePanelOpen(false)
 
@@ -208,8 +207,7 @@ export function MobilePanel(props: MobilePanelProps) {
 							isFocused={isFocused}
 							onExitFocus={onExitFocus}
 							onFilteredDatasetKeysChange={onFilteredDatasetKeysChange}
-							resolvingDatasets={resolvingDatasets}
-						/>
+																				/>
 					)}
 
 					{mobilePanelTab === 'collections' && (
@@ -242,8 +240,7 @@ export function MobilePanel(props: MobilePanelProps) {
 							isFocused={isFocused}
 							onExitFocus={onExitFocus}
 							onFilteredDatasetKeysChange={onFilteredDatasetKeysChange}
-							resolvingDatasets={resolvingDatasets}
-						/>
+																				/>
 					)}
 
 					{mobilePanelTab === 'edit' && (
@@ -300,8 +297,7 @@ export function MobilePanel(props: MobilePanelProps) {
 							onInspectCollection={onInspectCollection}
 							onEditCollection={onEditCollection}
 							onOpenDebug={onOpenDebug}
-							resolvingDatasets={resolvingDatasets}
-						/>
+																				/>
 					)}
 
 					{mobilePanelTab === 'posts' && (
@@ -350,7 +346,6 @@ interface MobileProfileContentProps {
 	onInspectCollection?: (collection: NDKGeoCollectionEvent, events: NDKGeoEvent[]) => void
 	onEditCollection?: (collection: NDKGeoCollectionEvent) => void
 	onOpenDebug?: (event: NDKGeoEvent | NDKGeoCollectionEvent) => void
-	resolvingDatasets?: Set<string>
 }
 
 function MobileProfileContent(props: MobileProfileContentProps) {
