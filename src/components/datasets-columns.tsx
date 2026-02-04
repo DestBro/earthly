@@ -72,10 +72,7 @@ const DatasetLoadButton = memo(function DatasetLoadButton({
 
 	if (isResolving && progress && progress.total > 0) {
 		return (
-			<div
-				className="relative h-6 w-6 flex items-center justify-center"
-				title={getProgressLabel()}
-			>
+			<div className="relative h-6 w-6 flex items-center justify-center" title={getProgressLabel()}>
 				{/* Circular progress indicator */}
 				<svg className="h-5 w-5 -rotate-90" viewBox="0 0 20 20" aria-hidden="true">
 					<circle

@@ -6,10 +6,11 @@
 import type { ParseRequest, ParseResponse } from "./geoJsonParseWorker";
 
 let worker: Worker | null = null;
+let workerBroken = false; // Track if worker failed to load
 let requestId = 0;
 const pendingRequests = new Map<
   string,
-  { resolve: (data: unknown) => void; reject: (error: Error) => void }
+  { resolve: (data: unknown) => void; reject: (error: Error) => void; text: string }
 >();
 
 function getWorker(): Worker | null {
@@ -42,12 +43,18 @@ function getWorker(): Worker | null {
 
     worker.onerror = (error) => {
       console.warn("GeoJSON parse worker error, falling back to sync parse:", error);
-      // Reject all pending requests
+      // Fall back to sync parsing for all pending requests
       for (const [id, pending] of pendingRequests) {
-        pending.reject(new Error("Worker error"));
+        try {
+          const data = JSON.parse(pending.text);
+          pending.resolve(data);
+        } catch (parseError) {
+          pending.reject(parseError as Error);
+        }
         pendingRequests.delete(id);
       }
-      // Terminate broken worker
+      // Mark worker as broken and terminate
+      workerBroken = true;
       worker?.terminate();
       worker = null;
     };
@@ -64,6 +71,11 @@ function getWorker(): Worker | null {
  * This prevents UI freezing for large JSON files (10MB+).
  */
 export async function parseJsonInWorker<T = unknown>(text: string): Promise<T> {
+  // Skip worker entirely if it previously failed to load
+  if (workerBroken) {
+    return JSON.parse(text) as T;
+  }
+
   const w = getWorker();
 
   // Fall back to sync parsing if worker not available
@@ -77,6 +89,7 @@ export async function parseJsonInWorker<T = unknown>(text: string): Promise<T> {
     pendingRequests.set(id, {
       resolve: resolve as (data: unknown) => void,
       reject,
+      text,
     });
 
     const request: ParseRequest = { id, text };
