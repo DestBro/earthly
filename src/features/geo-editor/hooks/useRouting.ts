@@ -12,6 +12,7 @@ export type SidebarViewMode =
 	| 'settings'
 	| 'help'
 	| 'user'
+	| 'wallet'
 
 /** All valid sidebar view mode values */
 const SIDEBAR_VIEW_MODES: SidebarViewMode[] = [
@@ -23,6 +24,7 @@ const SIDEBAR_VIEW_MODES: SidebarViewMode[] = [
 	'settings',
 	'help',
 	'user',
+	'wallet',
 ]
 
 /** Aliases for sidebar views (e.g., shoutbox → posts) */

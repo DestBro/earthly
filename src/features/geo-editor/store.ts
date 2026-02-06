@@ -5,6 +5,7 @@ import type { NDKGeoCollectionEvent } from '../../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
 import type { EditorFeature, EditorMode, GeoEditor } from './core'
 import type { CollectionMeta, EditorBlobReference, GeoSearchResult } from './types'
+import type { SidebarViewMode } from "./hooks/useRouting";
 import {
 	detectBlobScope,
 	ensureFeatureCollection,
@@ -111,7 +112,7 @@ interface EditorState {
 	mobilePanelOpen: boolean
 	mobilePanelTab: 'datasets' | 'collections' | 'edit' | 'profile' | 'posts' | 'settings' | 'help'
 	inspectorActive: boolean
-	sidebarViewMode: 'datasets' | 'collections' | 'combined' | 'edit' | 'posts' | 'settings' | 'help' | 'user'
+    sidebarViewMode: SidebarViewMode;
 
 	// Search State
 	searchQuery: string
@@ -210,9 +211,7 @@ interface EditorState {
 	openMobilePanel: (tab?: 'datasets' | 'collections' | 'edit' | 'profile' | 'posts' | 'settings' | 'help') => void
 	closeMobilePanel: () => void
 	setInspectorActive: (active: boolean) => void
-	setSidebarViewMode: (
-		mode: 'datasets' | 'collections' | 'combined' | 'edit' | 'posts' | 'settings' | 'help',
-	) => void
+    setSidebarViewMode: (mode: SidebarViewMode) => void;
 
 	// Search Actions
 	setSearchQuery: (query: string) => void

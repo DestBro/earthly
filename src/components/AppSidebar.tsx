@@ -8,6 +8,7 @@ import {
 	Pencil,
 	Settings2,
 	User,
+	Wallet,
 } from 'lucide-react'
 import type { FeatureCollection } from 'geojson'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
@@ -32,6 +33,7 @@ import {
 } from './ui/sidebar'
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from './ui/resizable'
 import { MapSettingsPanel } from '../features/geo-editor/components/MapSettingsPanel'
+import { Nip60Wallet } from '../features/wallet/components/Nip60Wallet'
 import { useEditorStore } from '../features/geo-editor/store'
 import { useRouting, type SidebarViewMode } from '../features/geo-editor/hooks/useRouting'
 import type { GeoFeatureItem } from './editor/GeoRichTextEditor'
@@ -57,6 +59,7 @@ const footerNavItems: {
 	icon: typeof Settings2
 }[] = [
 	{ mode: 'posts', title: 'City Posts', icon: Newspaper },
+	{ mode: 'wallet', title: 'Wallet', icon: Wallet },
 	{ mode: 'settings', title: 'Settings', icon: Settings2 },
 	{ mode: 'help', title: 'Help', icon: HelpCircle },
 ]
@@ -293,6 +296,13 @@ export function AppSidebar({
 				return (
 					<div className="p-4">
 						<MapSettingsPanel />
+					</div>
+				)
+
+			case 'wallet':
+				return (
+					<div className="p-4">
+						<Nip60Wallet />
 					</div>
 				)
 
