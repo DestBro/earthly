@@ -3,6 +3,7 @@ import {
 	FolderOpen,
 	Globe,
 	HelpCircle,
+	MessageCircle,
 	Newspaper,
 	PanelTop,
 	Pencil,
@@ -34,6 +35,7 @@ import {
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from './ui/resizable'
 import { MapSettingsPanel } from '../features/geo-editor/components/MapSettingsPanel'
 import { Nip60Wallet } from '../features/wallet/components/Nip60Wallet'
+import { ChatPanel } from '../features/chat'
 import { useEditorStore } from '../features/geo-editor/store'
 import { useRouting, type SidebarViewMode } from '../features/geo-editor/hooks/useRouting'
 import type { GeoFeatureItem } from './editor/GeoRichTextEditor'
@@ -59,6 +61,7 @@ const footerNavItems: {
 	icon: typeof Settings2
 }[] = [
 	{ mode: 'posts', title: 'City Posts', icon: Newspaper },
+	{ mode: 'chat', title: 'AI Chat', icon: MessageCircle },
 	{ mode: 'wallet', title: 'Wallet', icon: Wallet },
 	{ mode: 'settings', title: 'Settings', icon: Settings2 },
 	{ mode: 'help', title: 'Help', icon: HelpCircle },
@@ -305,6 +308,9 @@ export function AppSidebar({
 						<Nip60Wallet />
 					</div>
 				)
+
+			case 'chat':
+				return <ChatPanel />
 
 			case 'help':
 				return <HelpPanel multiSelectModifier={multiSelectModifier} />

@@ -29,6 +29,30 @@ const PENDING_TOKENS_KEY = "nip60_pending_tokens";
 // Re-export for backward compatibility
 export type PendingNip60Token = PendingToken;
 
+// Track recently spent proof secrets to prevent reuse before consolidation completes
+// Key is proof secret, value is timestamp when spent
+const recentlySpentProofs = new Map<string, number>();
+const SPENT_PROOF_TTL = 60_000; // 60 seconds - enough time for consolidation
+
+function markProofsAsSpent(proofs: Proof[]): void {
+  const now = Date.now();
+  for (const proof of proofs) {
+    recentlySpentProofs.set(proof.secret, now);
+  }
+}
+
+function filterOutRecentlySpent(proofs: Proof[]): Proof[] {
+  const now = Date.now();
+  // Clean up old entries
+  for (const [secret, timestamp] of recentlySpentProofs.entries()) {
+    if (now - timestamp > SPENT_PROOF_TTL) {
+      recentlySpentProofs.delete(secret);
+    }
+  }
+  // Filter out recently spent proofs
+  return proofs.filter((p) => !recentlySpentProofs.has(p.secret));
+}
+
 export interface Nip60State {
   ndk: NDK | null;
   wallet: NDKCashuWallet | null;
@@ -649,7 +673,10 @@ export const useNip60Store = create<Nip60State & Nip60Actions>()(
       }
 
       // Get proofs for this mint using shared utility
-      const mintProofs = getProofsForMint(wallet, targetMint);
+      const allMintProofs = getProofsForMint(wallet, targetMint);
+
+      // Filter out proofs we've recently spent (before consolidation confirms them spent)
+      const mintProofs = filterOutRecentlySpent(allMintProofs);
 
       if (mintProofs.length === 0) {
         throw new Error(
@@ -695,6 +722,10 @@ export const useNip60Store = create<Nip60State & Nip60Actions>()(
           mint: targetMint,
           proofs: tokenProofs,
         });
+
+        // Mark ALL proofs we used as spent locally to prevent reuse
+        // This includes both the tokenProofs and any proofs used in the swap
+        markProofsAsSpent(selectedProofs);
 
         // Save to pending tokens IMMEDIATELY before any state updates
         const pendingToken: PendingNip60Token = {
