@@ -17,9 +17,29 @@ export interface RoutstrModel {
 	}
 }
 
+export interface ToolCall {
+	id: string
+	type: 'function'
+	function: {
+		name: string
+		arguments: string
+	}
+}
+
 export interface ChatMessage {
-	role: 'user' | 'assistant' | 'system'
-	content: string
+	role: 'user' | 'assistant' | 'system' | 'tool'
+	content: string | null
+	tool_calls?: ToolCall[]
+	tool_call_id?: string // For tool role messages
+}
+
+export interface Tool {
+	type: 'function'
+	function: {
+		name: string
+		description: string
+		parameters: object
+	}
 }
 
 export interface ChatCompletionRequest {
@@ -28,6 +48,8 @@ export interface ChatCompletionRequest {
 	stream?: boolean
 	max_tokens?: number
 	temperature?: number
+	tools?: Tool[]
+	tool_choice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }
 }
 
 export interface ChatCompletionResponse {
@@ -38,12 +60,22 @@ export interface ChatCompletionResponse {
 	choices: {
 		index: number
 		message: ChatMessage
-		finish_reason: string
+		finish_reason: string // 'stop' | 'tool_calls' | 'length' etc
 	}[]
 	usage: {
 		prompt_tokens: number
 		completion_tokens: number
 		total_tokens: number
+	}
+}
+
+export interface StreamToolCall {
+	index: number
+	id?: string
+	type?: 'function'
+	function?: {
+		name?: string
+		arguments?: string
 	}
 }
 
@@ -56,9 +88,10 @@ export interface StreamChunk {
 		index: number
 		delta: {
 			role?: string
-			content?: string
+			content?: string | null
+			tool_calls?: StreamToolCall[]
 		}
-		finish_reason: string | null
+		finish_reason: string | null // 'stop' | 'tool_calls' | 'length'
 	}[]
 }
 
@@ -111,8 +144,8 @@ export async function fetchModels(config: RoutstrConfig = DEFAULT_CONFIG): Promi
 }
 
 // Minimum prepayment to ensure request goes through
-// Server may require minimum balance beyond just token costs
-const MIN_PREPAYMENT_SATS = 100
+// Routstr refunds unused balance, so slight overpayment is fine
+const MIN_PREPAYMENT_SATS = 10
 
 /**
  * Estimate the maximum cost for a request in sats
@@ -197,13 +230,16 @@ export async function chatCompletion(
 
 export interface StreamCallbacks {
 	onToken: (token: string) => void
-	onComplete: (refundToken: string | null) => void
-	onError: (error: Error) => void
+	onToolCall?: (toolCalls: ToolCall[]) => void
+	onComplete: (refundToken: string | null, finishReason?: string) => void
+	/** Called on error - refundToken may be present in error responses */
+	onError: (error: Error, refundToken?: string | null) => void
 }
 
 /**
  * Stream a chat completion with Cashu payment
  * Calls onToken for each streamed token, onComplete with refund token when done
+ * Supports tool calls via onToolCall callback
  */
 export async function streamChatCompletion(
 	request: ChatCompletionRequest,
@@ -211,21 +247,48 @@ export async function streamChatCompletion(
 	callbacks: StreamCallbacks,
 	config: RoutstrConfig = DEFAULT_CONFIG,
 ): Promise<void> {
+	const requestBody = {
+		...request,
+		stream: true,
+	}
+
+	console.log('[Routstr] Sending request:', {
+		model: request.model,
+		messageCount: request.messages.length,
+		hasTools: !!request.tools,
+		toolCount: request.tools?.length ?? 0,
+		tools: request.tools?.map((t) => t.function.name),
+	})
+
 	const response = await fetch(`${config.baseUrl}/chat/completions`, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
 			'X-Cashu': cashuToken,
 		},
-		body: JSON.stringify({
-			...request,
-			stream: true,
-		}),
+		body: JSON.stringify(requestBody),
 	})
 
 	if (!response.ok) {
-		const error = await response.text()
-		callbacks.onError(new Error(`Stream failed: ${error}`))
+		const errorText = await response.text()
+		let errorMessage = `Stream failed: ${errorText}`
+		let refundToken: string | null = null
+
+		// Try to parse error as JSON to extract refund_token
+		try {
+			const errorJson = JSON.parse(errorText)
+			if (errorJson.error?.refund_token) {
+				refundToken = errorJson.error.refund_token
+				console.log('[Routstr] Got refund token from error response')
+			}
+			if (errorJson.error?.message) {
+				errorMessage = `Stream failed: ${errorJson.error.message}`
+			}
+		} catch {
+			// Not JSON, use raw text
+		}
+
+		callbacks.onError(new Error(errorMessage), refundToken)
 		return
 	}
 
@@ -241,6 +304,10 @@ export async function streamChatCompletion(
 	const decoder = new TextDecoder()
 	let buffer = ''
 
+	// Accumulate tool calls as they stream in
+	const toolCallsMap = new Map<number, { id: string; name: string; arguments: string }>()
+	let finishReason: string | undefined
+
 	try {
 		while (true) {
 			const { done, value } = await reader.read()
@@ -254,21 +321,56 @@ export async function streamChatCompletion(
 				if (line.startsWith('data: ')) {
 					const data = line.slice(6).trim()
 					if (data === '[DONE]') {
-						// Check for refund token in final message or use header
-						callbacks.onComplete(refundToken)
+						// If we accumulated tool calls, emit them
+						if (toolCallsMap.size > 0 && callbacks.onToolCall) {
+							const toolCalls: ToolCall[] = Array.from(toolCallsMap.values()).map((tc) => ({
+								id: tc.id,
+								type: 'function' as const,
+								function: {
+									name: tc.name,
+									arguments: tc.arguments,
+								},
+							}))
+							callbacks.onToolCall(toolCalls)
+						}
+						callbacks.onComplete(refundToken, finishReason)
 						return
 					}
 
 					try {
 						const chunk: StreamChunk = JSON.parse(data)
-						const content = chunk.choices[0]?.delta?.content
+						const choice = chunk.choices[0]
+
+						// Handle regular content
+						const content = choice?.delta?.content
 						if (content) {
 							callbacks.onToken(content)
 						}
 
-						// Some implementations include refund in the final chunk
-						if (chunk.choices[0]?.finish_reason === 'stop') {
-							// Refund will be in header or a subsequent message
+						// Handle tool calls (streamed in parts)
+						const deltaToolCalls = choice?.delta?.tool_calls
+						if (deltaToolCalls) {
+							for (const tc of deltaToolCalls) {
+								const existing = toolCallsMap.get(tc.index)
+								if (existing) {
+									// Append to existing tool call
+									if (tc.function?.arguments) {
+										existing.arguments += tc.function.arguments
+									}
+								} else {
+									// Start new tool call
+									toolCallsMap.set(tc.index, {
+										id: tc.id || `tool_${tc.index}`,
+										name: tc.function?.name || '',
+										arguments: tc.function?.arguments || '',
+									})
+								}
+							}
+						}
+
+						// Track finish reason
+						if (choice?.finish_reason) {
+							finishReason = choice.finish_reason
 						}
 					} catch {
 						// Skip malformed chunks
@@ -277,7 +379,20 @@ export async function streamChatCompletion(
 			}
 		}
 
-		callbacks.onComplete(refundToken)
+		// If we accumulated tool calls, emit them
+		if (toolCallsMap.size > 0 && callbacks.onToolCall) {
+			const toolCalls: ToolCall[] = Array.from(toolCallsMap.values()).map((tc) => ({
+				id: tc.id,
+				type: 'function' as const,
+				function: {
+					name: tc.name,
+					arguments: tc.arguments,
+				},
+			}))
+			callbacks.onToolCall(toolCalls)
+		}
+
+		callbacks.onComplete(refundToken, finishReason)
 	} catch (error) {
 		callbacks.onError(error instanceof Error ? error : new Error(String(error)))
 	}

@@ -1,3 +1,4 @@
 export { ChatPanel } from './ChatPanel'
 export { useChatStore, chatActions } from './store'
-export type { ChatMessage, RoutstrModel } from './routstr'
+export { geoTools, executeToolCall } from './tools'
+export type { ChatMessage, RoutstrModel, ToolCall, Tool } from './routstr'

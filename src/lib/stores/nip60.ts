@@ -32,7 +32,7 @@ export type PendingNip60Token = PendingToken;
 // Track recently spent proof secrets to prevent reuse before consolidation completes
 // Key is proof secret, value is timestamp when spent
 const recentlySpentProofs = new Map<string, number>();
-const SPENT_PROOF_TTL = 60_000; // 60 seconds - enough time for consolidation
+const SPENT_PROOF_TTL = 120_000; // 2 minutes - enough time for consolidation and multiple requests
 
 function markProofsAsSpent(proofs: Proof[]): void {
   const now = Date.now();
@@ -696,6 +696,10 @@ export const useNip60Store = create<Nip60State & Nip60Actions>()(
         );
       }
 
+      // Mark proofs as spent IMMEDIATELY before any mint operations
+      // This prevents reuse even if the operation fails
+      markProofsAsSpent(selectedProofs);
+
       try {
         // Create CashuWallet for mint operations
         const cashuMint = new CashuMint(targetMint);
@@ -722,10 +726,6 @@ export const useNip60Store = create<Nip60State & Nip60Actions>()(
           mint: targetMint,
           proofs: tokenProofs,
         });
-
-        // Mark ALL proofs we used as spent locally to prevent reuse
-        // This includes both the tokenProofs and any proofs used in the swap
-        markProofsAsSpent(selectedProofs);
 
         // Save to pending tokens IMMEDIATELY before any state updates
         const pendingToken: PendingNip60Token = {

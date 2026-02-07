@@ -9,7 +9,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Send, Trash2, Wallet, Bot, User, AlertCircle } from 'lucide-react'
+import { Loader2, Send, Trash2, Wallet, Bot, User, AlertCircle, Wrench, MapPin, ToggleLeft, ToggleRight } from 'lucide-react'
+import type { ChatMessage, ToolCall } from './routstr'
 import { cn } from '@/lib/utils'
 
 export function ChatPanel() {
@@ -21,10 +22,13 @@ export function ChatPanel() {
 		modelsError,
 		isStreaming,
 		streamingContent,
+		executingTools,
+		toolsEnabled,
 		error,
 		totalSpent,
 		loadModels,
 		setSelectedModel,
+		setToolsEnabled,
 		sendMessage,
 		clearMessages,
 		cancelStream,
@@ -112,7 +116,7 @@ export function ChatPanel() {
 					</Button>
 				</div>
 
-				{/* Wallet status */}
+				{/* Wallet status and tools toggle */}
 				<div className="flex items-center justify-between text-sm">
 					<div className="flex items-center gap-1.5 text-muted-foreground">
 						<Wallet className="h-3.5 w-3.5" />
@@ -127,9 +131,30 @@ export function ChatPanel() {
 							<span className="text-destructive">Wallet not connected</span>
 						)}
 					</div>
-					{totalSpent > 0 && (
-						<span className="text-xs text-muted-foreground">Spent: {totalSpent} sats</span>
-					)}
+					<div className="flex items-center gap-2">
+						{totalSpent > 0 && (
+							<span className="text-xs text-muted-foreground">Spent: {totalSpent} sats</span>
+						)}
+						<button
+							type="button"
+							onClick={() => setToolsEnabled(!toolsEnabled)}
+							className={cn(
+								'flex items-center gap-1 text-xs px-2 py-0.5 rounded transition-colors',
+								toolsEnabled
+									? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400'
+									: 'bg-muted text-muted-foreground',
+							)}
+							title={toolsEnabled ? 'Geo tools enabled (GPT/Claude models recommended)' : 'Geo tools disabled - click to enable'}
+						>
+							<MapPin className="h-3 w-3" />
+							<span>Tools</span>
+							{toolsEnabled ? (
+								<ToggleRight className="h-3.5 w-3.5" />
+							) : (
+								<ToggleLeft className="h-3.5 w-3.5" />
+							)}
+						</button>
+					</div>
 				</div>
 
 				{/* Errors */}
@@ -158,6 +183,12 @@ export function ChatPanel() {
 								Using {selectedModelData.name}
 							</p>
 						)}
+						{toolsEnabled && (
+							<p className="text-xs mt-2 text-orange-600 dark:text-orange-400">
+								<MapPin className="inline h-3 w-3 mr-1" />
+								Geo tools enabled (search locations, reverse lookup, nearby POIs)
+							</p>
+						)}
 					</div>
 				) : (
 					<>
@@ -173,13 +204,33 @@ export function ChatPanel() {
 							/>
 						)}
 
-						{/* Streaming indicator */}
+						{/* Streaming/executing indicator */}
 						{isStreaming && !streamingContent && (
-							<div className="flex items-center gap-2 text-muted-foreground">
-								<Bot className="h-4 w-4" />
-								<div className="flex items-center gap-1">
-									<span className="animate-pulse">Thinking</span>
-									<Loader2 className="h-3 w-3 animate-spin" />
+							<div className="flex gap-2">
+								<div
+									className={cn(
+										'flex-shrink-0 h-6 w-6 rounded-full flex items-center justify-center',
+										executingTools ? 'bg-orange-100 dark:bg-orange-900' : 'bg-muted',
+									)}
+								>
+									{executingTools ? (
+										<Wrench className="h-3.5 w-3.5 text-orange-600 dark:text-orange-400" />
+									) : (
+										<Bot className="h-3.5 w-3.5" />
+									)}
+								</div>
+								<div
+									className={cn(
+										'rounded-lg px-3 py-2 text-sm flex items-center gap-2',
+										executingTools
+											? 'bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800'
+											: 'bg-muted',
+									)}
+								>
+									<span className="animate-pulse">
+										{executingTools ? 'Executing geo tools...' : 'Thinking...'}
+									</span>
+									<Loader2 className="h-4 w-4 animate-spin" />
 								</div>
 							</div>
 						)}
@@ -242,13 +293,64 @@ export function ChatPanel() {
 }
 
 interface MessageBubbleProps {
-	message: { role: string; content: string }
+	message: ChatMessage
 	isStreaming?: boolean
 }
 
 function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 	const isUser = message.role === 'user'
+	const isTool = message.role === 'tool'
+	const hasToolCalls = message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0
 
+	// Tool result message
+	if (isTool) {
+		return (
+			<div className="flex gap-2 ml-8">
+				<div className="flex-shrink-0 h-5 w-5 rounded flex items-center justify-center bg-blue-100 dark:bg-blue-900">
+					<MapPin className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+				</div>
+				<div className="rounded-lg px-3 py-2 max-w-[85%] text-xs bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
+					<p className="font-medium text-blue-700 dark:text-blue-300 mb-1">Tool Result</p>
+					<pre className="whitespace-pre-wrap break-words text-muted-foreground overflow-x-auto max-h-32 overflow-y-auto">
+						{truncateToolResult(message.content || '')}
+					</pre>
+				</div>
+			</div>
+		)
+	}
+
+	// Assistant message with tool calls
+	if (hasToolCalls) {
+		return (
+			<div className="space-y-2">
+				{message.content && (
+					<div className="flex gap-2">
+						<div className="flex-shrink-0 h-6 w-6 rounded-full flex items-center justify-center bg-muted">
+							<Bot className="h-3.5 w-3.5" />
+						</div>
+						<div className="rounded-lg px-3 py-2 max-w-[85%] text-sm bg-muted">
+							<p className="whitespace-pre-wrap break-words">{message.content}</p>
+						</div>
+					</div>
+				)}
+				<div className="flex gap-2 ml-8">
+					<div className="flex-shrink-0 h-5 w-5 rounded flex items-center justify-center bg-orange-100 dark:bg-orange-900">
+						<Wrench className="h-3 w-3 text-orange-600 dark:text-orange-400" />
+					</div>
+					<div className="text-xs text-muted-foreground">
+						{message.tool_calls?.map((tc: ToolCall) => (
+							<span key={tc.id} className="inline-flex items-center gap-1 bg-orange-50 dark:bg-orange-950 px-2 py-1 rounded mr-1">
+								<Wrench className="h-3 w-3" />
+								{tc.function.name}
+							</span>
+						))}
+					</div>
+				</div>
+			</div>
+		)
+	}
+
+	// Regular user or assistant message
 	return (
 		<div className={cn('flex gap-2', isUser && 'flex-row-reverse')}>
 			<div
@@ -270,4 +372,9 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 			</div>
 		</div>
 	)
+}
+
+function truncateToolResult(content: string, maxLength = 500): string {
+	if (content.length <= maxLength) return content
+	return `${content.slice(0, maxLength)}\n... (truncated)`
 }
