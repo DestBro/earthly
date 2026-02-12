@@ -19,16 +19,23 @@ interface EditorStats {
 	total: number
 }
 
+export interface AnnouncementSourceMeta {
+	name: string | null
+	about: string | null
+	pubkey: string | null
+	createdAt: number | null
+}
+
 export interface MapLayerState {
 	id: string
 	title: string
-	kind: 'chunked-vector' | 'pmtiles'
+	kind: string
 	enabled: boolean
 	opacity: number
-	// For pmtiles layers
+	// For file/pmtiles layers
 	blossomServer?: string
 	file?: string
-	pmtilesType?: 'raster' | 'vector'
+	pmtilesType?: string
 }
 
 interface EditorState {
@@ -256,6 +263,8 @@ interface EditorState {
 		updates: Partial<Pick<MapLayerState, 'enabled' | 'opacity'>>,
 	) => void
 	reorderMapLayers: (fromIndex: number, toIndex: number) => void
+	announcementSource: AnnouncementSourceMeta | null
+	setAnnouncementSource: (meta: AnnouncementSourceMeta | null) => void
 
 	// Computed/Helpers
 	updateStats: () => void
@@ -687,6 +696,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 			if (removed) layers.splice(toIndex, 0, removed)
 			return { mapLayers: layers }
 		}),
+	announcementSource: null,
+	setAnnouncementSource: (announcementSource) => set({ announcementSource }),
 
 	updateStats: () => {
 		const { features } = get()

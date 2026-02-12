@@ -14,5 +14,5 @@ export const GEO_COLLECTION_KIND = 37516
 /** GeoJSON Comment Event - NIP-22 threaded comments on datasets */
 export const GEO_COMMENT_KIND = 37517
 
-/** Map Layer Set Announcement - server-signed layer configuration */
-export const MAP_LAYER_SET_KIND = 15000
+/** Map Layer Set Announcement - server-signed layer configuration (parameterized replaceable) */
+export const MAP_LAYER_SET_KIND = 34444

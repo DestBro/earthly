@@ -5,7 +5,7 @@ import { MAP_LAYER_SET_KIND } from "./kinds";
 
 export type MapChunkAnnouncementRecord = Record<
   string,
-  { bbox: BBox; file: string; maxZoom: number }
+  { bbox: BBox; file: string; maxZoom: number; size?: number }
 >;
 
 export type MapLayerDescriptor =
@@ -23,18 +23,19 @@ export type MapLayerDescriptor =
   | {
       id: string;
       title: string;
-      kind: "pmtiles";
+      kind: "pmtiles" | "file";
       /** Base URL for fetching PMTiles (e.g. Blossom server). */
       blossomServer: string;
       /** File name or sha-based blob path on the blossom server. */
       file: string;
-      pmtilesType?: "raster" | "vector";
+      /** Tile format: raster, vector, webp, etc. */
+      pmtilesType?: string;
       defaultEnabled?: boolean;
       defaultOpacity?: number;
     };
 
 export interface MapLayerSetAnnouncementPayload {
-  version: 1;
+  version?: 1;
   layers: MapLayerDescriptor[];
 }
 
@@ -64,7 +65,7 @@ export class NDKMapLayerSetEvent extends NDKEvent {
       const parsed = JSON.parse(
         this.content,
       ) as Partial<MapLayerSetAnnouncementPayload>;
-      if (parsed && parsed.version === 1 && Array.isArray(parsed.layers)) {
+      if (parsed && Array.isArray(parsed.layers)) {
         return parsed as MapLayerSetAnnouncementPayload;
       }
       return DEFAULT_PAYLOAD;

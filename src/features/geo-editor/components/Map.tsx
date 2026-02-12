@@ -33,7 +33,7 @@ export const useMap = () => useContext(MapContext)
  * This enables Blossom map discovery to find which PMTiles file
  * contains tiles for a given region.
  */
-export type AnnouncementRecord = Record<string, { bbox: BBox; file: string; maxZoom: number }>
+export type AnnouncementRecord = Record<string, { bbox: BBox; file: string; maxZoom: number; size?: number }>
 
 export interface MapSource {
 	type: 'default' | 'pmtiles' | 'blossom'
@@ -191,17 +191,14 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 			return { signature: '', overlays: [] as OverlayStyleDescriptor[] }
 		}
 
-		const overrideServer = mapSource.blossomServer?.trim()
 		const overlays = mapLayers
-			.filter((layer) => layer.kind === 'pmtiles')
+			.filter((layer) => layer.kind === 'pmtiles' || layer.kind === 'file')
 			.map<OverlayStyleDescriptor | null>((layer) => {
 				if (!layer.file) return null
-				if (layer.pmtilesType && layer.pmtilesType !== 'raster') return null
+				// Skip vector-only layers; allow raster, webp, or unspecified
+				if (layer.pmtilesType === 'vector') return null
 
-				const server =
-					overrideServer && overrideServer.length > 0
-						? overrideServer
-						: layer.blossomServer?.trim() || pmworldState.blossomServer
+				const server = layer.blossomServer?.trim() || pmworldState.blossomServer
 				if (!server) return null
 
 				const fullUrl = `${server.replace(/\/+$/, '')}/${layer.file.replace(/^\/+/, '')}`
@@ -212,7 +209,7 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 		// Signature intentionally excludes enabled/opacity so toggling/slider changes don't force a style reload.
 		const signature = overlays.map((o) => `${o.id}:${o.fullUrl}`).join('|')
 		return { signature, overlays }
-	}, [mapLayers, mapSource.type, mapSource.blossomServer])
+	}, [mapLayers, mapSource.type])
 
 	useEffect(() => {
 		onLoadRef.current = onLoad
@@ -292,8 +289,8 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 		},
 	])
 
-	// Derive a stable "latest content" so our effect doesn't re-trigger on every render.
-	const latestLayerSetContent = useMemo(() => {
+	// Derive a stable "latest event" so our effect doesn't re-trigger on every render.
+	const latestLayerSetEvent = useMemo(() => {
 		let best: (typeof mapLayerSetEvents)[number] | null = null
 		for (const ev of mapLayerSetEvents) {
 			if (!best) {
@@ -311,24 +308,41 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 				if (aid > bid) best = ev
 			}
 		}
-		return best?.content ?? null
+		return best ?? null
 	}, [mapLayerSetEvents])
 
+	const latestLayerSetContent = latestLayerSetEvent?.content ?? null
+
 	useEffect(() => {
-		const setMapLayers = useEditorStore.getState().setMapLayers
+		const { setMapLayers, setAnnouncementSource } = useEditorStore.getState()
 
 		if (mapSource.type !== 'blossom') {
 			pmworldState.announcement = null
 			setTileSourceMaxZoom(null)
 			setMapLayers([])
+			setAnnouncementSource(null)
 			return
+		}
+
+		// Extract source metadata from the event tags
+		if (latestLayerSetEvent) {
+			const getTag = (key: string) =>
+				latestLayerSetEvent.tags?.find((t: string[]) => t[0] === key)?.[1] ?? null
+			setAnnouncementSource({
+				name: getTag('name'),
+				about: getTag('about'),
+				pubkey: latestLayerSetEvent.pubkey ?? null,
+				createdAt: latestLayerSetEvent.created_at ?? null,
+			})
+		} else {
+			setAnnouncementSource(null)
 		}
 
 		let payload: MapLayerSetAnnouncementPayload | null = null
 		if (latestLayerSetContent) {
 			try {
 				const parsed = JSON.parse(latestLayerSetContent) as Partial<MapLayerSetAnnouncementPayload>
-				if (parsed && parsed.version === 1 && Array.isArray(parsed.layers)) {
+				if (parsed && Array.isArray(parsed.layers)) {
 					payload = parsed as MapLayerSetAnnouncementPayload
 				}
 			} catch {
@@ -343,7 +357,6 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 				: null
 		) as AnnouncementRecord | null
 
-		const mapSourceServer = mapSource.blossomServer?.trim()
 		const announcedServer =
 			chunkedVectorLayer &&
 			'blossomServer' in chunkedVectorLayer &&
@@ -351,12 +364,8 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 				? chunkedVectorLayer.blossomServer.trim()
 				: undefined
 
-		// In development, always use the local blossom server (config handles this).
-		// In production, prefer: mapSource override > announced server > config default.
-		const blossomServer = config.isDevelopment
-			? config.blossomServer
-			: (mapSourceServer && mapSourceServer.length > 0 ? mapSourceServer : announcedServer) ||
-				config.blossomServer
+		// Prefer the server announced in the event, fall back to config default.
+		const blossomServer = announcedServer || config.blossomServer
 
 		pmworldState.blossomServer = blossomServer
 
@@ -454,7 +463,7 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 		return () => {
 			cancelled = true
 		}
-	}, [mapSource.type, mapSource.blossomServer, latestLayerSetContent])
+	}, [mapSource.type, latestLayerSetContent, latestLayerSetEvent])
 
 	// Initialize map (create once; style switches handled separately via setStyle).
 	useEffect(() => {
@@ -725,9 +734,9 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 				}
 			}
 
-			// Sync PMTiles overlays (layers already exist in the Blossom style).
+			// Sync PMTiles/file overlays (layers already exist in the Blossom style).
 			for (const layer of allLayers) {
-				if (layer.kind !== 'pmtiles') continue
+				if (layer.kind !== 'pmtiles' && layer.kind !== 'file') continue
 				const mapLayerId = `layer-${layer.id}`
 				try {
 					if (!map.getLayer(mapLayerId)) continue

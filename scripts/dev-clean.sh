@@ -48,9 +48,9 @@ bun run contextvm/server.ts &
 CONTEXTVM_PID=$!
 
 # Start Blossom server in background
-echo "🌸 Starting Blossom server..."
-bun --hot src/blossom.ts &
-BLOSSOM_PID=$!
+# echo "🌸 Starting Blossom server..."
+# bun --hot src/blossom.ts &
+# BLOSSOM_PID=$!
 
 # Start frontend (this will stay in foreground)
 echo "⚛️  Starting frontend..."

@@ -15,8 +15,8 @@ const DEV_DEFAULTS = {
 	BLOSSOM_SERVER: 'https://blossom.earthly.city',
 } as const
 
-const LOCAL_DEV_RELAY_URL = 'ws://localhost:3334'
-const LOCAL_DEV_BLOSSOM_URL = 'http://localhost:3001'
+const LOCAL_DEV_RELAY_URL = 'ws://localhost:10547'
+const LOCAL_DEV_BLOSSOM_URL = 'http://localhost:3544'
 
 /**
  * Safely access process.env with fallback.

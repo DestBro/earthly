@@ -96,7 +96,7 @@ export function CreateMapPopover() {
 	const [open, setOpen] = useState(false)
 	const [sourceType, setSourceType] = useState<SourceType>('viewport')
 	const [blossomUrl, setBlossomUrl] = useState(
-		config.isDevelopment ? 'http://localhost:3001' : 'https://blossom.earthly.city',
+		config.isDevelopment ? 'http://localhost:3544' : 'https://blossom.earthly.city',
 	)
 	const [maxZoom, setMaxZoom] = useState(16)
 	const [flowState, setFlowState] = useState<FlowState>('idle')
