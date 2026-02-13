@@ -25,15 +25,12 @@ bun relay                  # Start Go relay on port 3334
 bun relay:reset            # Reset relay database and restart
 bun relay:kill             # Kill relay process
 bun run seed              # Generate seed data with Faker
-bun run blossom            # Start Blossom blob storage server
 ```
 
-### Map Chunking
-```bash
-bun run chunk              # Chunk PMTiles basemap by geohash (default: precision=1, maxZoom=8)
-bun run chunk 2 10         # Chunk with precision=2, maxZoom=10
-bun run add-layer          # Add custom PMTiles layer to map-chunks/
-```
+### Mapnolia (Map Tile Server)
+Map chunking and blob storage are handled by **mapnolia** (`github.com/zeSchlausKwab/mapnolia`).
+Run the mapnolia binary separately — it serves PMTiles chunks via Blossom and publishes kind 34444 announcements.
+Config: `mapnolia.config.json` (gitignored, contains private key). See `mapnolia.config.example.json` for template.
 
 ### Building & Deployment
 ```bash
@@ -76,9 +73,9 @@ bun test                  # Run tests with Bun's test runner
 ```
 Frontend (React/Bun) ←→ Nostr Relay (Go/Khatru) ←→ Other Nostr Clients
      ↓                        ↓
-MapLibre GL Editor      Blossom Blob Storage
-     ↓
-GeoJSON Events (kind 37515)
+MapLibre GL Editor      Mapnolia (Blossom + Chunking)
+     ↓                        ↓
+GeoJSON Events (kind 37515)  Map Layer Announcements (kind 34444)
 Collections (kind 37516)
 Comments (kind 37517)
 ```
@@ -129,13 +126,12 @@ Comments (kind 37517)
 - Khatru-based Nostr relay
 - SQLite for event storage
 - Bluge for full-text search (NIP-50)
-- Supports Blossom blob storage
 
-**7. Map Chunking System (`map-scripts/index.ts`)**
-- PMTiles chunking by geohash for efficient regional tile serving
-- Generates announcement.json manifest mapping geohash → PMTiles file
-- Content-addressed storage using SHA-256 (deduplicates identical chunks)
-- Custom layer support for adding overlay PMTiles
+**7. Mapnolia (External - `github.com/zeSchlausKwab/mapnolia`)**
+- Single Go binary providing Blossom blob server + PMTiles chunking
+- Publishes kind 34444 map layer announcements to Nostr relays
+- Geohash-based chunking for efficient regional tile serving
+- Config: `mapnolia.config.json` (gitignored secret)
 
 ### Managers (`src/features/geo-editor/core/managers/`)
 
@@ -267,7 +263,7 @@ Large datasets are stored externally via Blossom blob storage:
 - **Mobile-first:** Responsive UI with collapsible panels
 - **Test data:** Use `bun run seed` to generate fake datasets with Faker
 - **Code quality:** Biome is used for linting and formatting (not ESLint/Prettier)
-- **Map chunking:** PMTiles are chunked by geohash and stored in `map-chunks/` with content-addressed filenames
+- **Map tiles:** PMTiles chunking and blob storage handled by mapnolia (external binary)
 - **Social hooks:** `useGeoComments` and `useGeoReactions` in `src/lib/hooks/` for comment subscriptions
 
 ## Directory Structure

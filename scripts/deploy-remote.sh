@@ -28,17 +28,15 @@ if [ ! -d "node_modules" ]; then
     bun install --production
 fi
 
-# Download pmtiles-cli if missing (Linux x86_64 binary)
-if [ ! -f "pmtiles-cli" ]; then
-    echo "📦 Downloading pmtiles-cli..."
-    curl -L https://github.com/protomaps/go-pmtiles/releases/download/v1.29.1/go-pmtiles_1.29.1_Linux_x86_64.tar.gz -o pmtiles.tar.gz
-    tar -xzf pmtiles.tar.gz pmtiles
-    mv pmtiles pmtiles-cli
-    rm pmtiles.tar.gz
-    chmod +x pmtiles-cli
-    echo "✅ pmtiles-cli downloaded"
-fi
+# Stop running processes before updating binaries
+echo "🔄 Stopping services..."
+pm2 delete all 2>/dev/null || true
 
+# Always download the latest mapnolia server binary
+echo "📦 Downloading latest mapnolia server..."
+curl -fSL "https://github.com/zeSchlausKwab/mapnolia/releases/latest/download/mapnolia-server-linux-amd64" -o mapnolia-server
+chmod +x mapnolia-server
+echo "✅ mapnolia-server downloaded"
 
 # Create logs directory
 mkdir -p logs
@@ -51,9 +49,8 @@ else
     echo "⚠️  Caddy reload skipped (run manually if needed)"
 fi
 
-# Restart PM2 processes
-echo "🔄 Restarting services..."
-pm2 delete all 2>/dev/null || true
+# Start PM2 processes
+echo "🚀 Starting services..."
 
 # Start each service with explicit settings
 # Using Bun interpreter for TypeScript files
@@ -77,13 +74,12 @@ NODE_ENV=production pm2 start contextvm/server.ts \
     -o logs/contextvm-out.log \
     --merge-logs
 
-NODE_ENV=production BLOSSOM_PORT=3001 pm2 start src/blossom.ts \
-    --name earthly-blossom \
-    --interpreter "$BUN_PATH" \
-    --max-memory-restart 500M \
+pm2 start ./mapnolia-server \
+    --name earthly-mapnolia \
+    --max-memory-restart 1G \
     --log-date-format 'YYYY-MM-DD HH:mm:ss Z' \
-    -e logs/blossom-error.log \
-    -o logs/blossom-out.log \
+    -e logs/mapnolia-error.log \
+    -o logs/mapnolia-out.log \
     --merge-logs
 
 pm2 save

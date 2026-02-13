@@ -29,6 +29,11 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .env.production
 .env.production.local
 
+# mapnolia (config contains private key, data is blob storage, binary is downloaded)
+mapnolia.config.json
+mapnolia-data
+mapnolia-server
+
 # deployment artifacts
 deploy.tar.gz
 

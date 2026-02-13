@@ -39,8 +39,7 @@ tar -czf deploy.tar.gz \
     --exclude='relay/relay' \
     --exclude='relay/data' \
     --exclude='src-tauri' \
-    --exclude='pmtiles-cli' \
-    dist/ src/ public/ relay/ contextvm/ scripts/ map-scripts/ \
+    dist/ src/ public/ relay/ contextvm/ scripts/ \
     $INCLUDE_LEGACY_DB \
     ecosystem.config.cjs \
     Caddyfile \
@@ -53,6 +52,8 @@ ssh $VPS_USER@$VPS_HOST "mkdir -p $VPS_PATH"
 scp deploy.tar.gz $VPS_USER@$VPS_HOST:$VPS_PATH/
 scp .env.production $VPS_USER@$VPS_HOST:$VPS_PATH/.env 2>/dev/null || \
     echo "⚠️  No .env.production found, using existing VPS .env"
+scp mapnolia.config.json $VPS_USER@$VPS_HOST:$VPS_PATH/ 2>/dev/null || \
+    echo "⚠️  No mapnolia.config.json found, using existing VPS config"
 scp scripts/deploy-remote.sh $VPS_USER@$VPS_HOST:$VPS_PATH/
 
 # Execute remote deployment

@@ -1,0 +1,11 @@
+{
+  "name": "Earthly Map Server",
+  "baseURL": "http://localhost:3544",
+  "host": "0.0.0.0",
+  "port": 3544,
+  "dataDir": "./mapnolia-data",
+  "diskQuotaGB": 50,
+  "privateKey": "",
+  "relays": [],
+  "adminPubkey": ""
+}
