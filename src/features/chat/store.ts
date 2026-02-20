@@ -3,12 +3,13 @@
  */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { ChatMessage, RoutstrModel, ToolCall } from './routstr'
+import type { ChatMessage, RoutstrModel, ToolCall, ProviderType, ProviderConfig } from './routstr'
 import {
 	fetchModels,
 	streamChatCompletion,
 	estimateTokens,
 	estimateMaxCost,
+	BUILTIN_PROVIDERS,
 } from './routstr'
 import { geoTools, executeToolCall } from './tools'
 import { nip60Actions, useNip60Store } from '@/lib/stores/nip60'
@@ -18,7 +19,24 @@ import { toast } from 'sonner'
 // Lower value = lower prepayment (unused balance is refunded)
 const DEFAULT_MAX_TOKENS = 512
 
+function resolveProvider(type: ProviderType, customEndpoint: string, customApiKey: string): ProviderConfig {
+	if (type === 'custom') {
+		return {
+			type: 'custom',
+			baseUrl: customEndpoint,
+			apiKey: customApiKey || undefined,
+			name: 'Custom',
+			requiresPayment: false,
+		}
+	}
+	return BUILTIN_PROVIDERS[type]
+}
+
 interface ChatState {
+	// Provider
+	provider: ProviderType
+	customEndpoint: string
+	customApiKey: string
 	// Messages
 	messages: ChatMessage[]
 	// Models
@@ -41,6 +59,10 @@ interface ChatState {
 }
 
 interface ChatActions {
+	// Provider
+	setProvider: (provider: ProviderType) => void
+	setCustomEndpoint: (url: string) => void
+	setCustomApiKey: (key: string) => void
 	// Model management
 	loadModels: () => Promise<void>
 	setSelectedModel: (modelId: string) => void
@@ -59,6 +81,9 @@ interface ChatActions {
 type ChatStore = ChatState & ChatActions
 
 const initialState: ChatState = {
+	provider: 'routstr',
+	customEndpoint: '',
+	customApiKey: '',
 	messages: [],
 	models: [],
 	selectedModel: null,
@@ -83,15 +108,35 @@ export const useChatStore = create<ChatStore>()(
 		(set, get) => ({
 			...initialState,
 
+			setProvider: (providerType: ProviderType) => {
+				set({ provider: providerType, models: [], selectedModel: null, modelsError: null })
+				get().loadModels()
+			},
+
+			setCustomEndpoint: (url: string) => {
+				set({ customEndpoint: url })
+			},
+
+			setCustomApiKey: (key: string) => {
+				set({ customApiKey: key })
+			},
+
 			loadModels: async () => {
+				const { provider, customEndpoint, customApiKey } = get()
+				const providerConfig = resolveProvider(provider, customEndpoint, customApiKey)
+
+				if (provider === 'custom' && !customEndpoint) {
+					set({ modelsError: 'Enter an endpoint URL first' })
+					return
+				}
+
 				set({ modelsLoading: true, modelsError: null })
 				try {
-					const models = await fetchModels()
+					const models = await fetchModels(providerConfig)
 					const selectedModel = get().selectedModel
 					set({
 						models,
 						modelsLoading: false,
-						// Select first model if none selected
 						selectedModel: selectedModel && models.find((m) => m.id === selectedModel)
 							? selectedModel
 							: models[0]?.id ?? null,
@@ -121,7 +166,8 @@ export const useChatStore = create<ChatStore>()(
 			},
 
 			sendMessage: async (content: string) => {
-				const { selectedModel, models, maxTokens, toolsEnabled } = get()
+				const { selectedModel, models, maxTokens, toolsEnabled, provider, customEndpoint, customApiKey } = get()
+				const providerConfig = resolveProvider(provider, customEndpoint, customApiKey)
 
 				if (!selectedModel) {
 					toast.error('Please select a model first')
@@ -134,11 +180,13 @@ export const useChatStore = create<ChatStore>()(
 					return
 				}
 
-				// Check wallet status
-				const walletState = useNip60Store.getState()
-				if (walletState.status !== 'ready') {
-					toast.error('Wallet not ready. Please initialize your wallet first.')
-					return
+				// Check wallet status (only for paid providers)
+				if (providerConfig.requiresPayment) {
+					const walletState = useNip60Store.getState()
+					if (walletState.status !== 'ready') {
+						toast.error('Wallet not ready. Please initialize your wallet first.')
+						return
+					}
 				}
 
 				// Add user message immediately
@@ -151,7 +199,7 @@ export const useChatStore = create<ChatStore>()(
 					pendingToolCalls: [],
 				}))
 
-				// Helper to process refund
+				// Helper to process refund (no-ops when refundToken is null)
 				const processRefund = async (refundToken: string | null) => {
 					if (refundToken) {
 						console.log('[Chat] Received refund token, redeeming...')
@@ -169,35 +217,39 @@ export const useChatStore = create<ChatStore>()(
 					toolCalls: ToolCall[]
 					finishReason?: string
 				}> => {
-					// Calculate cost
-					const totalText = requestMessages.map((m) => m.content || '').join(' ')
-					const inputTokens = estimateTokens(totalText)
-					const estimatedCost = estimateMaxCost(model, inputTokens, maxTokens)
+					let cashuToken: string | undefined
 
-					console.log('[Chat] Cost estimate:', {
-						inputTokens,
-						maxOutputTokens: maxTokens,
-						estimatedCost,
-						modelPricing: model.pricing,
-					})
+					// Payment flow only for paid providers
+					if (providerConfig.requiresPayment) {
+						const totalText = requestMessages.map((m) => m.content || '').join(' ')
+						const inputTokens = estimateTokens(totalText)
+						const estimatedCost = estimateMaxCost(model, inputTokens, maxTokens)
 
-					const currentWalletState = useNip60Store.getState()
-					if (currentWalletState.balance < estimatedCost) {
-						throw new Error(`Insufficient balance. Need ~${estimatedCost} sats, have ${currentWalletState.balance}`)
+						console.log('[Chat] Cost estimate:', {
+							inputTokens,
+							maxOutputTokens: maxTokens,
+							estimatedCost,
+							modelPricing: model.pricing,
+						})
+
+						const currentWalletState = useNip60Store.getState()
+						if (currentWalletState.balance < estimatedCost) {
+							throw new Error(`Insufficient balance. Need ~${estimatedCost} sats, have ${currentWalletState.balance}`)
+						}
+
+						const mint = currentWalletState.defaultMint || currentWalletState.mints[0]
+						if (!mint) {
+							throw new Error('No mint available for payment')
+						}
+
+						console.log(`[Chat] Generating ${estimatedCost} sat token for inference`)
+						cashuToken = await nip60Actions.sendEcash(estimatedCost, mint)
+						if (!cashuToken) {
+							throw new Error('Failed to generate payment token')
+						}
+
+						set((state) => ({ totalSpent: state.totalSpent + estimatedCost }))
 					}
-
-					const mint = currentWalletState.defaultMint || currentWalletState.mints[0]
-					if (!mint) {
-						throw new Error('No mint available for payment')
-					}
-
-					console.log(`[Chat] Generating ${estimatedCost} sat token for inference`)
-					const cashuToken = await nip60Actions.sendEcash(estimatedCost, mint)
-					if (!cashuToken) {
-						throw new Error('Failed to generate payment token')
-					}
-
-					set((state) => ({ totalSpent: state.totalSpent + estimatedCost }))
 
 					return new Promise((resolve, reject) => {
 						let accumulatedContent = ''
@@ -206,6 +258,7 @@ export const useChatStore = create<ChatStore>()(
 
 						const requestTools = toolsEnabled ? geoTools : undefined
 						console.log('[Chat] Request config:', {
+							provider: providerConfig.type,
 							model: selectedModel,
 							toolsEnabled,
 							toolCount: requestTools?.length ?? 0,
@@ -220,7 +273,6 @@ export const useChatStore = create<ChatStore>()(
 								max_tokens: maxTokens,
 								tools: requestTools,
 							},
-							cashuToken,
 							{
 								onToken: (token: string) => {
 									accumulatedContent += token
@@ -240,7 +292,6 @@ export const useChatStore = create<ChatStore>()(
 									})
 								},
 								onError: async (error: Error, refundToken?: string | null) => {
-									// Process refund even on error
 									if (refundToken) {
 										console.log('[Chat] Processing refund from error response')
 										await processRefund(refundToken)
@@ -248,6 +299,8 @@ export const useChatStore = create<ChatStore>()(
 									reject(error)
 								},
 							},
+							providerConfig,
+							cashuToken,
 						)
 					})
 				}
@@ -345,9 +398,11 @@ export const useChatStore = create<ChatStore>()(
 		{
 			name: 'chat-store',
 			partialize: (state) => ({
-				// Persist model selection and tools setting
 				selectedModel: state.selectedModel,
 				toolsEnabled: state.toolsEnabled,
+				provider: state.provider,
+				customEndpoint: state.customEndpoint,
+				customApiKey: state.customApiKey,
 			}),
 		},
 	),
@@ -355,6 +410,9 @@ export const useChatStore = create<ChatStore>()(
 
 // Action helpers for non-hook usage
 export const chatActions = {
+	setProvider: (provider: ProviderType) => useChatStore.getState().setProvider(provider),
+	setCustomEndpoint: (url: string) => useChatStore.getState().setCustomEndpoint(url),
+	setCustomApiKey: (key: string) => useChatStore.getState().setCustomApiKey(key),
 	loadModels: () => useChatStore.getState().loadModels(),
 	setSelectedModel: (modelId: string) => useChatStore.getState().setSelectedModel(modelId),
 	setToolsEnabled: (enabled: boolean) => useChatStore.getState().setToolsEnabled(enabled),

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useChatStore } from './store'
 import { useNip60Store } from '@/lib/stores/nip60'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
 	Select,
 	SelectContent,
@@ -9,8 +10,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Send, Trash2, Wallet, Bot, User, AlertCircle, Wrench, MapPin, ToggleLeft, ToggleRight } from 'lucide-react'
-import type { ChatMessage, ToolCall } from './routstr'
+import { Loader2, Send, Trash2, Wallet, Bot, User, AlertCircle, Wrench, MapPin, ToggleLeft, ToggleRight, Server } from 'lucide-react'
+import type { ChatMessage, ToolCall, ProviderType } from './routstr'
 import { cn } from '@/lib/utils'
 
 export function ChatPanel() {
@@ -26,6 +27,12 @@ export function ChatPanel() {
 		toolsEnabled,
 		error,
 		totalSpent,
+		provider,
+		customEndpoint,
+		customApiKey,
+		setProvider,
+		setCustomEndpoint,
+		setCustomApiKey,
 		loadModels,
 		setSelectedModel,
 		setToolsEnabled,
@@ -42,10 +49,10 @@ export function ChatPanel() {
 
 	// Load models on mount
 	useEffect(() => {
-		if (models.length === 0 && !modelsLoading) {
+		if (models.length === 0 && !modelsLoading && !modelsError) {
 			loadModels()
 		}
-	}, [models.length, modelsLoading, loadModels])
+	}, [models.length, modelsLoading, modelsError, loadModels])
 
 	// Auto-scroll to bottom when messages change
 	useEffect(() => {
@@ -77,11 +84,71 @@ export function ChatPanel() {
 	}
 
 	const selectedModelData = models.find((m) => m.id === selectedModel)
+	const isWalletRequired = provider === 'routstr'
+	const canSend = !!selectedModel && (!isWalletRequired || walletStatus === 'ready')
 
 	return (
 		<div className="flex flex-col h-full">
-			{/* Header with model picker and wallet info */}
+			{/* Header with provider, model picker and wallet info */}
 			<div className="p-3 border-b space-y-2">
+				{/* Provider selector */}
+				<div className="flex items-center gap-2">
+					<Select
+						value={provider}
+						onValueChange={(v) => setProvider(v as ProviderType)}
+						disabled={isStreaming}
+					>
+						<SelectTrigger className="flex-1">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="routstr">Routstr (paid)</SelectItem>
+							<SelectItem value="lmstudio">LM Studio</SelectItem>
+							<SelectItem value="ollama">Ollama</SelectItem>
+							<SelectItem value="custom">Custom endpoint</SelectItem>
+						</SelectContent>
+					</Select>
+					<Button
+						variant="ghost"
+						size="icon"
+						onClick={clearMessages}
+						disabled={messages.length === 0 || isStreaming}
+						title="Clear chat"
+					>
+						<Trash2 className="h-4 w-4" />
+					</Button>
+				</div>
+
+				{/* Custom endpoint config */}
+				{provider === 'custom' && (
+					<div className="space-y-1.5">
+						<Input
+							placeholder="http://localhost:8080/v1"
+							value={customEndpoint}
+							onChange={(e) => setCustomEndpoint(e.target.value)}
+							disabled={isStreaming}
+							className="text-xs h-7"
+						/>
+						<Input
+							placeholder="API key (optional)"
+							type="password"
+							value={customApiKey}
+							onChange={(e) => setCustomApiKey(e.target.value)}
+							disabled={isStreaming}
+							className="text-xs h-7"
+						/>
+						<Button
+							variant="outline"
+							size="sm"
+							className="h-7 text-xs w-full"
+							onClick={loadModels}
+							disabled={!customEndpoint || isStreaming}
+						>
+							Connect
+						</Button>
+					</div>
+				)}
+
 				{/* Model picker */}
 				<div className="flex items-center gap-2">
 					<Select
@@ -97,40 +164,40 @@ export function ChatPanel() {
 								<SelectItem key={model.id} value={model.id}>
 									<div className="flex flex-col">
 										<span>{model.name}</span>
-										<span className="text-xs text-muted-foreground">
-											{model.pricing.input}/{model.pricing.output} sats/M tokens
-										</span>
+										{isWalletRequired && (model.pricing.input > 0 || model.pricing.output > 0) && (
+											<span className="text-xs text-muted-foreground">
+												{model.pricing.input}/{model.pricing.output} sats/M tokens
+											</span>
+										)}
 									</div>
 								</SelectItem>
 							))}
 						</SelectContent>
 					</Select>
-					<Button
-						variant="ghost"
-						size="icon"
-						onClick={clearMessages}
-						disabled={messages.length === 0 || isStreaming}
-						title="Clear chat"
-					>
-						<Trash2 className="h-4 w-4" />
-					</Button>
 				</div>
 
-				{/* Wallet status and tools toggle */}
+				{/* Wallet status / provider info and tools toggle */}
 				<div className="flex items-center justify-between text-sm">
-					<div className="flex items-center gap-1.5 text-muted-foreground">
-						<Wallet className="h-3.5 w-3.5" />
-						{walletStatus === 'ready' ? (
-							<span>{walletBalance.toLocaleString()} sats</span>
-						) : walletStatus === 'initializing' ? (
-							<span className="flex items-center gap-1">
-								<Loader2 className="h-3 w-3 animate-spin" />
-								Loading...
-							</span>
-						) : (
-							<span className="text-destructive">Wallet not connected</span>
-						)}
-					</div>
+					{isWalletRequired ? (
+						<div className="flex items-center gap-1.5 text-muted-foreground">
+							<Wallet className="h-3.5 w-3.5" />
+							{walletStatus === 'ready' ? (
+								<span>{walletBalance.toLocaleString()} sats</span>
+							) : walletStatus === 'initializing' ? (
+								<span className="flex items-center gap-1">
+									<Loader2 className="h-3 w-3 animate-spin" />
+									Loading...
+								</span>
+							) : (
+								<span className="text-destructive">Wallet not connected</span>
+							)}
+						</div>
+					) : (
+						<div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+							<Server className="h-3.5 w-3.5" />
+							<span>Local - free</span>
+						</div>
+					)}
 					<div className="flex items-center gap-2">
 						{totalSpent > 0 && (
 							<span className="text-xs text-muted-foreground">Spent: {totalSpent} sats</span>
@@ -174,9 +241,11 @@ export function ChatPanel() {
 				{messages.length === 0 && !isStreaming ? (
 					<div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground p-4">
 						<Bot className="h-12 w-12 mb-4 opacity-50" />
-						<p className="text-sm font-medium">AI Chat with Bitcoin</p>
+						<p className="text-sm font-medium">AI Chat</p>
 						<p className="text-xs mt-1">
-							Pay per message with eCash. Unused funds are refunded automatically.
+							{isWalletRequired
+								? 'Pay per message with eCash. Unused funds are refunded automatically.'
+								: 'Running locally \u2014 no payment required.'}
 						</p>
 						{selectedModelData && (
 							<p className="text-xs mt-2">
@@ -256,13 +325,13 @@ export function ChatPanel() {
 						onChange={(e) => setInput(e.target.value)}
 						onKeyDown={handleKeyDown}
 						placeholder={
-							walletStatus !== 'ready'
-								? 'Connect wallet to chat...'
-								: !selectedModel
-									? 'Select a model...'
+							!selectedModel
+								? 'Select a model...'
+								: isWalletRequired && walletStatus !== 'ready'
+									? 'Connect wallet to chat...'
 									: 'Type a message...'
 						}
-						disabled={isStreaming || walletStatus !== 'ready' || !selectedModel}
+						disabled={isStreaming || !canSend}
 						className="flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-h-[38px] max-h-[150px]"
 						rows={1}
 					/>
@@ -280,7 +349,7 @@ export function ChatPanel() {
 						<Button
 							type="submit"
 							size="icon"
-							disabled={!input.trim() || walletStatus !== 'ready' || !selectedModel}
+							disabled={!input.trim() || !canSend}
 							title="Send"
 						>
 							<Send className="h-4 w-4" />
