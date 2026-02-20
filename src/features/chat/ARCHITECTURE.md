@@ -74,25 +74,29 @@ Local providers skip all payment logic.
 
 ## Tool Calling
 
-Four read-only geo tools, executed via `EarthlyGeoServerClient` (MCP over Nostr transport):
+Geo tools are a mix of:
+- Read-only MCP queries (OSM/Nominatim via `EarthlyGeoServerClient`)
+- Local map actions (importing features directly into the editor via `useEditorStore`)
 
 | Tool | Parameters | Returns |
 |------|-----------|---------|
+| `get_editor_state` | none | Editor readiness, mode, feature count, map center, zoom, viewport bbox |
 | `search_location` | `query`, `limit?` | Places with coordinates, bbox, addresses |
 | `reverse_lookup` | `lat`, `lon`, `zoom?` | Address for coordinates |
+| `query_osm_by_id` | `osmType`, `osmId` | One OSM feature by exact id |
 | `query_osm_nearby` | `lat`, `lon`, `radius?`, `filters?`, `limit?` | GeoJSON features near a point |
 | `query_osm_bbox` | `west`, `south`, `east`, `north`, `filters?`, `limit?` | GeoJSON features in bounding box |
+| `import_osm_to_editor` | `name`, optional bbox/point/filters | Imports matching OSM features into editor |
 
 Tools use OpenAI function calling format. Toggled on/off in the UI — when disabled, no `tools` array is sent with the request.
 
-**Example multi-step chain:**
+**Example map-edit chain:**
 ```
-User: "Find cafes near Times Square"
-  → Assistant calls search_location("Times Square")
-  → Tool returns coords (40.758, -73.985)
-  → Assistant calls query_osm_nearby(lat, lon, filters: {amenity: cafe})
-  → Tool returns 12 cafes
-  → Assistant: "I found several cafes near Times Square..."
+User: "Take the river Rhine and bring it into the editor"
+  → Assistant calls get_editor_state()
+  → Assistant calls import_osm_to_editor(name: "Rhine", filters: {waterway: "river"})
+  → Tool queries OSM + imports features directly into map editor
+  → Assistant reports imported feature count
 ```
 
 ### MCP Tool Origin
@@ -104,25 +108,26 @@ graph TB
     subgraph "Chat Feature (Frontend)"
         A["tools.ts<br/>OpenAI function definitions"] --> B["executeToolCall()"]
         B --> C["EarthlyGeoServerClient<br/>src/ctxcn/"]
+        B --> D["useEditorStore<br/>src/features/geo-editor/store.ts"]
     end
 
     subgraph "MCP Transport (@contextvm/sdk)"
-        C --> D["NostrClientTransport<br/>NIP-04 encrypted"]
-        D --> E["Nostr Relay<br/>wss://relay.wavefunc.live"]
-        E --> F["NostrServerTransport"]
+        C --> E["NostrClientTransport<br/>NIP-04 encrypted"]
+        E --> F["Nostr Relay<br/>wss://relay.wavefunc.live"]
+        F --> G["NostrServerTransport"]
     end
 
     subgraph "MCP Server (contextvm/server.ts)"
-        F --> G["McpServer<br/>earthly-geo-server"]
-        G --> H["search_location<br/>reverse_lookup"]
-        G --> I["query_osm_nearby<br/>query_osm_bbox"]
-        G --> J["create_map_extract<br/>create_map_upload"]
+        G --> H["McpServer<br/>earthly-geo-server"]
+        H --> I["search_location<br/>reverse_lookup"]
+        H --> J["query_osm_by_id<br/>query_osm_nearby<br/>query_osm_bbox"]
+        H --> K["create_map_extract<br/>create_map_upload"]
     end
 
     subgraph "Data Sources"
-        H --> K["Nominatim API<br/>nominatim.openstreetmap.org"]
-        I --> L["Overpass API<br/>(3 failover endpoints)"]
-        J --> M["PMTiles + Blossom"]
+        I --> L["Nominatim API<br/>nominatim.openstreetmap.org"]
+        J --> M["Overpass API<br/>(3 failover endpoints)"]
+        K --> N["PMTiles + Blossom"]
     end
 ```
 

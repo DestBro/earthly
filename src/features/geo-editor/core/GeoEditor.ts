@@ -1403,6 +1403,23 @@ export class GeoEditor {
 		return [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()]
 	}
 
+	/**
+	 * Get the current map center as {lat, lon}
+	 */
+	getMapCenter(): { lat: number; lon: number } | null {
+		const center = this.map.getCenter()
+		if (!center) return null
+		return { lat: center.lat, lon: center.lng }
+	}
+
+	/**
+	 * Get the current map zoom level
+	 */
+	getMapZoom(): number | null {
+		const zoom = this.map.getZoom()
+		return Number.isFinite(zoom) ? zoom : null
+	}
+
 	selectFeature(featureId: string, additive: boolean = false): void {
 		const feature = this.features.get(featureId)
 		if (!feature) return
