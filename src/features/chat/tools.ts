@@ -4,1177 +4,1289 @@
  * to OpenAI function calling format.
  */
 
-import { EarthlyGeoServerClient } from '@/ctxcn/EarthlyGeoServerClient'
-import type { EditorFeature } from '@/features/geo-editor/core'
-import { useEditorStore } from '@/features/geo-editor/store'
-import type { ChatMessage } from './routstr'
+import { EarthlyGeoServerClient } from "@/ctxcn/EarthlyGeoServerClient";
+import type { EditorFeature } from "@/features/geo-editor/core";
+import { useEditorStore } from "@/features/geo-editor/store";
+import type { ChatMessage } from "./routstr";
 
 // OpenAI function calling tool definition
 export interface Tool {
-	type: 'function'
-	function: {
-		name: string
-		description: string
-		parameters: {
-			type: 'object'
-			properties: Record<
-				string,
-				{
-					type: string
-					description: string
-					enum?: string[]
-				}
-			>
-			required?: string[]
-		}
-	}
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: "object";
+      properties: Record<
+        string,
+        {
+          type: string;
+          description: string;
+          enum?: string[];
+        }
+      >;
+      required?: string[];
+    };
+  };
 }
 
 // Tool call from API response
 export interface ToolCall {
-	id: string
-	type: 'function'
-	function: {
-		name: string
-		arguments: string // JSON string
-	}
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string; // JSON string
+  };
 }
 
 // Tool call result to send back
 export interface ToolResult {
-	tool_call_id: string
-	role: 'tool'
-	content: string
+  tool_call_id: string;
+  role: "tool";
+  content: string;
 }
 
-const DEFAULT_QUERY_LIMIT = 50
-const DEFAULT_IMPORT_LIMIT = 100
-const MAX_QUERY_LIMIT = 500
-const DEFAULT_SNAPSHOT_MAX_WIDTH = 1024
-const DEFAULT_SNAPSHOT_MAX_HEIGHT = 768
-const MAX_SNAPSHOT_CACHE_SIZE = 5
-const MAX_TOOL_RESULT_CHARS = 20000
-const MAX_GEOJSON_TEXT_CHARS = 200000
+const DEFAULT_QUERY_LIMIT = 50;
+const DEFAULT_IMPORT_LIMIT = 100;
+const MAX_QUERY_LIMIT = 500;
+const DEFAULT_SNAPSHOT_MAX_WIDTH = 1024;
+const DEFAULT_SNAPSHOT_MAX_HEIGHT = 768;
+const MAX_SNAPSHOT_CACHE_SIZE = 5;
+const MAX_TOOL_RESULT_CHARS = 20000;
+const MAX_GEOJSON_TEXT_CHARS = 200000;
 const NAME_MATCH_KEYS = [
-	'name',
-	'name:en',
-	'name:de',
-	'name:fr',
-	'int_name',
-	'official_name',
-	'short_name',
-	'alt_name',
-]
+  "name",
+  "name:en",
+  "name:de",
+  "name:fr",
+  "int_name",
+  "official_name",
+  "short_name",
+  "alt_name",
+];
 
 interface CachedMapSnapshot {
-	snapshotId: string
-	dataUrl: string
-	mimeType: 'image/png' | 'image/jpeg'
-	width: number
-	height: number
-	createdAt: number
-	mapCenter: { lat: number; lon: number } | null
-	mapZoom: number | null
-	mapBbox: [number, number, number, number] | null
+  snapshotId: string;
+  dataUrl: string;
+  mimeType: "image/png" | "image/jpeg";
+  width: number;
+  height: number;
+  createdAt: number;
+  mapCenter: { lat: number; lon: number } | null;
+  mapZoom: number | null;
+  mapBbox: [number, number, number, number] | null;
 }
 
-const mapSnapshotCache = new Map<string, CachedMapSnapshot>()
+const mapSnapshotCache = new Map<string, CachedMapSnapshot>();
 
 // Define available tools
 export const geoTools: Tool[] = [
-	{
-		type: 'function',
-		function: {
-			name: 'get_editor_state',
-			description:
-				"Get current map editor context (center, zoom, viewport bbox, feature count, mode). Returns compact output by default; use detail='full' only when needed.",
-			parameters: {
-				type: 'object',
-				properties: {
-					detail: {
-						type: 'string',
-						description:
-							"Response detail level. 'compact' (default) omits large arrays like visible dataset ids. 'full' returns the full snapshot.",
-						enum: ['compact', 'full'],
-					},
-				},
-			},
-		},
-	},
-	{
-		type: 'function',
-		function: {
-			name: 'capture_map_snapshot',
-			description:
-				'Capture the current map viewport as a PNG/JPEG snapshot. Returns a snapshotId that can be forwarded to vision-capable models.',
-			parameters: {
-				type: 'object',
-				properties: {
-					mimeType: {
-						type: 'string',
-						description: 'Output image type',
-						enum: ['image/png', 'image/jpeg'],
-					},
-					quality: {
-						type: 'number',
-						description: 'JPEG quality from 0 to 1 (ignored for PNG, default 0.9).',
-					},
-					maxWidth: {
-						type: 'number',
-						description: 'Optional max output width in pixels (default 1024).',
-					},
-					maxHeight: {
-						type: 'number',
-						description: 'Optional max output height in pixels (default 768).',
-					},
-				},
-			},
-		},
-	},
-	{
-		type: 'function',
-		function: {
-			name: 'write_geojson_to_editor',
-			description:
-				'Create features in the editor from GeoJSON. Accepts FeatureCollection, Feature, or Geometry. Use this for custom shapes and direct map edits.',
-			parameters: {
-				type: 'object',
-				properties: {
-					geojson: {
-						type: 'object',
-						description:
-							'GeoJSON payload. Can be a FeatureCollection, Feature, or Geometry object.',
-					},
-					geojsonText: {
-						type: 'string',
-						description:
-							'GeoJSON payload as a JSON string. Use as fallback if object arguments are hard to produce.',
-					},
-					replaceExisting: {
-						type: 'boolean',
-						description:
-							'If true, replace all current editor features with the provided GeoJSON. Default false (append).',
-					},
-				},
-			},
-		},
-	},
-	{
-		type: 'function',
-		function: {
-			name: 'draw_star_feature',
-			description:
-				'Draw a star polygon into the editor. Uses map center by default when lat/lon are omitted.',
-			parameters: {
-				type: 'object',
-				properties: {
-					lat: {
-						type: 'number',
-						description: 'Optional center latitude in WGS84.',
-					},
-					lon: {
-						type: 'number',
-						description: 'Optional center longitude in WGS84.',
-					},
-					points: {
-						type: 'number',
-						description: 'Number of star points (default 5, range 3-16).',
-					},
-					outerRadiusMeters: {
-						type: 'number',
-						description: 'Outer radius in meters from center to tip (default 500).',
-					},
-					innerRadiusMeters: {
-						type: 'number',
-						description:
-							'Inner radius in meters from center to inner corners (default outerRadius * 0.5).',
-					},
-					rotationDeg: {
-						type: 'number',
-						description: 'Clockwise rotation in degrees (default 0; one tip points north).',
-					},
-					name: {
-						type: 'string',
-						description: 'Optional feature name property.',
-					},
-					replaceExisting: {
-						type: 'boolean',
-						description: 'If true, replace existing editor features. Default false (append).',
-					},
-				},
-			},
-		},
-	},
-	{
-		type: 'function',
-		function: {
-			name: 'search_location',
-			description:
-				'Search for locations by name using OpenStreetMap. Returns coordinates, bounding boxes, and addresses.',
-			parameters: {
-				type: 'object',
-				properties: {
-					query: {
-						type: 'string',
-						description: 'The location query (e.g., "New York City", "Eiffel Tower")',
-					},
-					limit: {
-						type: 'number',
-						description: 'Maximum number of results (default: 5, max: 50)',
-					},
-				},
-				required: ['query'],
-			},
-		},
-	},
-	{
-		type: 'function',
-		function: {
-			name: 'reverse_lookup',
-			description:
-				'Get address information for coordinates. Useful for identifying what is at a specific location.',
-			parameters: {
-				type: 'object',
-				properties: {
-					lat: {
-						type: 'number',
-						description: 'Latitude coordinate in WGS84',
-					},
-					lon: {
-						type: 'number',
-						description: 'Longitude coordinate in WGS84',
-					},
-					zoom: {
-						type: 'number',
-						description: 'Level of detail (0-18, default 18). Lower = less detail.',
-					},
-				},
-				required: ['lat', 'lon'],
-			},
-		},
-	},
-	{
-		type: 'function',
-		function: {
-			name: 'query_osm_by_id',
-			description: 'Fetch one exact OpenStreetMap element by type and ID (node/way/relation).',
-			parameters: {
-				type: 'object',
-				properties: {
-					osmType: {
-						type: 'string',
-						description: 'OSM element type',
-						enum: ['node', 'way', 'relation'],
-					},
-					osmId: {
-						type: 'number',
-						description: 'OSM element numeric ID',
-					},
-				},
-				required: ['osmType', 'osmId'],
-			},
-		},
-	},
-	{
-		type: 'function',
-		function: {
-			name: 'query_osm_nearby',
-			description:
-				'Find OpenStreetMap features near a point. Can filter by tags like amenity=cafe, shop=supermarket.',
-			parameters: {
-				type: 'object',
-				properties: {
-					lat: {
-						type: 'number',
-						description: 'Latitude coordinate',
-					},
-					lon: {
-						type: 'number',
-						description: 'Longitude coordinate',
-					},
-					radius: {
-						type: 'number',
-						description: 'Search radius in meters (1-5000, default 500)',
-					},
-					filters: {
-						type: 'object',
-						description: 'OSM tag filters like {"amenity": "cafe"} or {"shop": "supermarket"}',
-					},
-					limit: {
-						type: 'number',
-						description: 'Maximum results to return (default 10)',
-					},
-				},
-				required: ['lat', 'lon'],
-			},
-		},
-	},
-	{
-		type: 'function',
-		function: {
-			name: 'query_osm_bbox',
-			description: 'Find OpenStreetMap features within a bounding box. Can filter by tags.',
-			parameters: {
-				type: 'object',
-				properties: {
-					west: {
-						type: 'number',
-						description: 'Western longitude of bounding box',
-					},
-					south: {
-						type: 'number',
-						description: 'Southern latitude of bounding box',
-					},
-					east: {
-						type: 'number',
-						description: 'Eastern longitude of bounding box',
-					},
-					north: {
-						type: 'number',
-						description: 'Northern latitude of bounding box',
-					},
-					filters: {
-						type: 'object',
-						description: 'OSM tag filters like {"amenity": "restaurant"}',
-					},
-					limit: {
-						type: 'number',
-						description: 'Maximum results to return (default 10)',
-					},
-				},
-				required: ['west', 'south', 'east', 'north'],
-			},
-		},
-	},
-	{
-		type: 'function',
-		function: {
-			name: 'import_osm_to_editor',
-			description:
-				'Query OSM and import matching features directly into the map editor. For rivers/roads/buildings, pass filters (example: {"waterway":"river"}). If bbox/point are omitted, it uses current map viewport, then falls back to search_location(name).',
-			parameters: {
-				type: 'object',
-				properties: {
-					name: {
-						type: 'string',
-						description: 'Target feature name to match (example: "Rhine").',
-					},
-					west: {
-						type: 'number',
-						description: 'Optional bbox west longitude.',
-					},
-					south: {
-						type: 'number',
-						description: 'Optional bbox south latitude.',
-					},
-					east: {
-						type: 'number',
-						description: 'Optional bbox east longitude.',
-					},
-					north: {
-						type: 'number',
-						description: 'Optional bbox north latitude.',
-					},
-					lat: {
-						type: 'number',
-						description: 'Optional point latitude (uses nearby query when paired with lon).',
-					},
-					lon: {
-						type: 'number',
-						description: 'Optional point longitude (uses nearby query when paired with lat).',
-					},
-					radius: {
-						type: 'number',
-						description: 'Nearby query radius in meters (default 500).',
-					},
-					filters: {
-						type: 'object',
-						description: 'Optional OSM tag filters (example: {"waterway":"river"}).',
-					},
-					limit: {
-						type: 'number',
-						description:
-							'Max OSM features to fetch before filtering by name (default 100, max 500).',
-					},
-					replaceExisting: {
-						type: 'boolean',
-						description:
-							'If true, replace all editor features with imported set. Default false (append).',
-					},
-				},
-				required: ['name'],
-			},
-		},
-	},
-]
+  {
+    type: "function",
+    function: {
+      name: "get_editor_state",
+      description:
+        "Get current map editor context (center, zoom, viewport bbox, feature count, mode). Returns compact output by default; use detail='full' only when needed.",
+      parameters: {
+        type: "object",
+        properties: {
+          detail: {
+            type: "string",
+            description:
+              "Response detail level. 'compact' (default) omits large arrays like visible dataset ids. 'full' returns the full snapshot.",
+            enum: ["compact", "full"],
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "capture_map_snapshot",
+      description:
+        "Capture the current map viewport as a PNG/JPEG snapshot. Returns a snapshotId that can be forwarded to vision-capable models.",
+      parameters: {
+        type: "object",
+        properties: {
+          mimeType: {
+            type: "string",
+            description: "Output image type",
+            enum: ["image/png", "image/jpeg"],
+          },
+          quality: {
+            type: "number",
+            description:
+              "JPEG quality from 0 to 1 (ignored for PNG, default 0.9).",
+          },
+          maxWidth: {
+            type: "number",
+            description: "Optional max output width in pixels (default 1024).",
+          },
+          maxHeight: {
+            type: "number",
+            description: "Optional max output height in pixels (default 768).",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "write_geojson_to_editor",
+      description:
+        "Create features in the editor from GeoJSON. Accepts FeatureCollection, Feature, or Geometry. Use this for custom shapes and direct map edits.",
+      parameters: {
+        type: "object",
+        properties: {
+          geojson: {
+            type: "object",
+            description:
+              "GeoJSON payload. Can be a FeatureCollection, Feature, or Geometry object.",
+          },
+          geojsonText: {
+            type: "string",
+            description:
+              "GeoJSON payload as a JSON string. Use as fallback if object arguments are hard to produce.",
+          },
+          replaceExisting: {
+            type: "boolean",
+            description:
+              "If true, replace all current editor features with the provided GeoJSON. Default false (append).",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "draw_star_feature",
+      description:
+        "Draw a star polygon into the editor. Uses map center by default when lat/lon are omitted.",
+      parameters: {
+        type: "object",
+        properties: {
+          lat: {
+            type: "number",
+            description: "Optional center latitude in WGS84.",
+          },
+          lon: {
+            type: "number",
+            description: "Optional center longitude in WGS84.",
+          },
+          points: {
+            type: "number",
+            description: "Number of star points (default 5, range 3-16).",
+          },
+          outerRadiusMeters: {
+            type: "number",
+            description:
+              "Outer radius in meters from center to tip (default 500).",
+          },
+          innerRadiusMeters: {
+            type: "number",
+            description:
+              "Inner radius in meters from center to inner corners (default outerRadius * 0.5).",
+          },
+          rotationDeg: {
+            type: "number",
+            description:
+              "Clockwise rotation in degrees (default 0; one tip points north).",
+          },
+          name: {
+            type: "string",
+            description: "Optional feature name property.",
+          },
+          replaceExisting: {
+            type: "boolean",
+            description:
+              "If true, replace existing editor features. Default false (append).",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_location",
+      description:
+        "Search for locations by name using OpenStreetMap. Returns coordinates, bounding boxes, and addresses.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description:
+              'The location query (e.g., "New York City", "Eiffel Tower")',
+          },
+          limit: {
+            type: "number",
+            description: "Maximum number of results (default: 5, max: 50)",
+          },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "reverse_lookup",
+      description:
+        "Get address information for coordinates. Useful for identifying what is at a specific location.",
+      parameters: {
+        type: "object",
+        properties: {
+          lat: {
+            type: "number",
+            description: "Latitude coordinate in WGS84",
+          },
+          lon: {
+            type: "number",
+            description: "Longitude coordinate in WGS84",
+          },
+          zoom: {
+            type: "number",
+            description:
+              "Level of detail (0-18, default 18). Lower = less detail.",
+          },
+        },
+        required: ["lat", "lon"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "query_osm_by_id",
+      description:
+        "Fetch one exact OpenStreetMap element by type and ID (node/way/relation).",
+      parameters: {
+        type: "object",
+        properties: {
+          osmType: {
+            type: "string",
+            description: "OSM element type",
+            enum: ["node", "way", "relation"],
+          },
+          osmId: {
+            type: "number",
+            description: "OSM element numeric ID",
+          },
+        },
+        required: ["osmType", "osmId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "query_osm_nearby",
+      description:
+        "Find OpenStreetMap features near a point. Can filter by tags like amenity=cafe, shop=supermarket.",
+      parameters: {
+        type: "object",
+        properties: {
+          lat: {
+            type: "number",
+            description: "Latitude coordinate",
+          },
+          lon: {
+            type: "number",
+            description: "Longitude coordinate",
+          },
+          radius: {
+            type: "number",
+            description: "Search radius in meters (1-5000, default 500)",
+          },
+          filters: {
+            type: "object",
+            description:
+              'OSM tag filters like {"amenity": "cafe"} or {"shop": "supermarket"}',
+          },
+          limit: {
+            type: "number",
+            description: "Maximum results to return (default 10)",
+          },
+        },
+        required: ["lat", "lon"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "query_osm_bbox",
+      description:
+        "Find OpenStreetMap features within a bounding box. Can filter by tags.",
+      parameters: {
+        type: "object",
+        properties: {
+          west: {
+            type: "number",
+            description: "Western longitude of bounding box",
+          },
+          south: {
+            type: "number",
+            description: "Southern latitude of bounding box",
+          },
+          east: {
+            type: "number",
+            description: "Eastern longitude of bounding box",
+          },
+          north: {
+            type: "number",
+            description: "Northern latitude of bounding box",
+          },
+          filters: {
+            type: "object",
+            description: 'OSM tag filters like {"amenity": "restaurant"}',
+          },
+          limit: {
+            type: "number",
+            description: "Maximum results to return (default 10)",
+          },
+        },
+        required: ["west", "south", "east", "north"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "import_osm_to_editor",
+      description:
+        'Query OSM and import matching features directly into the map editor. For rivers/roads/buildings, pass filters (example: {"waterway":"river"}). If bbox/point are omitted, it uses current map viewport, then falls back to search_location(name).',
+      parameters: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description: 'Target feature name to match (example: "Rhine").',
+          },
+          west: {
+            type: "number",
+            description: "Optional bbox west longitude.",
+          },
+          south: {
+            type: "number",
+            description: "Optional bbox south latitude.",
+          },
+          east: {
+            type: "number",
+            description: "Optional bbox east longitude.",
+          },
+          north: {
+            type: "number",
+            description: "Optional bbox north latitude.",
+          },
+          lat: {
+            type: "number",
+            description:
+              "Optional point latitude (uses nearby query when paired with lon).",
+          },
+          lon: {
+            type: "number",
+            description:
+              "Optional point longitude (uses nearby query when paired with lat).",
+          },
+          radius: {
+            type: "number",
+            description: "Nearby query radius in meters (default 500).",
+          },
+          filters: {
+            type: "object",
+            description:
+              'Optional OSM tag filters (example: {"waterway":"river"}).',
+          },
+          limit: {
+            type: "number",
+            description:
+              "Max OSM features to fetch before filtering by name (default 100, max 500).",
+          },
+          replaceExisting: {
+            type: "boolean",
+            description:
+              "If true, replace all editor features with imported set. Default false (append).",
+          },
+        },
+        required: ["name"],
+      },
+    },
+  },
+];
 
 // Singleton client instance
-let geoClient: EarthlyGeoServerClient | null = null
+let geoClient: EarthlyGeoServerClient | null = null;
 
 /**
  * Get or create the geo client instance
  */
 export function getGeoClient(): EarthlyGeoServerClient {
-	if (!geoClient) {
-		geoClient = new EarthlyGeoServerClient()
-	}
-	return geoClient
+  if (!geoClient) {
+    geoClient = new EarthlyGeoServerClient();
+  }
+  return geoClient;
 }
 
 function countFeaturesByGeometry(features: EditorFeature[]) {
-	const counts: Record<string, number> = {}
-	for (const feature of features) {
-		const type = feature.geometry?.type ?? 'Unknown'
-		counts[type] = (counts[type] ?? 0) + 1
-	}
-	return counts
+  const counts: Record<string, number> = {};
+  for (const feature of features) {
+    const type = feature.geometry?.type ?? "Unknown";
+    counts[type] = (counts[type] ?? 0) + 1;
+  }
+  return counts;
 }
 
 function getMapContextSnapshot() {
-	const store = useEditorStore.getState()
-	const viewport = store.editor?.getMapBounds() ?? store.currentBbox
-	const center = store.editor?.getMapCenter() ?? null
-	const zoom = store.editor?.getMapZoom() ?? null
-	const selectedFeatures = new Set(store.selectedFeatureIds)
-	const selectedSummary = store.features
-		.filter((feature) => selectedFeatures.has(feature.id))
-		.slice(0, 20)
-		.map((feature) => ({
-			id: feature.id,
-			geometryType: feature.geometry?.type ?? 'Unknown',
-			name: typeof feature.properties?.name === 'string' ? feature.properties?.name : undefined,
-		}))
-	const visibleMapLayers = store.mapLayers
-		.filter((layer) => layer.enabled)
-		.map((layer) => ({
-			id: layer.id,
-			title: layer.title,
-			kind: layer.kind,
-			opacity: layer.opacity,
-		}))
-	const visibleDatasetIds = Object.entries(store.datasetVisibility)
-		.filter(([, visible]) => visible)
-		.map(([datasetId]) => datasetId)
+  const store = useEditorStore.getState();
+  const viewport = store.editor?.getMapBounds() ?? store.currentBbox;
+  const center = store.editor?.getMapCenter() ?? null;
+  const zoom = store.editor?.getMapZoom() ?? null;
+  const selectedFeatures = new Set(store.selectedFeatureIds);
+  const selectedSummary = store.features
+    .filter((feature) => selectedFeatures.has(feature.id))
+    .slice(0, 20)
+    .map((feature) => ({
+      id: feature.id,
+      geometryType: feature.geometry?.type ?? "Unknown",
+      name:
+        typeof feature.properties?.name === "string"
+          ? feature.properties?.name
+          : undefined,
+    }));
+  const visibleMapLayers = store.mapLayers
+    .filter((layer) => layer.enabled)
+    .map((layer) => ({
+      id: layer.id,
+      title: layer.title,
+      kind: layer.kind,
+      opacity: layer.opacity,
+    }));
+  const visibleDatasetIds = Object.entries(store.datasetVisibility)
+    .filter(([, visible]) => visible)
+    .map(([datasetId]) => datasetId);
 
-	return {
-		editorReady: Boolean(store.editor),
-		mode: store.mode,
-		featureCount: store.features.length,
-		selectedFeatureCount: store.selectedFeatureIds.length,
-		selectedFeatures: selectedSummary,
-		featureGeometryCounts: countFeaturesByGeometry(store.features),
-		viewportBbox: viewport,
-		mapCenter: center,
-		mapZoom: zoom,
-		mapView: {
-			center,
-			zoom,
-			bbox: viewport,
-		},
-		visibleLayers: visibleMapLayers,
-		visibleDatasets: visibleDatasetIds,
-		mapSource: store.mapSource,
-	}
+  return {
+    editorReady: Boolean(store.editor),
+    mode: store.mode,
+    featureCount: store.features.length,
+    selectedFeatureCount: store.selectedFeatureIds.length,
+    selectedFeatures: selectedSummary,
+    featureGeometryCounts: countFeaturesByGeometry(store.features),
+    viewportBbox: viewport,
+    mapCenter: center,
+    mapZoom: zoom,
+    mapView: {
+      center,
+      zoom,
+      bbox: viewport,
+    },
+    visibleLayers: visibleMapLayers,
+    visibleDatasets: visibleDatasetIds,
+    mapSource: store.mapSource,
+  };
 }
 
-function getCompactMapContextForPrompt(snapshot: ReturnType<typeof getMapContextSnapshot>) {
-	const selectedFeatureHints = snapshot.selectedFeatures.slice(0, 4).map((feature) => ({
-		geometryType: feature.geometryType,
-		name: feature.name ?? null,
-	}))
+function getCompactMapContextForPrompt(
+  snapshot: ReturnType<typeof getMapContextSnapshot>,
+) {
+  const selectedFeatureHints = snapshot.selectedFeatures
+    .slice(0, 4)
+    .map((feature) => ({
+      geometryType: feature.geometryType,
+      name: feature.name ?? null,
+    }));
 
-	const visibleLayerIds = snapshot.visibleLayers.map((layer) => layer.id).slice(0, 8)
+  const visibleLayerIds = snapshot.visibleLayers
+    .map((layer) => layer.id)
+    .slice(0, 8);
 
-	return {
-		editorReady: snapshot.editorReady,
-		mode: snapshot.mode,
-		featureCount: snapshot.featureCount,
-		selectedFeatureCount: snapshot.selectedFeatureCount,
-		mapView: snapshot.mapView,
-		featureGeometryCounts: snapshot.featureGeometryCounts,
-		mapSource: snapshot.mapSource,
-		enabledLayerCount: snapshot.visibleLayers.length,
-		visibleLayerIds,
-		visibleDatasetCount: snapshot.visibleDatasets.length,
-		selectedFeatureHints,
-	}
+  return {
+    editorReady: snapshot.editorReady,
+    mode: snapshot.mode,
+    featureCount: snapshot.featureCount,
+    selectedFeatureCount: snapshot.selectedFeatureCount,
+    mapView: snapshot.mapView,
+    featureGeometryCounts: snapshot.featureGeometryCounts,
+    mapSource: snapshot.mapSource,
+    enabledLayerCount: snapshot.visibleLayers.length,
+    visibleLayerIds,
+    visibleDatasetCount: snapshot.visibleDatasets.length,
+    selectedFeatureHints,
+  };
 }
 
-function getCompactMapContextForTool(snapshot: ReturnType<typeof getMapContextSnapshot>) {
-	return {
-		editorReady: snapshot.editorReady,
-		mode: snapshot.mode,
-		featureCount: snapshot.featureCount,
-		selectedFeatureCount: snapshot.selectedFeatureCount,
-		featureGeometryCounts: snapshot.featureGeometryCounts,
-		viewportBbox: snapshot.viewportBbox,
-		mapCenter: snapshot.mapCenter,
-		mapZoom: snapshot.mapZoom,
-		mapView: snapshot.mapView,
-		mapSource: snapshot.mapSource,
-		enabledLayerCount: snapshot.visibleLayers.length,
-		visibleLayerIds: snapshot.visibleLayers.map((layer) => layer.id).slice(0, 8),
-		visibleDatasetCount: snapshot.visibleDatasets.length,
-		selectedFeatureHints: snapshot.selectedFeatures.slice(0, 6).map((feature) => ({
-			id: feature.id,
-			geometryType: feature.geometryType,
-			name: feature.name ?? null,
-		})),
-	}
+function getCompactMapContextForTool(
+  snapshot: ReturnType<typeof getMapContextSnapshot>,
+) {
+  return {
+    editorReady: snapshot.editorReady,
+    mode: snapshot.mode,
+    featureCount: snapshot.featureCount,
+    selectedFeatureCount: snapshot.selectedFeatureCount,
+    featureGeometryCounts: snapshot.featureGeometryCounts,
+    viewportBbox: snapshot.viewportBbox,
+    mapCenter: snapshot.mapCenter,
+    mapZoom: snapshot.mapZoom,
+    mapView: snapshot.mapView,
+    mapSource: snapshot.mapSource,
+    enabledLayerCount: snapshot.visibleLayers.length,
+    visibleLayerIds: snapshot.visibleLayers
+      .map((layer) => layer.id)
+      .slice(0, 8),
+    visibleDatasetCount: snapshot.visibleDatasets.length,
+    selectedFeatureHints: snapshot.selectedFeatures
+      .slice(0, 6)
+      .map((feature) => ({
+        id: feature.id,
+        geometryType: feature.geometryType,
+        name: feature.name ?? null,
+      })),
+  };
 }
 
 export function createMapContextSystemMessage(): ChatMessage | null {
-	const snapshot = getMapContextSnapshot()
-	const compact = getCompactMapContextForPrompt(snapshot)
-	return {
-		role: 'system',
-		content: [
-			'You have map-editing tool access in this chat.',
-			'If the user asks to draw/create/edit map features, call tools instead of replying that you cannot edit the map.',
-			'For draw requests, execute the tool immediately using defaults unless the user explicitly asks for custom parameters.',
-			'Use write_geojson_to_editor for arbitrary GeoJSON and draw_star_feature for stars.',
-			`Current map state JSON:\n${JSON.stringify(compact)}`,
-		].join('\n\n'),
-	}
+  const snapshot = getMapContextSnapshot();
+  const compact = getCompactMapContextForPrompt(snapshot);
+  return {
+    role: "system",
+    content: [
+      "You have map-editing tool access in this chat.",
+      "If the user asks to draw/create/edit map features, call tools instead of replying that you cannot edit the map.",
+      "For draw requests, execute the tool immediately using defaults unless the user explicitly asks for custom parameters.",
+      "Use write_geojson_to_editor for arbitrary GeoJSON and draw_star_feature for stars.",
+      `Current map state JSON:\n${JSON.stringify(compact)}`,
+    ].join("\n\n"),
+  };
 }
 
 function pruneSnapshotCache() {
-	if (mapSnapshotCache.size <= MAX_SNAPSHOT_CACHE_SIZE) return
-	const oldest = [...mapSnapshotCache.values()]
-		.sort((a, b) => a.createdAt - b.createdAt)
-		.slice(0, mapSnapshotCache.size - MAX_SNAPSHOT_CACHE_SIZE)
-	for (const entry of oldest) {
-		mapSnapshotCache.delete(entry.snapshotId)
-	}
+  if (mapSnapshotCache.size <= MAX_SNAPSHOT_CACHE_SIZE) return;
+  const oldest = [...mapSnapshotCache.values()]
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .slice(0, mapSnapshotCache.size - MAX_SNAPSHOT_CACHE_SIZE);
+  for (const entry of oldest) {
+    mapSnapshotCache.delete(entry.snapshotId);
+  }
 }
 
-export function consumeMapSnapshot(snapshotId: string): CachedMapSnapshot | null {
-	const snapshot = mapSnapshotCache.get(snapshotId)
-	if (!snapshot) return null
-	mapSnapshotCache.delete(snapshotId)
-	return snapshot
+export function consumeMapSnapshot(
+  snapshotId: string,
+): CachedMapSnapshot | null {
+  const snapshot = mapSnapshotCache.get(snapshotId);
+  if (!snapshot) return null;
+  mapSnapshotCache.delete(snapshotId);
+  return snapshot;
 }
 
 function serializeToolResult(result: unknown): string {
-	const raw = JSON.stringify(result, null, 2)
-	if (raw.length <= MAX_TOOL_RESULT_CHARS) return raw
+  const raw = JSON.stringify(result, null, 2);
+  if (raw.length <= MAX_TOOL_RESULT_CHARS) return raw;
 
-	return JSON.stringify(
-		{
-			truncated: true,
-			originalLength: raw.length,
-			preview: raw.slice(0, MAX_TOOL_RESULT_CHARS),
-			note: 'Result truncated to fit model context window. Narrow the query if you need more detail.',
-		},
-		null,
-		2,
-	)
+  return JSON.stringify(
+    {
+      truncated: true,
+      originalLength: raw.length,
+      preview: raw.slice(0, MAX_TOOL_RESULT_CHARS),
+      note: "Result truncated to fit model context window. Narrow the query if you need more detail.",
+    },
+    null,
+    2,
+  );
 }
 
 function toFiniteNumber(value: unknown): number | undefined {
-	return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function hasExplicitBbox(args: Record<string, unknown>): boolean {
-	return (
-		toFiniteNumber(args.west) !== undefined &&
-		toFiniteNumber(args.south) !== undefined &&
-		toFiniteNumber(args.east) !== undefined &&
-		toFiniteNumber(args.north) !== undefined
-	)
+  return (
+    toFiniteNumber(args.west) !== undefined &&
+    toFiniteNumber(args.south) !== undefined &&
+    toFiniteNumber(args.east) !== undefined &&
+    toFiniteNumber(args.north) !== undefined
+  );
 }
 
 function hasExplicitPoint(args: Record<string, unknown>): boolean {
-	return toFiniteNumber(args.lat) !== undefined && toFiniteNumber(args.lon) !== undefined
+  return (
+    toFiniteNumber(args.lat) !== undefined &&
+    toFiniteNumber(args.lon) !== undefined
+  );
 }
 
 function clampLimit(value: unknown, fallback: number): number {
-	const numeric = toFiniteNumber(value)
-	if (numeric === undefined) return fallback
-	return Math.max(1, Math.min(MAX_QUERY_LIMIT, Math.floor(numeric)))
+  const numeric = toFiniteNumber(value);
+  if (numeric === undefined) return fallback;
+  return Math.max(1, Math.min(MAX_QUERY_LIMIT, Math.floor(numeric)));
 }
 
-function clampPositiveInt(value: unknown, fallback: number, max: number): number {
-	const numeric = toFiniteNumber(value)
-	if (numeric === undefined) return fallback
-	return Math.max(1, Math.min(max, Math.floor(numeric)))
+function clampPositiveInt(
+  value: unknown,
+  fallback: number,
+  max: number,
+): number {
+  const numeric = toFiniteNumber(value);
+  if (numeric === undefined) return fallback;
+  return Math.max(1, Math.min(max, Math.floor(numeric)));
 }
 
 function normalizeFilters(value: unknown): Record<string, string> | undefined {
-	if (!value || typeof value !== 'object' || Array.isArray(value)) {
-		return undefined
-	}
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
 
-	const entries = Object.entries(value as Record<string, unknown>)
-	const normalized: Record<string, string> = {}
+  const entries = Object.entries(value as Record<string, unknown>);
+  const normalized: Record<string, string> = {};
 
-	for (const [key, raw] of entries) {
-		if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean') {
-			normalized[key] = String(raw)
-		}
-	}
+  for (const [key, raw] of entries) {
+    if (
+      typeof raw === "string" ||
+      typeof raw === "number" ||
+      typeof raw === "boolean"
+    ) {
+      normalized[key] = String(raw);
+    }
+  }
 
-	return Object.keys(normalized).length > 0 ? normalized : undefined
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
 function asFeatureObject(value: unknown): GeoJSON.Feature | null {
-	if (!value || typeof value !== 'object') return null
-	const candidate = value as GeoJSON.Feature
-	if (!candidate.geometry || typeof candidate.geometry !== 'object') return null
-	return candidate
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as GeoJSON.Feature;
+  if (!candidate.geometry || typeof candidate.geometry !== "object")
+    return null;
+  return candidate;
 }
 
 function featureStableId(feature: GeoJSON.Feature): string {
-	const rawId = feature.id
-	if (typeof rawId === 'string' || typeof rawId === 'number') {
-		return String(rawId)
-	}
+  const rawId = feature.id;
+  if (typeof rawId === "string" || typeof rawId === "number") {
+    return String(rawId);
+  }
 
-	const props = feature.properties
-	if (props && typeof props === 'object') {
-		const atId = (props as Record<string, unknown>)['@id']
-		if (typeof atId === 'string' || typeof atId === 'number') {
-			return String(atId)
-		}
-	}
+  const props = feature.properties;
+  if (props && typeof props === "object") {
+    const atId = (props as Record<string, unknown>)["@id"];
+    if (typeof atId === "string" || typeof atId === "number") {
+      return String(atId);
+    }
+  }
 
-	return crypto.randomUUID()
+  return crypto.randomUUID();
 }
 
 function toEditorFeature(feature: GeoJSON.Feature): EditorFeature {
-	const stableId = featureStableId(feature)
-	const sourceProps = (feature.properties || {}) as Record<string, unknown>
+  const stableId = featureStableId(feature);
+  const sourceProps = (feature.properties || {}) as Record<string, unknown>;
 
-	return {
-		...feature,
-		id: stableId,
-		properties: {
-			...sourceProps,
-			meta: 'feature',
-			featureId: stableId,
-			importSource: 'chat_tool',
-		},
-	} as EditorFeature
+  return {
+    ...feature,
+    id: stableId,
+    properties: {
+      ...sourceProps,
+      meta: "feature",
+      featureId: stableId,
+      importSource: "chat_tool",
+    },
+  } as EditorFeature;
 }
 
 function getEditorViewportBbox(): [number, number, number, number] | null {
-	const { editor } = useEditorStore.getState()
-	return editor?.getMapBounds() ?? null
+  const { editor } = useEditorStore.getState();
+  return editor?.getMapBounds() ?? null;
 }
 
-function featureMatchesName(feature: GeoJSON.Feature, targetName: string): boolean {
-	const lowerTarget = targetName.toLowerCase()
-	const props = feature.properties
-	if (!props || typeof props !== 'object') return false
+function featureMatchesName(
+  feature: GeoJSON.Feature,
+  targetName: string,
+): boolean {
+  const lowerTarget = targetName.toLowerCase();
+  const props = feature.properties;
+  if (!props || typeof props !== "object") return false;
 
-	for (const key of NAME_MATCH_KEYS) {
-		const rawValue = (props as Record<string, unknown>)[key]
-		if (typeof rawValue === 'string' && rawValue.toLowerCase().includes(lowerTarget)) {
-			return true
-		}
-	}
+  for (const key of NAME_MATCH_KEYS) {
+    const rawValue = (props as Record<string, unknown>)[key];
+    if (
+      typeof rawValue === "string" &&
+      rawValue.toLowerCase().includes(lowerTarget)
+    ) {
+      return true;
+    }
+  }
 
-	return false
+  return false;
 }
 
-function importFeaturesToEditor(features: GeoJSON.Feature[], replaceExisting: boolean) {
-	const { editor, setFeatures } = useEditorStore.getState()
-	if (!editor) {
-		throw new Error('Map editor is not ready. Open the map editor first, then try again.')
-	}
+function importFeaturesToEditor(
+  features: GeoJSON.Feature[],
+  replaceExisting: boolean,
+) {
+  const { editor, setFeatures } = useEditorStore.getState();
+  if (!editor) {
+    throw new Error(
+      "Map editor is not ready. Open the map editor first, then try again.",
+    );
+  }
 
-	const normalized = features.map(toEditorFeature)
-	if (normalized.length === 0) {
-		throw new Error('No valid GeoJSON features available to import.')
-	}
+  const normalized = features.map(toEditorFeature);
+  if (normalized.length === 0) {
+    throw new Error("No valid GeoJSON features available to import.");
+  }
 
-	if (replaceExisting) {
-		editor.setFeatures(normalized)
-		setFeatures(normalized)
-		return {
-			importedCount: normalized.length,
-			skippedDuplicates: 0,
-			totalFeaturesInEditor: normalized.length,
-		}
-	}
+  if (replaceExisting) {
+    editor.setFeatures(normalized);
+    setFeatures(normalized);
+    return {
+      importedCount: normalized.length,
+      skippedDuplicates: 0,
+      totalFeaturesInEditor: normalized.length,
+    };
+  }
 
-	const existingIds = new Set(editor.getAllFeatures().map((feature) => feature.id))
-	let importedCount = 0
-	let skippedDuplicates = 0
+  const existingIds = new Set(
+    editor.getAllFeatures().map((feature) => feature.id),
+  );
+  let importedCount = 0;
+  let skippedDuplicates = 0;
 
-	for (const feature of normalized) {
-		if (existingIds.has(feature.id)) {
-			skippedDuplicates += 1
-			continue
-		}
+  for (const feature of normalized) {
+    if (existingIds.has(feature.id)) {
+      skippedDuplicates += 1;
+      continue;
+    }
 
-		editor.addFeature(feature)
-		existingIds.add(feature.id)
-		importedCount += 1
-	}
+    editor.addFeature(feature);
+    existingIds.add(feature.id);
+    importedCount += 1;
+  }
 
-	return {
-		importedCount,
-		skippedDuplicates,
-		totalFeaturesInEditor: editor.getAllFeatures().length,
-	}
+  return {
+    importedCount,
+    skippedDuplicates,
+    totalFeaturesInEditor: editor.getAllFeatures().length,
+  };
 }
 
 function ensureBbox(value: unknown): [number, number, number, number] | null {
-	if (!Array.isArray(value) || value.length !== 4) return null
-	const [west, south, east, north] = value
-	if (
-		typeof west !== 'number' ||
-		typeof south !== 'number' ||
-		typeof east !== 'number' ||
-		typeof north !== 'number'
-	) {
-		return null
-	}
-	return [west, south, east, north]
+  if (!Array.isArray(value) || value.length !== 4) return null;
+  const [west, south, east, north] = value;
+  if (
+    typeof west !== "number" ||
+    typeof south !== "number" ||
+    typeof east !== "number" ||
+    typeof north !== "number"
+  ) {
+    return null;
+  }
+  return [west, south, east, north];
 }
 
-function isGeoJsonGeometryType(value: unknown): value is GeoJSON.Geometry['type'] {
-	return (
-		typeof value === 'string' &&
-		[
-			'Point',
-			'MultiPoint',
-			'LineString',
-			'MultiLineString',
-			'Polygon',
-			'MultiPolygon',
-			'GeometryCollection',
-		].includes(value)
-	)
+function isGeoJsonGeometryType(
+  value: unknown,
+): value is GeoJSON.Geometry["type"] {
+  return (
+    typeof value === "string" &&
+    [
+      "Point",
+      "MultiPoint",
+      "LineString",
+      "MultiLineString",
+      "Polygon",
+      "MultiPolygon",
+      "GeometryCollection",
+    ].includes(value)
+  );
 }
 
 function parseGeoJsonArg(args: Record<string, unknown>): unknown {
-	if (args.geojson && typeof args.geojson === 'object') {
-		return args.geojson
-	}
+  if (args.geojson && typeof args.geojson === "object") {
+    return args.geojson;
+  }
 
-	if (typeof args.geojsonText === 'string') {
-		const text = args.geojsonText.trim()
-		if (!text) {
-			throw new Error('geojsonText must be a non-empty JSON string.')
-		}
-		if (text.length > MAX_GEOJSON_TEXT_CHARS) {
-			throw new Error(
-				`geojsonText is too large (${text.length} chars). Maximum is ${MAX_GEOJSON_TEXT_CHARS}.`,
-			)
-		}
-		return JSON.parse(text)
-	}
+  if (typeof args.geojsonText === "string") {
+    const text = args.geojsonText.trim();
+    if (!text) {
+      throw new Error("geojsonText must be a non-empty JSON string.");
+    }
+    if (text.length > MAX_GEOJSON_TEXT_CHARS) {
+      throw new Error(
+        `geojsonText is too large (${text.length} chars). Maximum is ${MAX_GEOJSON_TEXT_CHARS}.`,
+      );
+    }
+    return JSON.parse(text);
+  }
 
-	throw new Error('Provide either geojson (object) or geojsonText (string).')
+  throw new Error("Provide either geojson (object) or geojsonText (string).");
 }
 
 function normalizeGeoJsonToFeatures(value: unknown): GeoJSON.Feature[] {
-	if (!value || typeof value !== 'object') {
-		throw new Error('GeoJSON payload must be an object.')
-	}
+  if (!value || typeof value !== "object") {
+    throw new Error("GeoJSON payload must be an object.");
+  }
 
-	const obj = value as Record<string, unknown>
-	const type = obj.type
+  const obj = value as Record<string, unknown>;
+  const type = obj.type;
 
-	if (type === 'FeatureCollection') {
-		const features = Array.isArray(obj.features) ? obj.features : []
-		const normalized = features
-			.map(asFeatureObject)
-			.filter((feature): feature is GeoJSON.Feature => feature !== null)
-		if (normalized.length === 0) {
-			throw new Error('FeatureCollection does not contain valid features.')
-		}
-		return normalized
-	}
+  if (type === "FeatureCollection") {
+    const features = Array.isArray(obj.features) ? obj.features : [];
+    const normalized = features
+      .map(asFeatureObject)
+      .filter((feature): feature is GeoJSON.Feature => feature !== null);
+    if (normalized.length === 0) {
+      throw new Error("FeatureCollection does not contain valid features.");
+    }
+    return normalized;
+  }
 
-	if (type === 'Feature') {
-		const feature = asFeatureObject(obj)
-		if (!feature) {
-			throw new Error('Invalid GeoJSON Feature.')
-		}
-		return [feature]
-	}
+  if (type === "Feature") {
+    const feature = asFeatureObject(obj);
+    if (!feature) {
+      throw new Error("Invalid GeoJSON Feature.");
+    }
+    return [feature];
+  }
 
-	if (isGeoJsonGeometryType(type)) {
-		return [
-			{
-				type: 'Feature',
-				geometry: obj as GeoJSON.Geometry,
-				properties: {},
-			},
-		]
-	}
+  if (isGeoJsonGeometryType(type)) {
+    return [
+      {
+        type: "Feature",
+        geometry: obj as GeoJSON.Geometry,
+        properties: {},
+      },
+    ];
+  }
 
-	throw new Error('Unsupported GeoJSON. Expected FeatureCollection, Feature, or Geometry.')
+  throw new Error(
+    "Unsupported GeoJSON. Expected FeatureCollection, Feature, or Geometry.",
+  );
 }
 
 function createStarFeature(options: {
-	lat: number
-	lon: number
-	points: number
-	outerRadiusMeters: number
-	innerRadiusMeters: number
-	rotationDeg: number
-	name?: string
+  lat: number;
+  lon: number;
+  points: number;
+  outerRadiusMeters: number;
+  innerRadiusMeters: number;
+  rotationDeg: number;
+  name?: string;
 }): GeoJSON.Feature {
-	const { lat, lon, points, outerRadiusMeters, innerRadiusMeters, rotationDeg, name } = options
+  const {
+    lat,
+    lon,
+    points,
+    outerRadiusMeters,
+    innerRadiusMeters,
+    rotationDeg,
+    name,
+  } = options;
 
-	const latRadians = (lat * Math.PI) / 180
-	const metersPerLatDegree = 111_320
-	const metersPerLonDegree = Math.max(1, 111_320 * Math.cos(latRadians))
-	const latPerMeter = 1 / metersPerLatDegree
-	const lonPerMeter = 1 / metersPerLonDegree
-	const rotation = (rotationDeg * Math.PI) / 180
-	const baseAngle = -Math.PI / 2 + rotation
+  const latRadians = (lat * Math.PI) / 180;
+  const metersPerLatDegree = 111_320;
+  const metersPerLonDegree = Math.max(1, 111_320 * Math.cos(latRadians));
+  const latPerMeter = 1 / metersPerLatDegree;
+  const lonPerMeter = 1 / metersPerLonDegree;
+  const rotation = (rotationDeg * Math.PI) / 180;
+  const baseAngle = -Math.PI / 2 + rotation;
 
-	const ring: [number, number][] = []
-	for (let i = 0; i < points * 2; i++) {
-		const radius = i % 2 === 0 ? outerRadiusMeters : innerRadiusMeters
-		const angle = baseAngle + (i * Math.PI) / points
-		ring.push([
-			lon + Math.cos(angle) * radius * lonPerMeter,
-			lat + Math.sin(angle) * radius * latPerMeter,
-		])
-	}
-	ring.push(ring[0])
+  const ring: [number, number][] = [];
+  for (let i = 0; i < points * 2; i++) {
+    const radius = i % 2 === 0 ? outerRadiusMeters : innerRadiusMeters;
+    const angle = baseAngle + (i * Math.PI) / points;
+    ring.push([
+      lon + Math.cos(angle) * radius * lonPerMeter,
+      lat + Math.sin(angle) * radius * latPerMeter,
+    ]);
+  }
+  ring.push(ring[0]);
 
-	return {
-		type: 'Feature',
-		properties: {
-			name: name?.trim() || 'Star',
-			shape: 'star',
-			points,
-			outerRadiusMeters,
-			innerRadiusMeters,
-			rotationDeg,
-		},
-		geometry: {
-			type: 'Polygon',
-			coordinates: [ring],
-		},
-	}
+  return {
+    type: "Feature",
+    properties: {
+      name: name?.trim() || "Star",
+      shape: "star",
+      points,
+      outerRadiusMeters,
+      innerRadiusMeters,
+      rotationDeg,
+    },
+    geometry: {
+      type: "Polygon",
+      coordinates: [ring],
+    },
+  };
 }
 
 function resolveStarCenter(args: Record<string, unknown>): {
-	lat: number
-	lon: number
+  lat: number;
+  lon: number;
 } {
-	const lat = toFiniteNumber(args.lat)
-	const lon = toFiniteNumber(args.lon)
+  const lat = toFiniteNumber(args.lat);
+  const lon = toFiniteNumber(args.lon);
 
-	if (lat !== undefined && lon !== undefined) {
-		return { lat, lon }
-	}
-	if (lat !== undefined || lon !== undefined) {
-		throw new Error('Provide both lat and lon, or omit both to use map center.')
-	}
+  if (lat !== undefined && lon !== undefined) {
+    return { lat, lon };
+  }
+  if (lat !== undefined || lon !== undefined) {
+    throw new Error(
+      "Provide both lat and lon, or omit both to use map center.",
+    );
+  }
 
-	const snapshot = getMapContextSnapshot()
-	if (!snapshot.mapCenter) {
-		throw new Error('Map center is unavailable. Pan the map or provide explicit lat/lon.')
-	}
-	return snapshot.mapCenter
+  const snapshot = getMapContextSnapshot();
+  if (!snapshot.mapCenter) {
+    throw new Error(
+      "Map center is unavailable. Pan the map or provide explicit lat/lon.",
+    );
+  }
+  return snapshot.mapCenter;
 }
 
 /**
  * Execute a tool call and return the result
  */
 export async function executeToolCall(toolCall: ToolCall): Promise<ToolResult> {
-	const client = getGeoClient()
+  const client = getGeoClient();
 
-	try {
-		const args = (
-			toolCall.function.arguments?.trim() ? JSON.parse(toolCall.function.arguments) : {}
-		) as Record<string, unknown>
+  try {
+    const args = (
+      toolCall.function.arguments?.trim()
+        ? JSON.parse(toolCall.function.arguments)
+        : {}
+    ) as Record<string, unknown>;
 
-		let result: unknown
+    let result: unknown;
 
-		switch (toolCall.function.name) {
-			case 'get_editor_state': {
-				const detail = args.detail === 'full' ? 'full' : 'compact'
-				const snapshot = getMapContextSnapshot()
-				result =
-					detail === 'full'
-						? snapshot
-						: {
-								...getCompactMapContextForTool(snapshot),
-								detail,
-							}
-				break
-			}
-			case 'write_geojson_to_editor': {
-				const payload = parseGeoJsonArg(args)
-				const features = normalizeGeoJsonToFeatures(payload)
-				const replaceExisting = Boolean(args.replaceExisting)
-				const importResult = importFeaturesToEditor(features, replaceExisting)
-				result = {
-					importedCount: importResult.importedCount,
-					skippedDuplicates: importResult.skippedDuplicates,
-					totalFeaturesInEditor: importResult.totalFeaturesInEditor,
-					replaceExisting,
-				}
-				break
-			}
-			case 'draw_star_feature': {
-				const center = resolveStarCenter(args)
-				const points = clampPositiveInt(args.points, 5, 16)
-				const outerRadiusMeters = toFiniteNumber(args.outerRadiusMeters) ?? 500
-				const innerRadiusMeters =
-					toFiniteNumber(args.innerRadiusMeters) ?? Math.max(10, outerRadiusMeters * 0.5)
-				const rotationDeg = toFiniteNumber(args.rotationDeg) ?? 0
-				const name =
-					typeof args.name === 'string' && args.name.trim() ? args.name.trim() : undefined
-				const replaceExisting = Boolean(args.replaceExisting)
+    switch (toolCall.function.name) {
+      case "get_editor_state": {
+        const detail = args.detail === "full" ? "full" : "compact";
+        const snapshot = getMapContextSnapshot();
+        result =
+          detail === "full"
+            ? snapshot
+            : {
+                ...getCompactMapContextForTool(snapshot),
+                detail,
+              };
+        break;
+      }
+      case "write_geojson_to_editor": {
+        const payload = parseGeoJsonArg(args);
+        const features = normalizeGeoJsonToFeatures(payload);
+        const replaceExisting = Boolean(args.replaceExisting);
+        const importResult = importFeaturesToEditor(features, replaceExisting);
+        result = {
+          importedCount: importResult.importedCount,
+          skippedDuplicates: importResult.skippedDuplicates,
+          totalFeaturesInEditor: importResult.totalFeaturesInEditor,
+          replaceExisting,
+        };
+        break;
+      }
+      case "draw_star_feature": {
+        const center = resolveStarCenter(args);
+        const points = clampPositiveInt(args.points, 5, 16);
+        const outerRadiusMeters = toFiniteNumber(args.outerRadiusMeters) ?? 500;
+        const innerRadiusMeters =
+          toFiniteNumber(args.innerRadiusMeters) ??
+          Math.max(10, outerRadiusMeters * 0.5);
+        const rotationDeg = toFiniteNumber(args.rotationDeg) ?? 0;
+        const name =
+          typeof args.name === "string" && args.name.trim()
+            ? args.name.trim()
+            : undefined;
+        const replaceExisting = Boolean(args.replaceExisting);
 
-				if (outerRadiusMeters <= 0) {
-					throw new Error('outerRadiusMeters must be > 0.')
-				}
-				if (innerRadiusMeters <= 0 || innerRadiusMeters >= outerRadiusMeters) {
-					throw new Error('innerRadiusMeters must be > 0 and smaller than outerRadiusMeters.')
-				}
+        if (outerRadiusMeters <= 0) {
+          throw new Error("outerRadiusMeters must be > 0.");
+        }
+        if (innerRadiusMeters <= 0 || innerRadiusMeters >= outerRadiusMeters) {
+          throw new Error(
+            "innerRadiusMeters must be > 0 and smaller than outerRadiusMeters.",
+          );
+        }
 
-				const starFeature = createStarFeature({
-					lat: center.lat,
-					lon: center.lon,
-					points,
-					outerRadiusMeters,
-					innerRadiusMeters,
-					rotationDeg,
-					name,
-				})
-				const importResult = importFeaturesToEditor([starFeature], replaceExisting)
-				result = {
-					center,
-					points,
-					outerRadiusMeters,
-					innerRadiusMeters,
-					rotationDeg,
-					importedCount: importResult.importedCount,
-					skippedDuplicates: importResult.skippedDuplicates,
-					totalFeaturesInEditor: importResult.totalFeaturesInEditor,
-					replaceExisting,
-				}
-				break
-			}
-			case 'capture_map_snapshot': {
-				const store = useEditorStore.getState()
-				if (!store.editor) {
-					throw new Error('Map editor is not ready. Open the map editor first, then try again.')
-				}
+        const starFeature = createStarFeature({
+          lat: center.lat,
+          lon: center.lon,
+          points,
+          outerRadiusMeters,
+          innerRadiusMeters,
+          rotationDeg,
+          name,
+        });
+        const importResult = importFeaturesToEditor(
+          [starFeature],
+          replaceExisting,
+        );
+        result = {
+          center,
+          points,
+          outerRadiusMeters,
+          innerRadiusMeters,
+          rotationDeg,
+          importedCount: importResult.importedCount,
+          skippedDuplicates: importResult.skippedDuplicates,
+          totalFeaturesInEditor: importResult.totalFeaturesInEditor,
+          replaceExisting,
+        };
+        break;
+      }
+      case "capture_map_snapshot": {
+        const store = useEditorStore.getState();
+        if (!store.editor) {
+          throw new Error(
+            "Map editor is not ready. Open the map editor first, then try again.",
+          );
+        }
 
-				const mimeType = args.mimeType === 'image/jpeg' ? 'image/jpeg' : 'image/png'
-				const quality =
-					typeof args.quality === 'number' ? Math.max(0, Math.min(1, args.quality)) : 0.9
-				const maxWidth = clampPositiveInt(args.maxWidth, DEFAULT_SNAPSHOT_MAX_WIDTH, 4096)
-				const maxHeight = clampPositiveInt(args.maxHeight, DEFAULT_SNAPSHOT_MAX_HEIGHT, 4096)
-				const capture = store.editor.captureMapSnapshot({
-					mimeType,
-					quality,
-					maxWidth,
-					maxHeight,
-				})
-				const snapshot = getMapContextSnapshot()
-				const snapshotId = crypto.randomUUID()
-				mapSnapshotCache.set(snapshotId, {
-					snapshotId,
-					dataUrl: capture.dataUrl,
-					mimeType,
-					width: capture.width,
-					height: capture.height,
-					createdAt: Date.now(),
-					mapCenter: snapshot.mapCenter,
-					mapZoom: snapshot.mapZoom,
-					mapBbox: snapshot.viewportBbox,
-				})
-				pruneSnapshotCache()
+        const mimeType =
+          args.mimeType === "image/jpeg" ? "image/jpeg" : "image/png";
+        const quality =
+          typeof args.quality === "number"
+            ? Math.max(0, Math.min(1, args.quality))
+            : 0.9;
+        const maxWidth = clampPositiveInt(
+          args.maxWidth,
+          DEFAULT_SNAPSHOT_MAX_WIDTH,
+          4096,
+        );
+        const maxHeight = clampPositiveInt(
+          args.maxHeight,
+          DEFAULT_SNAPSHOT_MAX_HEIGHT,
+          4096,
+        );
+        const capture = store.editor.captureMapSnapshot({
+          mimeType,
+          quality,
+          maxWidth,
+          maxHeight,
+        });
+        const snapshot = getMapContextSnapshot();
+        const snapshotId = crypto.randomUUID();
+        mapSnapshotCache.set(snapshotId, {
+          snapshotId,
+          dataUrl: capture.dataUrl,
+          mimeType,
+          width: capture.width,
+          height: capture.height,
+          createdAt: Date.now(),
+          mapCenter: snapshot.mapCenter,
+          mapZoom: snapshot.mapZoom,
+          mapBbox: snapshot.viewportBbox,
+        });
+        pruneSnapshotCache();
 
-				result = {
-					snapshotId,
-					mimeType,
-					width: capture.width,
-					height: capture.height,
-					dataUrlLength: capture.dataUrl.length,
-					mapView: snapshot.mapView,
-				}
-				break
-			}
-			case 'search_location': {
-				const query = typeof args.query === 'string' ? args.query.trim() : ''
-				if (!query) {
-					throw new Error('query must be a non-empty string')
-				}
-				const response = await client.SearchLocation(query, clampLimit(args.limit, 5))
-				result = response.result
-				break
-			}
-			case 'reverse_lookup': {
-				const lat = toFiniteNumber(args.lat)
-				const lon = toFiniteNumber(args.lon)
-				const zoom = toFiniteNumber(args.zoom)
-				if (lat === undefined || lon === undefined) {
-					throw new Error('lat and lon must be valid numbers')
-				}
-				const response = await client.ReverseLookup(lat, lon, zoom)
-				result = response.result
-				break
-			}
-			case 'query_osm_by_id': {
-				const osmId = toFiniteNumber(args.osmId)
-				if (
-					typeof args.osmType !== 'string' ||
-					!['node', 'way', 'relation'].includes(args.osmType)
-				) {
-					throw new Error('osmType must be one of: node, way, relation')
-				}
-				if (osmId === undefined) {
-					throw new Error('osmId must be a valid number')
-				}
-				const response = await client.QueryOsmById(args.osmType, Math.floor(osmId))
-				result = response.result
-				break
-			}
-			case 'query_osm_nearby': {
-				const lat = toFiniteNumber(args.lat)
-				const lon = toFiniteNumber(args.lon)
-				const radius = toFiniteNumber(args.radius)
-				if (lat === undefined || lon === undefined) {
-					throw new Error('lat and lon must be valid numbers')
-				}
-				const response = await client.QueryOsmNearby(
-					lat,
-					lon,
-					radius,
-					normalizeFilters(args.filters),
-					clampLimit(args.limit, DEFAULT_QUERY_LIMIT),
-				)
-				result = response.result
-				break
-			}
-			case 'query_osm_bbox': {
-				if (!hasExplicitBbox(args)) {
-					throw new Error('west, south, east, and north are required and must be numbers')
-				}
-				const west = toFiniteNumber(args.west) as number
-				const south = toFiniteNumber(args.south) as number
-				const east = toFiniteNumber(args.east) as number
-				const north = toFiniteNumber(args.north) as number
-				const response = await client.QueryOsmBbox(
-					west,
-					south,
-					east,
-					north,
-					normalizeFilters(args.filters),
-					clampLimit(args.limit, DEFAULT_QUERY_LIMIT),
-				)
-				result = response.result
-				break
-			}
-			case 'import_osm_to_editor': {
-				const name = typeof args.name === 'string' ? args.name.trim() : ''
-				if (!name) {
-					throw new Error('name is required')
-				}
+        result = {
+          snapshotId,
+          mimeType,
+          width: capture.width,
+          height: capture.height,
+          dataUrlLength: capture.dataUrl.length,
+          mapView: snapshot.mapView,
+        };
+        break;
+      }
+      case "search_location": {
+        const query = typeof args.query === "string" ? args.query.trim() : "";
+        if (!query) {
+          throw new Error("query must be a non-empty string");
+        }
+        const response = await client.SearchLocation(
+          query,
+          clampLimit(args.limit, 5),
+        );
+        result = response.result;
+        break;
+      }
+      case "reverse_lookup": {
+        const lat = toFiniteNumber(args.lat);
+        const lon = toFiniteNumber(args.lon);
+        const zoom = toFiniteNumber(args.zoom);
+        if (lat === undefined || lon === undefined) {
+          throw new Error("lat and lon must be valid numbers");
+        }
+        const response = await client.ReverseLookup(lat, lon, zoom);
+        result = response.result;
+        break;
+      }
+      case "query_osm_by_id": {
+        const osmId = toFiniteNumber(args.osmId);
+        if (
+          typeof args.osmType !== "string" ||
+          !["node", "way", "relation"].includes(args.osmType)
+        ) {
+          throw new Error("osmType must be one of: node, way, relation");
+        }
+        if (osmId === undefined) {
+          throw new Error("osmId must be a valid number");
+        }
+        const response = await client.QueryOsmById(
+          args.osmType,
+          Math.floor(osmId),
+        );
+        result = response.result;
+        break;
+      }
+      case "query_osm_nearby": {
+        const lat = toFiniteNumber(args.lat);
+        const lon = toFiniteNumber(args.lon);
+        const radius = toFiniteNumber(args.radius);
+        if (lat === undefined || lon === undefined) {
+          throw new Error("lat and lon must be valid numbers");
+        }
+        const response = await client.QueryOsmNearby(
+          lat,
+          lon,
+          radius,
+          normalizeFilters(args.filters),
+          clampLimit(args.limit, DEFAULT_QUERY_LIMIT),
+        );
+        result = response.result;
+        break;
+      }
+      case "query_osm_bbox": {
+        if (!hasExplicitBbox(args)) {
+          throw new Error(
+            "west, south, east, and north are required and must be numbers",
+          );
+        }
+        const west = toFiniteNumber(args.west) as number;
+        const south = toFiniteNumber(args.south) as number;
+        const east = toFiniteNumber(args.east) as number;
+        const north = toFiniteNumber(args.north) as number;
+        const response = await client.QueryOsmBbox(
+          west,
+          south,
+          east,
+          north,
+          normalizeFilters(args.filters),
+          clampLimit(args.limit, DEFAULT_QUERY_LIMIT),
+        );
+        result = response.result;
+        break;
+      }
+      case "import_osm_to_editor": {
+        const name = typeof args.name === "string" ? args.name.trim() : "";
+        if (!name) {
+          throw new Error("name is required");
+        }
 
-				const limit = clampLimit(args.limit, DEFAULT_IMPORT_LIMIT)
-				const replaceExisting = Boolean(args.replaceExisting)
-				const filters = normalizeFilters(args.filters)
+        const limit = clampLimit(args.limit, DEFAULT_IMPORT_LIMIT);
+        const replaceExisting = Boolean(args.replaceExisting);
+        const filters = normalizeFilters(args.filters);
 
-				let source = 'viewport'
-				let usedBbox: [number, number, number, number] | null = null
-				let rawFeatures: unknown[] = []
+        let source = "viewport";
+        let usedBbox: [number, number, number, number] | null = null;
+        let rawFeatures: unknown[] = [];
 
-				if (hasExplicitPoint(args)) {
-					source = 'nearby'
-					const lat = toFiniteNumber(args.lat) as number
-					const lon = toFiniteNumber(args.lon) as number
-					const response = await client.QueryOsmNearby(
-						lat,
-						lon,
-						clampLimit(args.radius, 500),
-						filters,
-						limit,
-					)
-					rawFeatures = Array.isArray(response.result.features) ? response.result.features : []
-				} else {
-					if (hasExplicitBbox(args)) {
-						source = 'bbox'
-						usedBbox = [
-							toFiniteNumber(args.west) as number,
-							toFiniteNumber(args.south) as number,
-							toFiniteNumber(args.east) as number,
-							toFiniteNumber(args.north) as number,
-						]
-					} else {
-						usedBbox = getEditorViewportBbox()
-						if (!usedBbox) {
-							source = 'search_location'
-							const searchResponse = await client.SearchLocation(name, 1)
-							const first = searchResponse.result.results[0]
-							usedBbox = ensureBbox(first?.boundingbox)
+        if (hasExplicitPoint(args)) {
+          source = "nearby";
+          const lat = toFiniteNumber(args.lat) as number;
+          const lon = toFiniteNumber(args.lon) as number;
+          const response = await client.QueryOsmNearby(
+            lat,
+            lon,
+            clampLimit(args.radius, 500),
+            filters,
+            limit,
+          );
+          rawFeatures = Array.isArray(response.result.features)
+            ? response.result.features
+            : [];
+        } else {
+          if (hasExplicitBbox(args)) {
+            source = "bbox";
+            usedBbox = [
+              toFiniteNumber(args.west) as number,
+              toFiniteNumber(args.south) as number,
+              toFiniteNumber(args.east) as number,
+              toFiniteNumber(args.north) as number,
+            ];
+          } else {
+            usedBbox = getEditorViewportBbox();
+            if (!usedBbox) {
+              source = "search_location";
+              const searchResponse = await client.SearchLocation(name, 1);
+              const first = searchResponse.result.results[0];
+              usedBbox = ensureBbox(first?.boundingbox);
 
-							if (!usedBbox) {
-								throw new Error(
-									'No map viewport available and location search did not return a bounding box.',
-								)
-							}
-						}
-					}
+              if (!usedBbox) {
+                throw new Error(
+                  "No map viewport available and location search did not return a bounding box.",
+                );
+              }
+            }
+          }
 
-					const response = await client.QueryOsmBbox(
-						usedBbox[0],
-						usedBbox[1],
-						usedBbox[2],
-						usedBbox[3],
-						filters,
-						limit,
-					)
-					rawFeatures = Array.isArray(response.result.features) ? response.result.features : []
-				}
+          const response = await client.QueryOsmBbox(
+            usedBbox[0],
+            usedBbox[1],
+            usedBbox[2],
+            usedBbox[3],
+            filters,
+            limit,
+          );
+          rawFeatures = Array.isArray(response.result.features)
+            ? response.result.features
+            : [];
+        }
 
-				const validFeatures = rawFeatures
-					.map(asFeatureObject)
-					.filter((feature): feature is GeoJSON.Feature => feature !== null)
-				const matchedByName = validFeatures.filter((feature) => featureMatchesName(feature, name))
-				const selected = matchedByName.length > 0 ? matchedByName : validFeatures
+        const validFeatures = rawFeatures
+          .map(asFeatureObject)
+          .filter((feature): feature is GeoJSON.Feature => feature !== null);
+        const matchedByName = validFeatures.filter((feature) =>
+          featureMatchesName(feature, name),
+        );
+        const selected =
+          matchedByName.length > 0 ? matchedByName : validFeatures;
 
-				const importResult = importFeaturesToEditor(selected, replaceExisting)
+        const importResult = importFeaturesToEditor(selected, replaceExisting);
 
-				result = {
-					source,
-					name,
-					filters: filters ?? null,
-					usedBbox,
-					queryResultCount: validFeatures.length,
-					nameMatchedCount: matchedByName.length,
-					importedCount: importResult.importedCount,
-					skippedDuplicates: importResult.skippedDuplicates,
-					totalFeaturesInEditor: importResult.totalFeaturesInEditor,
-					replaceExisting,
-					warning:
-						matchedByName.length === 0
-							? 'No name-matching features found; imported unfiltered query results.'
-							: null,
-				}
-				break
-			}
-			default:
-				throw new Error(`Unknown tool: ${toolCall.function.name}`)
-		}
+        result = {
+          source,
+          name,
+          filters: filters ?? null,
+          usedBbox,
+          queryResultCount: validFeatures.length,
+          nameMatchedCount: matchedByName.length,
+          importedCount: importResult.importedCount,
+          skippedDuplicates: importResult.skippedDuplicates,
+          totalFeaturesInEditor: importResult.totalFeaturesInEditor,
+          replaceExisting,
+          warning:
+            matchedByName.length === 0
+              ? "No name-matching features found; imported unfiltered query results."
+              : null,
+        };
+        break;
+      }
+      default:
+        throw new Error(`Unknown tool: ${toolCall.function.name}`);
+    }
 
-		return {
-			tool_call_id: toolCall.id,
-			role: 'tool',
-			content: serializeToolResult(result),
-		}
-	} catch (error) {
-		return {
-			tool_call_id: toolCall.id,
-			role: 'tool',
-			content: JSON.stringify({
-				error: error instanceof Error ? error.message : 'Tool execution failed',
-			}),
-		}
-	}
+    console.log("tool result", result);
+
+    return {
+      tool_call_id: toolCall.id,
+      role: "tool",
+      content: serializeToolResult(result),
+    };
+  } catch (error) {
+    return {
+      tool_call_id: toolCall.id,
+      role: "tool",
+      content: JSON.stringify({
+        error: error instanceof Error ? error.message : "Tool execution failed",
+      }),
+    };
+  }
 }
