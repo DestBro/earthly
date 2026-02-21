@@ -213,6 +213,148 @@ graph LR
 **Server identity:** Hardcoded pubkey `ceadb7d...b304cc`
 **Relays:** `wss://relay.wavefunc.live` (production), `ws://localhost:3334` (dev)
 
+## Roadmap: Planned MCP Servers & Tools
+
+> Full design document: [docs/GEO_AI_ARCHITECTURE.md](../../../docs/GEO_AI_ARCHITECTURE.md)
+
+### Design Principles
+
+1. **No REST APIs** — All backend services are ContextVM servers over Nostr
+2. **Bring Your Own AI (BYOAI)** — User chooses and pays for their AI provider directly (Routstr, Ollama, LM Studio, any OpenAI-compatible endpoint)
+3. **ContextVM for Tools** — Domain-specific tools via MCP over Nostr, replacing traditional web servers
+4. **Client-Side Orchestration** — Frontend handles AI <-> Tool coordination; no middleman sees queries or payments
+
+Three ContextVM MCP servers are planned. The **Geo Server already exists**; the other two are next.
+
+### Planned ContextVM Servers
+
+```mermaid
+graph TB
+    subgraph "Frontend Tool Router"
+        TR["tools.ts<br/>executeToolCall()"]
+    end
+
+    TR --> GS
+    TR --> WS
+    TR --> GEN
+
+    subgraph "1. Geo Server ✅ (contextvm/server.ts)"
+        GS["earthly-geo-server"]
+        GS --> GS_DONE["✅ search_location<br/>✅ reverse_lookup<br/>✅ query_osm_by_id<br/>✅ query_osm_nearby<br/>✅ query_osm_bbox<br/>✅ create_map_extract<br/>✅ create_map_upload"]
+        GS --> GS_NEW["🔲 calculate_route<br/>🔲 route_with_waypoints<br/>🔲 generate_isochrone<br/>🔲 buffer_geometry<br/>🔲 simplify_geometry<br/>🔲 union_geometries<br/>🔲 clip_to_boundary"]
+    end
+
+    subgraph "2. Web Server 🔲 (contextvm/web-server.ts)"
+        WS["earthly-web-server"]
+        WS --> WS_TOOLS["🔲 web_search<br/>🔲 fetch_url<br/>🔲 wikipedia_lookup<br/>🔲 wikidata_query<br/>🔲 news_search"]
+    end
+
+    subgraph "3. AI Generation Server 🔲 (contextvm/gen-server.ts)"
+        GEN["earthly-gen-server"]
+        GEN --> GEN_TOOLS["🔲 describe_region<br/>🔲 interpolate_path<br/>🔲 suggest_boundaries<br/>🔲 classify_land_use<br/>🔲 generate_labels"]
+    end
+
+    GS_DONE --> NOM["Nominatim"]
+    GS_DONE --> OVP["Overpass API"]
+    GS_DONE --> PMT["PMTiles + Blossom"]
+    GS_NEW --> OSRM["OSRM / Valhalla"]
+    GS_NEW --> TURF["Turf.js"]
+    WS_TOOLS --> DDG["DuckDuckGo / Brave"]
+    WS_TOOLS --> WIKI["Wikipedia / Wikidata"]
+    GEN_TOOLS --> AI["LLM inference"]
+```
+
+### Server 1: Geo Server — new tools
+
+Already running at `contextvm/server.ts`. These are additional tools to add:
+
+| Tool | Backend | Description |
+|------|---------|-------------|
+| `calculate_route` | OSRM or Valhalla | A→B routing with travel mode (walk/bike/car) |
+| `route_with_waypoints` | OSRM + Overpass | A→B routing that detours past POI categories |
+| `generate_isochrone` | Valhalla | Travel-time polygons (e.g. "15 min walk from here") |
+| `buffer_geometry` | Turf.js | Buffer a point/line/polygon by distance |
+| `simplify_geometry` | Turf.js | Douglas-Peucker simplification |
+| `union_geometries` | Turf.js | Merge overlapping polygons |
+| `clip_to_boundary` | Turf.js | Clip features to an area boundary |
+
+**Already in MCP server but not yet exposed to chat:**
+- `create_map_extract` — extract PMTiles for a bbox (requires 2-step signing flow)
+- `create_map_upload` — upload extracted tiles to Blossom
+
+### Server 2: Web Server (planned)
+
+New MCP server at `contextvm/web-server.ts` for internet research tools:
+
+| Tool | Backend | Description |
+|------|---------|-------------|
+| `web_search` | DuckDuckGo / Brave | General web search |
+| `fetch_url` | HTTP fetch + readability | Fetch and parse a webpage |
+| `wikipedia_lookup` | Wikipedia API | Article by coordinates or topic |
+| `wikidata_query` | SPARQL | Structured geo entity queries |
+| `news_search` | News API | Recent news for a location |
+
+### Server 3: AI Generation Server (planned)
+
+New MCP server at `contextvm/gen-server.ts` for AI-assisted geometry creation:
+
+| Tool | Description |
+|------|-------------|
+| `describe_region` | Natural language → polygon vertices ("Blue Banana" → polygon) |
+| `interpolate_path` | Smooth path generation between points |
+| `suggest_boundaries` | AI-suggested region boundaries from context |
+| `classify_land_use` | Analyze satellite imagery for land classification |
+| `generate_labels` | Smart label placement for features |
+
+### Use Case Examples
+
+| Category | Example Prompts |
+|----------|-----------------|
+| **Creative** | "Draw the Blue Banana megalopolis across Europe" |
+| **Routing** | "Plan a scenic bike route avoiding hills" |
+| | "Find the fastest walking path that passes a pharmacy" |
+| **Historical** | "What buildings here are over 100 years old?" |
+| | "Show me the historical boundary of this city in 1900" |
+| **Analysis** | "What's the walkability score of this neighborhood?" |
+| | "Show 15-minute isochrones from this transit stop" |
+| **Discovery** | "Find all UNESCO sites within 50km" |
+| | "What restaurants here have outdoor seating?" |
+| **Research** | "Summarize recent news about this area" |
+| | "What's the zoning classification for this parcel?" |
+| **Planning** | "Suggest optimal locations for EV chargers" |
+| | "Generate a walking tour of Art Deco buildings" |
+
+### Implementation Phases
+
+```mermaid
+gantt
+    title Geo-AI Copilot Roadmap
+    dateFormat YYYY-MM-DD
+    axisFormat %b
+
+    section Phase 1 ✅
+    Chat panel + streaming           :done, p1a, 2025-01-01, 30d
+    Routstr client + Cashu payments  :done, p1b, after p1a, 20d
+    Existing geo tools in chat       :done, p1c, after p1b, 15d
+    Editor integration (write/import):done, p1d, after p1c, 15d
+    Vision + context management      :done, p1e, after p1d, 10d
+
+    section Phase 2
+    Routing tools (OSRM/Valhalla)    :p2a, 2025-06-01, 30d
+    Geometric operations (Turf.js)   :p2b, after p2a, 20d
+    Isochrone generation             :p2c, after p2b, 15d
+
+    section Phase 3
+    Web search server                :p3a, after p2c, 25d
+    Wikipedia/Wikidata integration   :p3b, after p3a, 15d
+    URL fetch + summarization        :p3c, after p3b, 10d
+
+    section Phase 4
+    NL → geometry generation         :p4a, after p3c, 30d
+    Smart region suggestions         :p4b, after p4a, 20d
+    Land use classification          :p4c, after p4b, 20d
+```
+
 ## Streaming
 
 - Uses `ReadableStream` with `TextDecoder` to parse SSE chunks
