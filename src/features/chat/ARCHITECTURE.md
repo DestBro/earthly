@@ -81,6 +81,9 @@ Geo tools are a mix of:
 | Tool | Parameters | Returns |
 |------|-----------|---------|
 | `get_editor_state` | none | Editor readiness, mode, feature count, map center, zoom, viewport bbox |
+| `capture_map_snapshot` | `mimeType?`, `quality?`, `maxWidth?`, `maxHeight?` | Snapshot metadata + `snapshotId` for vision handoff |
+| `write_geojson_to_editor` | `geojson` or `geojsonText`, `replaceExisting?` | Imports custom GeoJSON directly into editor |
+| `draw_star_feature` | `lat?`, `lon?`, `points?`, `outerRadiusMeters?`, `innerRadiusMeters?`, `rotationDeg?`, `name?`, `replaceExisting?` | Draws a star polygon feature in editor |
 | `search_location` | `query`, `limit?` | Places with coordinates, bbox, addresses |
 | `reverse_lookup` | `lat`, `lon`, `zoom?` | Address for coordinates |
 | `query_osm_by_id` | `osmType`, `osmId` | One OSM feature by exact id |
@@ -89,6 +92,8 @@ Geo tools are a mix of:
 | `import_osm_to_editor` | `name`, optional bbox/point/filters | Imports matching OSM features into editor |
 
 Tools use OpenAI function calling format. Toggled on/off in the UI — when disabled, no `tools` array is sent with the request.
+
+When tools are enabled, each request gets an ephemeral system preflight message containing current map context JSON (center/zoom/bbox/layers/selection) so the model starts with map awareness before choosing tools.
 
 **Example map-edit chain:**
 ```

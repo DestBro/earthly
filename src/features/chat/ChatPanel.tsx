@@ -377,15 +377,30 @@ interface ParsedAssistantContent {
 	reasoningBlocks: string[]
 }
 
+function contentToDisplayText(content: ChatMessage['content']): string {
+	if (typeof content === 'string') return content
+	if (!content) return ''
+
+	return content
+		.map((part) => {
+			if (part.type === 'text') return part.text
+			if (part.type === 'image_url') return '[Image]'
+			return ''
+		})
+		.filter((part) => part.length > 0)
+		.join('\n')
+}
+
 function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 	const isUser = message.role === 'user'
 	const isTool = message.role === 'tool'
 	const isAssistant = message.role === 'assistant'
 	const hasToolCalls =
 		message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0
+	const contentText = contentToDisplayText(message.content)
 	const parsedAssistantContent: ParsedAssistantContent = isAssistant
-		? parseAssistantContent(message.content || '')
-		: { answerText: message.content || '', reasoningBlocks: [] }
+		? parseAssistantContent(contentText)
+		: { answerText: contentText, reasoningBlocks: [] }
 
 	// Tool result message
 	if (isTool) {
@@ -397,7 +412,7 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 				<div className="rounded-lg px-3 py-2 max-w-[85%] text-xs bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
 					<p className="font-medium text-blue-700 dark:text-blue-300 mb-1">Tool Result</p>
 					<pre className="whitespace-pre-wrap break-words text-muted-foreground overflow-x-auto max-h-32 overflow-y-auto">
-						{truncateToolResult(message.content || '')}
+						{truncateToolResult(contentText)}
 					</pre>
 				</div>
 			</div>
@@ -461,7 +476,7 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 						isStreaming && 'animate-pulse',
 					)}
 				>
-					<p className="whitespace-pre-wrap break-words">{message.content}</p>
+					<p className="whitespace-pre-wrap break-words">{contentText}</p>
 				</div>
 			</div>
 		)

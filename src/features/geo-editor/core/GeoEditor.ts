@@ -1420,6 +1420,61 @@ export class GeoEditor {
 		return Number.isFinite(zoom) ? zoom : null
 	}
 
+	/**
+	 * Capture the current map viewport as an image data URL.
+	 */
+	captureMapSnapshot(options?: {
+		mimeType?: 'image/png' | 'image/jpeg'
+		quality?: number
+		maxWidth?: number
+		maxHeight?: number
+	}): { dataUrl: string; width: number; height: number } {
+		const sourceCanvas = this.map.getCanvas()
+		const sourceWidth = sourceCanvas.width
+		const sourceHeight = sourceCanvas.height
+		const maxWidth = options?.maxWidth && options.maxWidth > 0 ? options.maxWidth : sourceWidth
+		const maxHeight = options?.maxHeight && options.maxHeight > 0 ? options.maxHeight : sourceHeight
+		const widthScale = maxWidth / sourceWidth
+		const heightScale = maxHeight / sourceHeight
+		const scale = Math.min(1, widthScale, heightScale)
+		const targetWidth = Math.max(1, Math.floor(sourceWidth * scale))
+		const targetHeight = Math.max(1, Math.floor(sourceHeight * scale))
+		const mimeType = options?.mimeType === 'image/jpeg' ? 'image/jpeg' : 'image/png'
+		const quality =
+			typeof options?.quality === 'number' ? Math.max(0, Math.min(1, options.quality)) : 0.9
+
+		try {
+			if (scale === 1) {
+				return {
+					dataUrl: sourceCanvas.toDataURL(mimeType, quality),
+					width: sourceWidth,
+					height: sourceHeight,
+				}
+			}
+
+			const tempCanvas = document.createElement('canvas')
+			tempCanvas.width = targetWidth
+			tempCanvas.height = targetHeight
+			const ctx = tempCanvas.getContext('2d')
+			if (!ctx) {
+				throw new Error('2D canvas context is unavailable')
+			}
+			ctx.drawImage(sourceCanvas, 0, 0, sourceWidth, sourceHeight, 0, 0, targetWidth, targetHeight)
+
+			return {
+				dataUrl: tempCanvas.toDataURL(mimeType, quality),
+				width: targetWidth,
+				height: targetHeight,
+			}
+		} catch (error) {
+			throw new Error(
+				error instanceof Error
+					? `Failed to capture map snapshot: ${error.message}`
+					: 'Failed to capture map snapshot',
+			)
+		}
+	}
+
 	selectFeature(featureId: string, additive: boolean = false): void {
 		const feature = this.features.get(featureId)
 		if (!feature) return

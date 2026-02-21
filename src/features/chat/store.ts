@@ -11,15 +11,307 @@ import {
 	estimateMaxCost,
 	BUILTIN_PROVIDERS,
 } from './routstr'
-import { geoTools, executeToolCall } from './tools'
+import {
+	createMapContextSystemMessage,
+	geoTools,
+	executeToolCall,
+	consumeMapSnapshot,
+} from './tools'
 import { nip60Actions, useNip60Store } from '@/lib/stores/nip60'
 import { toast } from 'sonner'
 
 // Default max tokens to limit cost - can be adjusted
 // Lower value = lower prepayment (unused balance is refunded)
 const DEFAULT_MAX_TOKENS = 512
+const CONTEXT_SAFETY_TOKENS = 256
+const LMSTUDIO_CONTEXT_SAFETY_TOKENS = 1536
+const MIN_PROMPT_BUDGET_TOKENS = 512
+const DEFAULT_LMSTUDIO_CONTEXT_TOKENS = 4096
+const DEFAULT_OLLAMA_CONTEXT_TOKENS = 8192
+const DEFAULT_GENERIC_CONTEXT_TOKENS = 16384
+const LMSTUDIO_HARD_CONTEXT_CAP_TOKENS = 4096
+const MAX_USER_MESSAGE_CHARS = 6000
+const MAX_ASSISTANT_MESSAGE_CHARS = 8000
+const MAX_TOOL_MESSAGE_CHARS = 12000
+const MAX_SYSTEM_MESSAGE_CHARS = 1800
+const BUDGET_ESTIMATE_CHARS_PER_TOKEN = 2
+const MESSAGE_TOKEN_OVERHEAD = 24
+const MIN_CONTEXT_TOKENS_FOR_INLINE_IMAGE = 16000
 
-function resolveProvider(type: ProviderType, customEndpoint: string, customApiKey: string): ProviderConfig {
+function messageContentToText(content: ChatMessage['content']): string {
+	if (typeof content === 'string') return content
+	if (!content) return ''
+
+	return content
+		.map((part) => {
+			if (part.type === 'text') return part.text
+			if (part.type === 'image_url') return part.image_url?.url ?? '[image]'
+			return ''
+		})
+		.join(' ')
+}
+
+function truncateTextForPrompt(text: string, maxChars: number): string {
+	if (text.length <= maxChars) return text
+	return `${text.slice(0, maxChars)}\n...[truncated for context window]`
+}
+
+function getMessageCharLimit(role: ChatMessage['role']): number {
+	switch (role) {
+		case 'tool':
+			return MAX_TOOL_MESSAGE_CHARS
+		case 'assistant':
+			return MAX_ASSISTANT_MESSAGE_CHARS
+		case 'system':
+			return MAX_SYSTEM_MESSAGE_CHARS
+		default:
+			return MAX_USER_MESSAGE_CHARS
+	}
+}
+
+function sanitizeMessageForPrompt(message: ChatMessage): ChatMessage {
+	const maxChars = getMessageCharLimit(message.role)
+	const { content } = message
+
+	if (typeof content === 'string') {
+		return {
+			...message,
+			content: truncateTextForPrompt(content, maxChars),
+		}
+	}
+
+	if (!content) return message
+
+	let remainingChars = maxChars
+	const sanitizedParts = content
+		.map((part) => {
+			if (part.type !== 'text') return part
+			if (remainingChars <= 0) {
+				return null
+			}
+
+			const truncated = truncateTextForPrompt(part.text, remainingChars)
+			remainingChars -= truncated.length
+			return { ...part, text: truncated }
+		})
+		.filter((part): part is NonNullable<typeof part> => part !== null)
+
+	return {
+		...message,
+		content: sanitizedParts.length > 0 ? sanitizedParts : '',
+	}
+}
+
+function estimateMessageTokensForBudget(message: ChatMessage): number {
+	const contentText = messageContentToText(message.content)
+	const toolCallsText = message.tool_calls ? JSON.stringify(message.tool_calls) : ''
+	const combined = `${contentText}${toolCallsText}`
+	return Math.ceil(combined.length / BUDGET_ESTIMATE_CHARS_PER_TOKEN) + MESSAGE_TOKEN_OVERHEAD
+}
+
+function truncateMessageToTokenBudget(message: ChatMessage, budgetTokens: number): ChatMessage {
+	const maxChars = Math.max(128, budgetTokens * BUDGET_ESTIMATE_CHARS_PER_TOKEN)
+	const { content } = message
+
+	if (typeof content === 'string') {
+		return {
+			...message,
+			content: truncateTextForPrompt(content, maxChars),
+		}
+	}
+
+	if (!content) {
+		return {
+			...message,
+			content: '[content omitted for context window]',
+		}
+	}
+
+	let remainingChars = maxChars
+	const truncatedParts = content
+		.map((part) => {
+			if (remainingChars <= 0) return null
+
+			if (part.type === 'text') {
+				const truncated = truncateTextForPrompt(part.text, remainingChars)
+				remainingChars -= truncated.length
+				return { ...part, text: truncated }
+			}
+
+			const imageUrl = part.image_url?.url ?? ''
+			if (imageUrl.length <= remainingChars) {
+				remainingChars -= imageUrl.length
+				return part
+			}
+
+			const placeholder = '[image omitted for context window]'
+			if (placeholder.length > remainingChars) return null
+			remainingChars -= placeholder.length
+			return { type: 'text' as const, text: placeholder }
+		})
+		.filter((part): part is NonNullable<typeof part> => part !== null)
+
+	return {
+		...message,
+		content: truncatedParts.length > 0 ? truncatedParts : '[content omitted for context window]',
+	}
+}
+
+function getEffectiveContextTokens(model: RoutstrModel, provider: ProviderConfig): number {
+	if (provider.type === 'lmstudio') {
+		// LM Studio often reports the model's theoretical max context while the runtime
+		// slot may be smaller (commonly 4096). Use a hard cap for safe prompt trimming.
+		const reported =
+			typeof model.contextLength === 'number' && model.contextLength > 0
+				? model.contextLength
+				: DEFAULT_LMSTUDIO_CONTEXT_TOKENS
+		return Math.min(reported, LMSTUDIO_HARD_CONTEXT_CAP_TOKENS)
+	}
+
+	if (typeof model.contextLength === 'number' && model.contextLength > 0) {
+		return model.contextLength
+	}
+
+	switch (provider.type) {
+		case 'lmstudio':
+			return DEFAULT_LMSTUDIO_CONTEXT_TOKENS
+		case 'ollama':
+			return DEFAULT_OLLAMA_CONTEXT_TOKENS
+		default:
+			return DEFAULT_GENERIC_CONTEXT_TOKENS
+	}
+}
+
+function getPromptBudgetTokens(
+	model: RoutstrModel,
+	provider: ProviderConfig,
+	maxTokens: number,
+): number {
+	const contextTokens = getEffectiveContextTokens(model, provider)
+	const completionReserve = Math.max(64, maxTokens)
+	const safetyTokens =
+		provider.type === 'lmstudio' ? LMSTUDIO_CONTEXT_SAFETY_TOKENS : CONTEXT_SAFETY_TOKENS
+	return Math.max(MIN_PROMPT_BUDGET_TOKENS, contextTokens - completionReserve - safetyTokens)
+}
+
+function trimMessagesToPromptBudget(messages: ChatMessage[], budgetTokens: number): ChatMessage[] {
+	if (messages.length === 0) return messages
+	const sanitized = messages.map(sanitizeMessageForPrompt)
+	const selected: ChatMessage[] = []
+	let usedTokens = 0
+
+	for (let i = sanitized.length - 1; i >= 0; i--) {
+		let candidate = sanitized[i]
+		let candidateTokens = estimateMessageTokensForBudget(candidate)
+
+		if (usedTokens + candidateTokens > budgetTokens) {
+			if (selected.length === 0) {
+				candidate = truncateMessageToTokenBudget(candidate, budgetTokens)
+				candidateTokens = estimateMessageTokensForBudget(candidate)
+				if (candidateTokens > budgetTokens) {
+					candidate = {
+						...candidate,
+						content: '[message truncated for context window]',
+					}
+				}
+				selected.unshift(candidate)
+			}
+			break
+		}
+
+		usedTokens += candidateTokens
+		selected.unshift(candidate)
+	}
+
+	while (selected.length > 1 && selected[0]?.role === 'tool') {
+		selected.shift()
+	}
+
+	return selected.length > 0
+		? selected
+		: [truncateMessageToTokenBudget(sanitized.at(-1) as ChatMessage, budgetTokens)]
+}
+
+function modelMaySupportVision(provider: ProviderConfig, modelId: string): boolean {
+	const lower = modelId.toLowerCase()
+	const visionHints = [
+		'vision',
+		'vl',
+		'llava',
+		'qwen2.5-vl',
+		'gemma-vision',
+		'pixtral',
+		'gpt-4o',
+		'claude-3',
+	]
+	const providerSupportsVisionTransport =
+		provider.type === 'lmstudio' || provider.type === 'routstr' || provider.type === 'custom'
+	return providerSupportsVisionTransport && visionHints.some((hint) => lower.includes(hint))
+}
+
+function tryExtractSnapshotId(toolResultContent: string): string | null {
+	try {
+		const parsed = JSON.parse(toolResultContent) as Record<string, unknown>
+		return typeof parsed.snapshotId === 'string' ? parsed.snapshotId : null
+	} catch {
+		return null
+	}
+}
+
+function isContextOverflowError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error)
+	const lower = message.toLowerCase()
+	return (
+		lower.includes('exceeds the available context size') ||
+		lower.includes('cannot truncate prompt with n_keep') ||
+		lower.includes('n_ctx')
+	)
+}
+
+function buildEmergencyRetryMessages(conversationMessages: ChatMessage[]): ChatMessage[] {
+	const sanitized = conversationMessages.map(sanitizeMessageForPrompt)
+	const recentUserMessages = sanitized
+		.filter((message) => message.role === 'user')
+		.slice(-2)
+		.map((message) => truncateMessageToTokenBudget(message, 220))
+	const latestToolMessage = [...sanitized].reverse().find((message) => message.role === 'tool')
+
+	const messages: ChatMessage[] = [
+		{
+			role: 'system',
+			content: [
+				'Context window recovery mode.',
+				'Preserve user intent from recent turns.',
+				'If user asks to draw/edit map features, call tools directly with sensible defaults instead of asking to restate.',
+				'Keep output concise.',
+			].join(' '),
+		},
+	]
+
+	if (latestToolMessage) {
+		messages.push({
+			role: 'system',
+			content: `Most recent tool output excerpt:\n${truncateTextForPrompt(
+				messageContentToText(latestToolMessage.content),
+				900,
+			)}`,
+		})
+	}
+
+	if (recentUserMessages.length === 0) {
+		messages.push({ role: 'user', content: 'Continue with a concise response.' })
+		return messages
+	}
+
+	messages.push(...recentUserMessages)
+	return messages
+}
+
+function resolveProvider(
+	type: ProviderType,
+	customEndpoint: string,
+	customApiKey: string,
+): ProviderConfig {
 	if (type === 'custom') {
 		return {
 			type: 'custom',
@@ -137,9 +429,10 @@ export const useChatStore = create<ChatStore>()(
 					set({
 						models,
 						modelsLoading: false,
-						selectedModel: selectedModel && models.find((m) => m.id === selectedModel)
-							? selectedModel
-							: models[0]?.id ?? null,
+						selectedModel:
+							selectedModel && models.find((m) => m.id === selectedModel)
+								? selectedModel
+								: (models[0]?.id ?? null),
 					})
 				} catch (err) {
 					const message = err instanceof Error ? err.message : 'Failed to load models'
@@ -166,7 +459,15 @@ export const useChatStore = create<ChatStore>()(
 			},
 
 			sendMessage: async (content: string) => {
-				const { selectedModel, models, maxTokens, toolsEnabled, provider, customEndpoint, customApiKey } = get()
+				const {
+					selectedModel,
+					models,
+					maxTokens,
+					toolsEnabled,
+					provider,
+					customEndpoint,
+					customApiKey,
+				} = get()
 				const providerConfig = resolveProvider(provider, customEndpoint, customApiKey)
 
 				if (!selectedModel) {
@@ -212,7 +513,9 @@ export const useChatStore = create<ChatStore>()(
 				}
 
 				// Helper to make a streaming request
-				const makeRequest = async (requestMessages: ChatMessage[]): Promise<{
+				const makeRequest = async (
+					requestMessages: ChatMessage[],
+				): Promise<{
 					content: string
 					toolCalls: ToolCall[]
 					finishReason?: string
@@ -221,7 +524,9 @@ export const useChatStore = create<ChatStore>()(
 
 					// Payment flow only for paid providers
 					if (providerConfig.requiresPayment) {
-						const totalText = requestMessages.map((m) => m.content || '').join(' ')
+						const totalText = requestMessages
+							.map((message) => messageContentToText(message.content))
+							.join(' ')
 						const inputTokens = estimateTokens(totalText)
 						const estimatedCost = estimateMaxCost(model, inputTokens, maxTokens)
 
@@ -234,7 +539,9 @@ export const useChatStore = create<ChatStore>()(
 
 						const currentWalletState = useNip60Store.getState()
 						if (currentWalletState.balance < estimatedCost) {
-							throw new Error(`Insufficient balance. Need ~${estimatedCost} sats, have ${currentWalletState.balance}`)
+							throw new Error(
+								`Insufficient balance. Need ~${estimatedCost} sats, have ${currentWalletState.balance}`,
+							)
 						}
 
 						const mint = currentWalletState.defaultMint || currentWalletState.mints[0]
@@ -279,7 +586,10 @@ export const useChatStore = create<ChatStore>()(
 									set({ streamingContent: accumulatedContent })
 								},
 								onToolCall: (toolCalls: ToolCall[]) => {
-									console.log('[Chat] Received tool calls:', toolCalls.map((t) => t.function.name))
+									console.log(
+										'[Chat] Received tool calls:',
+										toolCalls.map((t) => t.function.name),
+									)
 									accumulatedToolCalls = toolCalls
 								},
 								onComplete: async (refundToken: string | null, finishReason?: string) => {
@@ -307,11 +617,57 @@ export const useChatStore = create<ChatStore>()(
 
 				try {
 					streamAbortController = new AbortController()
-					let currentMessages = [...get().messages]
+					let conversationMessages = [...get().messages]
+					let oneShotVisionMessages: ChatMessage[] = []
+					const effectiveContextTokens = getEffectiveContextTokens(model, providerConfig)
+					const canUseVision =
+						modelMaySupportVision(providerConfig, selectedModel) &&
+						effectiveContextTokens >= MIN_CONTEXT_TOKENS_FOR_INLINE_IMAGE
+					const promptBudgetTokens = getPromptBudgetTokens(model, providerConfig, maxTokens)
 
 					// Loop to handle tool calls (max 5 rounds to prevent infinite loops)
 					for (let round = 0; round < 5; round++) {
-						const result = await makeRequest(currentMessages)
+						let requestMessages: ChatMessage[] = [...conversationMessages]
+						if (oneShotVisionMessages.length > 0) {
+							requestMessages.push(...oneShotVisionMessages)
+							oneShotVisionMessages = []
+						}
+
+						let mapContextMessage: ChatMessage | null = null
+						if (toolsEnabled) {
+							mapContextMessage = createMapContextSystemMessage()
+						}
+
+						const mapContextTokens = mapContextMessage
+							? estimateMessageTokensForBudget(sanitizeMessageForPrompt(mapContextMessage))
+							: 0
+						const conversationBudget = Math.max(
+							MIN_PROMPT_BUDGET_TOKENS,
+							promptBudgetTokens - mapContextTokens,
+						)
+						requestMessages = trimMessagesToPromptBudget(requestMessages, conversationBudget)
+
+						if (mapContextMessage) {
+							requestMessages = [sanitizeMessageForPrompt(mapContextMessage), ...requestMessages]
+						}
+
+						let result: {
+							content: string
+							toolCalls: ToolCall[]
+							finishReason?: string
+						}
+
+						try {
+							result = await makeRequest(requestMessages)
+						} catch (error) {
+							if (!isContextOverflowError(error)) {
+								throw error
+							}
+
+							console.warn('[Chat] Context overflow detected. Retrying with reduced prompt.')
+							const emergencyMessages = buildEmergencyRetryMessages(conversationMessages)
+							result = await makeRequest(emergencyMessages)
+						}
 
 						// If we got tool calls, execute them and continue
 						if (result.toolCalls.length > 0) {
@@ -323,8 +679,8 @@ export const useChatStore = create<ChatStore>()(
 								content: result.content || null,
 								tool_calls: result.toolCalls,
 							}
-							currentMessages = [...currentMessages, assistantMessage]
-							set({ messages: currentMessages })
+							conversationMessages = [...conversationMessages, assistantMessage]
+							set({ messages: conversationMessages })
 
 							// Execute each tool call
 							for (const toolCall of result.toolCalls) {
@@ -337,8 +693,32 @@ export const useChatStore = create<ChatStore>()(
 									content: toolResult.content,
 									tool_call_id: toolResult.tool_call_id,
 								}
-								currentMessages = [...currentMessages, toolMessage]
-								set({ messages: currentMessages })
+								conversationMessages = [...conversationMessages, toolMessage]
+								set({ messages: conversationMessages })
+
+								if (canUseVision && toolCall.function.name === 'capture_map_snapshot') {
+									const snapshotId = tryExtractSnapshotId(toolResult.content)
+									if (!snapshotId) continue
+
+									const snapshot = consumeMapSnapshot(snapshotId)
+									if (!snapshot) continue
+
+									oneShotVisionMessages.push({
+										role: 'user',
+										content: [
+											{
+												type: 'text',
+												text: 'Map snapshot for visual analysis. Use this image together with the tool outputs.',
+											},
+											{
+												type: 'image_url',
+												image_url: {
+													url: snapshot.dataUrl,
+												},
+											},
+										],
+									})
+								}
 							}
 
 							set({ executingTools: false })
@@ -352,11 +732,12 @@ export const useChatStore = create<ChatStore>()(
 								role: 'assistant',
 								content: result.content,
 							}
-							set((state) => ({
-								messages: [...state.messages, assistantMessage],
+							conversationMessages = [...conversationMessages, assistantMessage]
+							set({
+								messages: conversationMessages,
 								isStreaming: false,
 								streamingContent: '',
-							}))
+							})
 						} else {
 							set({ isStreaming: false, streamingContent: '' })
 						}
