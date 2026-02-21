@@ -87,10 +87,17 @@ export const geoTools: Tool[] = [
 		function: {
 			name: 'get_editor_state',
 			description:
-				'Get current map editor context (center, zoom, viewport bbox, feature count, mode). Use this before map-editing operations.',
+				"Get current map editor context (center, zoom, viewport bbox, feature count, mode). Returns compact output by default; use detail='full' only when needed.",
 			parameters: {
 				type: 'object',
-				properties: {},
+				properties: {
+					detail: {
+						type: 'string',
+						description:
+							"Response detail level. 'compact' (default) omits large arrays like visible dataset ids. 'full' returns the full snapshot.",
+						enum: ['compact', 'full'],
+					},
+				},
 			},
 		},
 	},
@@ -471,15 +478,45 @@ function getMapContextSnapshot() {
 }
 
 function getCompactMapContextForPrompt(snapshot: ReturnType<typeof getMapContextSnapshot>) {
+	const selectedFeatureHints = snapshot.selectedFeatures.slice(0, 4).map((feature) => ({
+		geometryType: feature.geometryType,
+		name: feature.name ?? null,
+	}))
+
+	const visibleLayerIds = snapshot.visibleLayers.map((layer) => layer.id).slice(0, 8)
+
 	return {
 		editorReady: snapshot.editorReady,
 		mode: snapshot.mode,
 		featureCount: snapshot.featureCount,
 		selectedFeatureCount: snapshot.selectedFeatureCount,
 		mapView: snapshot.mapView,
+		featureGeometryCounts: snapshot.featureGeometryCounts,
 		mapSource: snapshot.mapSource,
-		visibleLayerIds: snapshot.visibleLayers.map((layer) => layer.id).slice(0, 12),
-		selectedFeatureHints: snapshot.selectedFeatures.slice(0, 5).map((feature) => ({
+		enabledLayerCount: snapshot.visibleLayers.length,
+		visibleLayerIds,
+		visibleDatasetCount: snapshot.visibleDatasets.length,
+		selectedFeatureHints,
+	}
+}
+
+function getCompactMapContextForTool(snapshot: ReturnType<typeof getMapContextSnapshot>) {
+	return {
+		editorReady: snapshot.editorReady,
+		mode: snapshot.mode,
+		featureCount: snapshot.featureCount,
+		selectedFeatureCount: snapshot.selectedFeatureCount,
+		featureGeometryCounts: snapshot.featureGeometryCounts,
+		viewportBbox: snapshot.viewportBbox,
+		mapCenter: snapshot.mapCenter,
+		mapZoom: snapshot.mapZoom,
+		mapView: snapshot.mapView,
+		mapSource: snapshot.mapSource,
+		enabledLayerCount: snapshot.visibleLayers.length,
+		visibleLayerIds: snapshot.visibleLayers.map((layer) => layer.id).slice(0, 8),
+		visibleDatasetCount: snapshot.visibleDatasets.length,
+		selectedFeatureHints: snapshot.selectedFeatures.slice(0, 6).map((feature) => ({
+			id: feature.id,
 			geometryType: feature.geometryType,
 			name: feature.name ?? null,
 		})),
@@ -856,7 +893,15 @@ export async function executeToolCall(toolCall: ToolCall): Promise<ToolResult> {
 
 		switch (toolCall.function.name) {
 			case 'get_editor_state': {
-				result = getMapContextSnapshot()
+				const detail = args.detail === 'full' ? 'full' : 'compact'
+				const snapshot = getMapContextSnapshot()
+				result =
+					detail === 'full'
+						? snapshot
+						: {
+								...getCompactMapContextForTool(snapshot),
+								detail,
+							}
 				break
 			}
 			case 'write_geojson_to_editor': {

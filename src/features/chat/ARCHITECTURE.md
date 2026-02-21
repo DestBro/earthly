@@ -80,7 +80,7 @@ Geo tools are a mix of:
 
 | Tool | Parameters | Returns |
 |------|-----------|---------|
-| `get_editor_state` | none | Editor readiness, mode, feature count, map center, zoom, viewport bbox |
+| `get_editor_state` | `detail?` (`compact` default, `full` optional) | Compact editor/map state by default; full snapshot on demand |
 | `capture_map_snapshot` | `mimeType?`, `quality?`, `maxWidth?`, `maxHeight?` | Snapshot metadata + `snapshotId` for vision handoff |
 | `write_geojson_to_editor` | `geojson` or `geojsonText`, `replaceExisting?` | Imports custom GeoJSON directly into editor |
 | `draw_star_feature` | `lat?`, `lon?`, `points?`, `outerRadiusMeters?`, `innerRadiusMeters?`, `rotationDeg?`, `name?`, `replaceExisting?` | Draws a star polygon feature in editor |
