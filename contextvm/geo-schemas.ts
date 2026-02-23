@@ -14,7 +14,7 @@ export const nominatimLocationSchema = z.object({
 	type: z.string(),
 	class: z.string(),
 	importance: z.number().optional(),
-	address: z.record(z.string()).optional(),
+	address: z.record(z.string(), z.string()).optional(),
 	geojson: z.any().optional(),
 });
 
@@ -89,7 +89,7 @@ export type ReverseLookupOutput = {
 
 export const osmElementTypeSchema = z.enum(["node", "way", "relation"]);
 
-export const osmFiltersSchema = z.record(z.string()).describe(
+export const osmFiltersSchema = z.record(z.string(), z.string()).describe(
 	'OSM tag filters. Use "*" for any value, e.g. { highway: "*" } or { highway: "primary" }'
 );
 

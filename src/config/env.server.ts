@@ -35,6 +35,9 @@ export const serverConfig = {
 	/** Blossom base URL used by the server when publishing map layer set announcements */
 	blossomServer: serverEnv.BLOSSOM_SERVER,
 
+	/** SearXNG base URL for web search */
+	searxngUrl: serverEnv.SEARXNG_URL,
+
 	/** Whether running in production mode */
 	isProduction: serverEnv.NODE_ENV === 'production',
 

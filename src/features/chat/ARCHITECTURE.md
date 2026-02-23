@@ -83,7 +83,7 @@ Geo tools are a mix of:
 | `get_editor_state` | `detail?` (`compact` default, `full` optional) | Compact editor/map state by default; full snapshot on demand |
 | `capture_map_snapshot` | `mimeType?`, `quality?`, `maxWidth?`, `maxHeight?` | Snapshot metadata + `snapshotId` for vision handoff |
 | `write_geojson_to_editor` | `geojson` or `geojsonText`, `replaceExisting?` | Imports custom GeoJSON directly into editor |
-| `draw_star_feature` | `lat?`, `lon?`, `points?`, `outerRadiusMeters?`, `innerRadiusMeters?`, `rotationDeg?`, `name?`, `replaceExisting?` | Draws a star polygon feature in editor |
+| `add_feature_to_editor` | `feature?` or `geometry`, `properties?`, `id?`, `replaceExisting?` | Adds one LLM-generated GeoJSON feature into editor |
 | `search_location` | `query`, `limit?` | Places with coordinates, bbox, addresses |
 | `reverse_lookup` | `lat`, `lon`, `zoom?` | Address for coordinates |
 | `query_osm_by_id` | `osmType`, `osmId` | One OSM feature by exact id |

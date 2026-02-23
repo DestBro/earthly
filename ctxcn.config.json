@@ -1,7 +1,6 @@
 {
   "source": "src/ctxcn",
   "relays": [
-    "wss://relay.contextvm.org/",
     "ws://localhost:3334"
   ],
   "addedClients": [

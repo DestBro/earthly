@@ -226,8 +226,8 @@ export function ChatPanel() {
 							)}
 							title={
 								toolsEnabled
-									? 'Geo + map editor tools enabled (GPT/Claude models recommended)'
-									: 'Geo tools disabled - click to enable'
+									? 'Geo, map editor, and web tools enabled (GPT/Claude models recommended)'
+									: 'Tools disabled - click to enable'
 							}
 						>
 							<MapPin className="h-3 w-3" />
@@ -268,7 +268,7 @@ export function ChatPanel() {
 						{toolsEnabled && (
 							<p className="text-xs mt-2 text-orange-600 dark:text-orange-400">
 								<MapPin className="inline h-3 w-3 mr-1" />
-								Geo tools enabled (search, OSM queries, and import directly into the editor)
+								Tools enabled (geo search, OSM queries, web search, and Wikipedia)
 							</p>
 						)}
 					</div>

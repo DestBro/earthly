@@ -1,7 +1,7 @@
 import {
   NostrServerTransport,
   PrivateKeySigner,
-  SimpleRelayPool,
+  ApplesauceRelayPool,
 } from "@contextvm/sdk";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { serverConfig } from "../src/config/env.server";
@@ -20,6 +20,14 @@ import {
   createMapUploadInputSchema,
   createMapUploadOutputSchema,
 } from "./geo-schemas.ts";
+import {
+  webSearchInputSchema,
+  webSearchOutputSchema,
+  fetchUrlInputSchema,
+  fetchUrlOutputSchema,
+  wikipediaLookupInputSchema,
+  wikipediaLookupOutputSchema,
+} from "./web-schemas.ts";
 import { reverseLookup, searchLocation } from "./tools/nominatim.ts";
 import { queryById, queryNearby, queryBbox } from "./tools/overpass.ts";
 import {
@@ -32,6 +40,9 @@ import {
   checkBlossomServer,
   uploadToBlossomWithAuth,
 } from "./tools/blossom.ts";
+import { webSearch } from "./tools/web-search.ts";
+import { fetchUrl } from "./tools/fetch-url.ts";
+import { wikipediaLookup } from "./tools/wikipedia.ts";
 
 // Configuration from validated environment
 const SERVER_PRIVATE_KEY =
@@ -47,7 +58,7 @@ async function main() {
 
   // 1. Setup Signer and Relay Pool
   const signer = new PrivateKeySigner(SERVER_PRIVATE_KEY);
-  const relayPool = new SimpleRelayPool(RELAYS);
+  const relayPool = new ApplesauceRelayPool(RELAYS);
   const serverPubkey = await signer.getPublicKey();
 
   console.log(`📡 Server Public Key: ${serverPubkey}`);
@@ -349,7 +360,106 @@ async function main() {
     },
   );
 
-  // 16. Configure the Nostr Server Transport
+  // 16. Register Tool: Web Search (SearXNG)
+  mcpServer.registerTool(
+    "web_search",
+    {
+      title: "Web Search (SearXNG)",
+      description:
+        "Search the web using SearXNG. Returns titles, URLs, and content snippets from multiple search engines.",
+      inputSchema: webSearchInputSchema,
+      outputSchema: webSearchOutputSchema,
+    },
+    async ({ query, limit, categories, language }) => {
+      try {
+        console.log(`🔍 Web search: ${query}`);
+        const result = await webSearch(query, limit, categories, language);
+        return {
+          content: [],
+          structuredContent: { result },
+        };
+      } catch (error: any) {
+        console.error(`❌ Web search failed: ${error.message}`);
+        return {
+          content: [],
+          structuredContent: { error: error.message },
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // 17. Register Tool: Fetch URL (Readability)
+  mcpServer.registerTool(
+    "fetch_url",
+    {
+      title: "Fetch URL (Readability)",
+      description:
+        "Fetch a URL and extract readable text content using Mozilla Readability. Returns title, description, and cleaned article text.",
+      inputSchema: fetchUrlInputSchema,
+      outputSchema: fetchUrlOutputSchema,
+    },
+    async ({ url, maxLength }) => {
+      try {
+        console.log(`🌐 Fetching URL: ${url}`);
+        const result = await fetchUrl(url, maxLength);
+        console.log(
+          `📦 Fetched: ${result.title || url} (${result.textLength} chars)`,
+        );
+        return {
+          content: [],
+          structuredContent: { result },
+        };
+      } catch (error: any) {
+        console.error(`❌ Fetch URL failed: ${error.message}`);
+        return {
+          content: [],
+          structuredContent: { error: error.message },
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // 18. Register Tool: Wikipedia Lookup
+  mcpServer.registerTool(
+    "wikipedia_lookup",
+    {
+      title: "Wikipedia Lookup",
+      description:
+        "Look up Wikipedia articles by title or by geographic coordinates. Returns article summaries and coordinates.",
+      inputSchema: wikipediaLookupInputSchema,
+      outputSchema: wikipediaLookupOutputSchema,
+    },
+    async ({ title, lat, lon, radius, limit, language }) => {
+      try {
+        const mode = title ? `title: ${title}` : `geo: ${lat},${lon}`;
+        console.log(`📚 Wikipedia lookup: ${mode}`);
+        const result = await wikipediaLookup({
+          title,
+          lat,
+          lon,
+          radius,
+          limit,
+          language,
+        });
+        console.log(`📦 Found ${result.count} articles`);
+        return {
+          content: [],
+          structuredContent: { result },
+        };
+      } catch (error: any) {
+        console.error(`❌ Wikipedia lookup failed: ${error.message}`);
+        return {
+          content: [],
+          structuredContent: { error: error.message },
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // 19. Configure the Nostr Server Transport
   const serverTransport = new NostrServerTransport({
     signer,
     relayHandler: relayPool,
@@ -358,7 +468,7 @@ async function main() {
       name: "Earthly Geo Server",
       website: "https://earthly.city",
       about:
-        "Geocoding, reverse geocoding (Nominatim), and OpenStreetMap feature queries (Overpass API).",
+        "Geocoding, reverse geocoding, OSM queries, web search, URL fetching, and Wikipedia lookups.",
       picture: "https://openmaptiles.org/img/home-banner-map.png",
     },
   });
@@ -376,6 +486,9 @@ async function main() {
   console.log("   - query_osm_bbox");
   console.log("   - create_map_extract");
   console.log("   - create_map_upload");
+  console.log("   - web_search");
+  console.log("   - fetch_url");
+  console.log("   - wikipedia_lookup");
   console.log(`\n🔑 Client should use server pubkey: ${serverPubkey}`);
   console.log("💡 Press Ctrl+C to exit.\n");
 

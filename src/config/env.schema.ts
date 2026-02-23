@@ -63,6 +63,13 @@ export const envSchema = z.object({
 				: 'http://localhost:3544',
 		),
 
+	// ─────────────────────────────────────────────────────────────────────────
+	// Web Search Configuration
+	// ─────────────────────────────────────────────────────────────────────────
+
+	/** SearXNG instance base URL for web search tool (backend only) */
+	SEARXNG_URL: z.string().url().optional(),
+
 	/** Runtime environment */
 	NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 })

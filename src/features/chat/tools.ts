@@ -163,47 +163,35 @@ export const geoTools: Tool[] = [
   {
     type: "function",
     function: {
-      name: "draw_star_feature",
+      name: "add_feature_to_editor",
       description:
-        "Draw a star polygon into the editor. Uses map center by default when lat/lon are omitted.",
+        "Add one generated GeoJSON feature to the editor. Preferred for direct LLM-authored geometry edits.",
       parameters: {
         type: "object",
         properties: {
-          lat: {
-            type: "number",
-            description: "Optional center latitude in WGS84.",
-          },
-          lon: {
-            type: "number",
-            description: "Optional center longitude in WGS84.",
-          },
-          points: {
-            type: "number",
-            description: "Number of star points (default 5, range 3-16).",
-          },
-          outerRadiusMeters: {
-            type: "number",
+          feature: {
+            type: "object",
             description:
-              "Outer radius in meters from center to tip (default 500).",
+              "Optional full GeoJSON Feature object. If provided, geometry/properties/id fields are ignored.",
           },
-          innerRadiusMeters: {
-            type: "number",
+          geometry: {
+            type: "object",
             description:
-              "Inner radius in meters from center to inner corners (default outerRadius * 0.5).",
+              "GeoJSON Geometry object (Point, LineString, Polygon, etc). Use this when passing a feature piecemeal.",
           },
-          rotationDeg: {
-            type: "number",
-            description:
-              "Clockwise rotation in degrees (default 0; one tip points north).",
+          properties: {
+            type: "object",
+            description: "Optional GeoJSON feature properties object.",
           },
-          name: {
+          id: {
             type: "string",
-            description: "Optional feature name property.",
+            description:
+              "Optional feature id (string/number accepted; converted to string).",
           },
           replaceExisting: {
             type: "boolean",
             description:
-              "If true, replace existing editor features. Default false (append).",
+              "If true, replace existing editor features before adding this feature. Default false (append).",
           },
         },
       },
@@ -418,6 +406,98 @@ export const geoTools: Tool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "web_search",
+      description:
+        "Search the web for information. Returns titles, URLs, and content snippets. Useful for finding current information, facts, and context about places, topics, or anything else.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Search query string",
+          },
+          limit: {
+            type: "number",
+            description: "Maximum results (default 5, max 20)",
+          },
+          categories: {
+            type: "string",
+            description:
+              'Search categories: "general", "science", "it", etc. (default: "general")',
+          },
+          language: {
+            type: "string",
+            description: 'Language code (default: "en")',
+          },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "fetch_url",
+      description:
+        "Fetch a URL and extract its readable text content. Useful for reading articles, documentation, or any web page. Returns cleaned text with title and description.",
+      parameters: {
+        type: "object",
+        properties: {
+          url: {
+            type: "string",
+            description: "The URL to fetch",
+          },
+          maxLength: {
+            type: "number",
+            description:
+              "Max characters of text to return (default 10000, max 50000)",
+          },
+        },
+        required: ["url"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "wikipedia_lookup",
+      description:
+        "Look up Wikipedia articles by title or geographic coordinates. For geo-mapping context, use lat/lon to find articles about nearby landmarks and places. Returns article summaries.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: {
+            type: "string",
+            description: 'Article title (e.g., "Mount Everest")',
+          },
+          lat: {
+            type: "number",
+            description: "Latitude for geographic search",
+          },
+          lon: {
+            type: "number",
+            description: "Longitude for geographic search",
+          },
+          radius: {
+            type: "number",
+            description:
+              "Search radius in meters for geo lookup (default 1000)",
+          },
+          limit: {
+            type: "number",
+            description: "Max articles for geo search (default 5, max 10)",
+          },
+          language: {
+            type: "string",
+            description: 'Wikipedia language code (default: "en")',
+          },
+        },
+      },
+    },
+  },
 ];
 
 // Singleton client instance
@@ -558,8 +638,8 @@ export function createMapContextSystemMessage(): ChatMessage | null {
     content: [
       "You have map-editing tool access in this chat.",
       "If the user asks to draw/create/edit map features, call tools instead of replying that you cannot edit the map.",
-      "For draw requests, execute the tool immediately using defaults unless the user explicitly asks for custom parameters.",
-      "Use write_geojson_to_editor for arbitrary GeoJSON and draw_star_feature for stars.",
+      "For draw requests, generate GeoJSON yourself and call add_feature_to_editor or write_geojson_to_editor directly.",
+      "Do not ask the user for intermediate geometry parameters unless they explicitly want to customize shape details.",
       `Current map state JSON:\n${JSON.stringify(compact)}`,
     ].join("\n\n"),
   };
@@ -870,84 +950,46 @@ function normalizeGeoJsonToFeatures(value: unknown): GeoJSON.Feature[] {
   );
 }
 
-function createStarFeature(options: {
-  lat: number;
-  lon: number;
-  points: number;
-  outerRadiusMeters: number;
-  innerRadiusMeters: number;
-  rotationDeg: number;
-  name?: string;
-}): GeoJSON.Feature {
-  const {
-    lat,
-    lon,
-    points,
-    outerRadiusMeters,
-    innerRadiusMeters,
-    rotationDeg,
-    name,
-  } = options;
-
-  const latRadians = (lat * Math.PI) / 180;
-  const metersPerLatDegree = 111_320;
-  const metersPerLonDegree = Math.max(1, 111_320 * Math.cos(latRadians));
-  const latPerMeter = 1 / metersPerLatDegree;
-  const lonPerMeter = 1 / metersPerLonDegree;
-  const rotation = (rotationDeg * Math.PI) / 180;
-  const baseAngle = -Math.PI / 2 + rotation;
-
-  const ring: [number, number][] = [];
-  for (let i = 0; i < points * 2; i++) {
-    const radius = i % 2 === 0 ? outerRadiusMeters : innerRadiusMeters;
-    const angle = baseAngle + (i * Math.PI) / points;
-    ring.push([
-      lon + Math.cos(angle) * radius * lonPerMeter,
-      lat + Math.sin(angle) * radius * latPerMeter,
-    ]);
-  }
-  ring.push(ring[0]);
-
-  return {
-    type: "Feature",
-    properties: {
-      name: name?.trim() || "Star",
-      shape: "star",
-      points,
-      outerRadiusMeters,
-      innerRadiusMeters,
-      rotationDeg,
-    },
-    geometry: {
-      type: "Polygon",
-      coordinates: [ring],
-    },
-  };
+function asGeometryObject(value: unknown): GeoJSON.Geometry | null {
+  if (!value || typeof value !== "object") return null;
+  const geometry = value as GeoJSON.Geometry;
+  if (!isGeoJsonGeometryType(geometry.type)) return null;
+  return geometry;
 }
 
-function resolveStarCenter(args: Record<string, unknown>): {
-  lat: number;
-  lon: number;
-} {
-  const lat = toFiniteNumber(args.lat);
-  const lon = toFiniteNumber(args.lon);
-
-  if (lat !== undefined && lon !== undefined) {
-    return { lat, lon };
+function normalizePropertiesArg(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
   }
-  if (lat !== undefined || lon !== undefined) {
+  return value as Record<string, unknown>;
+}
+
+function parseSingleFeatureArg(args: Record<string, unknown>): GeoJSON.Feature {
+  if (args.feature && typeof args.feature === "object") {
+    const feature = asFeatureObject(args.feature);
+    if (!feature) {
+      throw new Error("feature must be a valid GeoJSON Feature object.");
+    }
+    return feature;
+  }
+
+  const geometry = asGeometryObject(args.geometry);
+  if (!geometry) {
     throw new Error(
-      "Provide both lat and lon, or omit both to use map center.",
+      "Provide either feature (GeoJSON Feature) or geometry (GeoJSON Geometry).",
     );
   }
 
-  const snapshot = getMapContextSnapshot();
-  if (!snapshot.mapCenter) {
-    throw new Error(
-      "Map center is unavailable. Pan the map or provide explicit lat/lon.",
-    );
+  const feature: GeoJSON.Feature = {
+    type: "Feature",
+    geometry,
+    properties: normalizePropertiesArg(args.properties),
+  };
+  if (typeof args.id === "string" || typeof args.id === "number") {
+    feature.id = args.id;
   }
-  return snapshot.mapCenter;
+
+  return feature;
 }
 
 /**
@@ -991,48 +1033,16 @@ export async function executeToolCall(toolCall: ToolCall): Promise<ToolResult> {
         };
         break;
       }
-      case "draw_star_feature": {
-        const center = resolveStarCenter(args);
-        const points = clampPositiveInt(args.points, 5, 16);
-        const outerRadiusMeters = toFiniteNumber(args.outerRadiusMeters) ?? 500;
-        const innerRadiusMeters =
-          toFiniteNumber(args.innerRadiusMeters) ??
-          Math.max(10, outerRadiusMeters * 0.5);
-        const rotationDeg = toFiniteNumber(args.rotationDeg) ?? 0;
-        const name =
-          typeof args.name === "string" && args.name.trim()
-            ? args.name.trim()
-            : undefined;
+      case "add_feature_to_editor": {
+        const feature = parseSingleFeatureArg(args);
         const replaceExisting = Boolean(args.replaceExisting);
-
-        if (outerRadiusMeters <= 0) {
-          throw new Error("outerRadiusMeters must be > 0.");
-        }
-        if (innerRadiusMeters <= 0 || innerRadiusMeters >= outerRadiusMeters) {
-          throw new Error(
-            "innerRadiusMeters must be > 0 and smaller than outerRadiusMeters.",
-          );
-        }
-
-        const starFeature = createStarFeature({
-          lat: center.lat,
-          lon: center.lon,
-          points,
-          outerRadiusMeters,
-          innerRadiusMeters,
-          rotationDeg,
-          name,
-        });
-        const importResult = importFeaturesToEditor(
-          [starFeature],
-          replaceExisting,
-        );
+        const importResult = importFeaturesToEditor([feature], replaceExisting);
         result = {
-          center,
-          points,
-          outerRadiusMeters,
-          innerRadiusMeters,
-          rotationDeg,
+          geometryType: feature.geometry.type,
+          providedFeatureId:
+            typeof feature.id === "string" || typeof feature.id === "number"
+              ? String(feature.id)
+              : null,
           importedCount: importResult.importedCount,
           skippedDuplicates: importResult.skippedDuplicates,
           totalFeaturesInEditor: importResult.totalFeaturesInEditor,
@@ -1267,6 +1277,58 @@ export async function executeToolCall(toolCall: ToolCall): Promise<ToolResult> {
               ? "No name-matching features found; imported unfiltered query results."
               : null,
         };
+        break;
+      }
+      case "web_search": {
+        const query = typeof args.query === "string" ? args.query.trim() : "";
+        if (!query) {
+          throw new Error("query must be a non-empty string");
+        }
+        const response = await client.WebSearch(
+          query,
+          clampLimit(args.limit, 5),
+          typeof args.categories === "string" ? args.categories : undefined,
+          typeof args.language === "string" ? args.language : undefined,
+        );
+        result = response.result;
+        break;
+      }
+      case "fetch_url": {
+        const url = typeof args.url === "string" ? args.url.trim() : "";
+        if (!url) {
+          throw new Error("url must be a non-empty string");
+        }
+        const maxLength = toFiniteNumber(args.maxLength);
+        const response = await client.FetchUrl(url, maxLength);
+        result = response.result;
+        break;
+      }
+      case "wikipedia_lookup": {
+        const title =
+          typeof args.title === "string" && args.title.trim()
+            ? args.title.trim()
+            : undefined;
+        const lat = toFiniteNumber(args.lat);
+        const lon = toFiniteNumber(args.lon);
+        const radius = toFiniteNumber(args.radius);
+        const limit = toFiniteNumber(args.limit);
+        const language =
+          typeof args.language === "string" ? args.language : undefined;
+
+        if (!title && (lat === undefined || lon === undefined)) {
+          throw new Error(
+            "Either 'title' or both 'lat' and 'lon' are required",
+          );
+        }
+        const response = await client.WikipediaLookup(
+          title,
+          lat,
+          lon,
+          radius,
+          limit,
+          language,
+        );
+        result = response.result;
         break;
       }
       default:

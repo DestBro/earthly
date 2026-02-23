@@ -276,6 +276,135 @@ export interface CreateMapUploadOutput {
   };
 }
 
+export interface WebSearchInput {
+  /**
+   * Search query string
+   */
+  query: string;
+  /**
+   * Maximum number of results to return (default: 5, max: 20)
+   */
+  limit?: number;
+  /**
+   * SearXNG search categories, comma-separated (e.g., "general", "science", "it"). Default: "general"
+   */
+  categories?: string;
+  /**
+   * Language code for results (e.g., "en", "de"). Default: "en"
+   */
+  language?: string;
+}
+
+export interface WebSearchOutput {
+  result: {
+    query: string;
+    count: number;
+    results: {
+      title: string;
+      url: string;
+      /**
+       * Snippet/summary from the search engine
+       */
+      content: string;
+      /**
+       * Search engine that returned this result
+       */
+      engine: string;
+    }[];
+  };
+}
+
+export interface FetchUrlInput {
+  /**
+   * The URL to fetch and extract content from
+   */
+  url: string;
+  /**
+   * Maximum character length of extracted text content (default: 10000)
+   */
+  maxLength?: number;
+}
+
+export interface FetchUrlOutput {
+  result: {
+    url: string;
+    title: string | null;
+    siteName: string | null;
+    description: string | null;
+    /**
+     * Extracted readable text content
+     */
+    textContent: string;
+    /**
+     * Length of full extracted text before truncation
+     */
+    textLength: number;
+    truncated: boolean;
+    /**
+     * ISO 8601 timestamp of fetch
+     */
+    fetchedAt: string;
+  };
+}
+
+export interface WikipediaLookupInput {
+  /**
+   * Wikipedia article title (e.g., "Mount Everest"). Either title or lat+lon is required.
+   */
+  title?: string;
+  /**
+   * Latitude for geographic article search. Must be paired with lon.
+   */
+  lat?: number;
+  /**
+   * Longitude for geographic article search. Must be paired with lat.
+   */
+  lon?: number;
+  /**
+   * Search radius in meters for geo lookup (default: 1000, max: 10000)
+   */
+  radius?: number;
+  /**
+   * Max articles to return for geo search (default: 5, max: 10)
+   */
+  limit?: number;
+  /**
+   * Wikipedia language code (default: "en"). Examples: "en", "de", "fr", "ja"
+   */
+  language?: string;
+}
+
+export interface WikipediaLookupOutput {
+  result: {
+    mode: "title" | "geosearch";
+    /**
+     * The title or coordinate query used
+     */
+    query: string;
+    count: number;
+    articles: {
+      title: string;
+      pageId: number;
+      url: string;
+      /**
+       * Plain text extract/summary of the article
+       */
+      extract: string;
+      /**
+       * Geographic coordinates if available
+       */
+      coordinates: {
+        lat: number;
+        lon: number;
+      } | null;
+      /**
+       * Short Wikidata description
+       */
+      description: string | null;
+    }[];
+  };
+}
+
 export type EarthlyGeoServer = {
   SearchLocation: (
     query: string,
@@ -314,6 +443,21 @@ export type EarthlyGeoServer = {
     requestId: string,
     signedEvent: object,
   ) => Promise<CreateMapUploadOutput>;
+  WebSearch: (
+    query: string,
+    limit?: number,
+    categories?: string,
+    language?: string,
+  ) => Promise<WebSearchOutput>;
+  FetchUrl: (url: string, maxLength?: number) => Promise<FetchUrlOutput>;
+  WikipediaLookup: (
+    title?: string,
+    lat?: number,
+    lon?: number,
+    radius?: number,
+    limit?: number,
+    language?: string,
+  ) => Promise<WikipediaLookupOutput>;
 };
 
 export class EarthlyGeoServerClient implements EarthlyGeoServer {
@@ -376,6 +520,26 @@ export class EarthlyGeoServerClient implements EarthlyGeoServer {
       name,
       arguments: { ...args },
     });
+
+    if (result.isError) {
+      // biome-ignore lint/suspicious/noExplicitAny: MCP content type varies
+      const errorFromContent = (result.content as any[])
+        ?.filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join("\n");
+      // biome-ignore lint/suspicious/noExplicitAny: structuredContent shape varies on error
+      const errorFromStructured = (result.structuredContent as any)?.error;
+      throw new Error(
+        errorFromStructured ||
+          errorFromContent ||
+          `Tool '${name}' returned an error`,
+      );
+    }
+
+    if (!result.structuredContent) {
+      throw new Error(`Tool '${name}' returned no structured content`);
+    }
+
     return result.structuredContent as T;
   }
 
@@ -506,5 +670,60 @@ export class EarthlyGeoServerClient implements EarthlyGeoServer {
     signedEvent: object,
   ): Promise<CreateMapUploadOutput> {
     return this.call("create_map_upload", { requestId, signedEvent });
+  }
+
+  /**
+   * Search the web using SearXNG. Returns titles, URLs, and content snippets from multiple search engines.
+   * @param {string} query Search query string
+   * @param {number} limit [optional] Maximum number of results to return (default: 5, max: 20)
+   * @param {string} categories [optional] SearXNG search categories, comma-separated (e.g., "general", "science", "it"). Default: "general"
+   * @param {string} language [optional] Language code for results (e.g., "en", "de"). Default: "en"
+   * @returns {Promise<WebSearchOutput>} The result of the web_search operation
+   */
+  async WebSearch(
+    query: string,
+    limit?: number,
+    categories?: string,
+    language?: string,
+  ): Promise<WebSearchOutput> {
+    return this.call("web_search", { query, limit, categories, language });
+  }
+
+  /**
+   * Fetch a URL and extract readable text content using Mozilla Readability. Returns title, description, and cleaned article text.
+   * @param {string} url The URL to fetch and extract content from
+   * @param {number} maxLength [optional] Maximum character length of extracted text content (default: 10000)
+   * @returns {Promise<FetchUrlOutput>} The result of the fetch_url operation
+   */
+  async FetchUrl(url: string, maxLength?: number): Promise<FetchUrlOutput> {
+    return this.call("fetch_url", { url, maxLength });
+  }
+
+  /**
+   * Look up Wikipedia articles by title or by geographic coordinates. Returns article summaries and coordinates.
+   * @param {string} title [optional] Wikipedia article title (e.g., "Mount Everest"). Either title or lat+lon is required.
+   * @param {number} lat [optional] Latitude for geographic article search. Must be paired with lon.
+   * @param {number} lon [optional] Longitude for geographic article search. Must be paired with lat.
+   * @param {number} radius [optional] Search radius in meters for geo lookup (default: 1000, max: 10000)
+   * @param {number} limit [optional] Max articles to return for geo search (default: 5, max: 10)
+   * @param {string} language [optional] Wikipedia language code (default: "en"). Examples: "en", "de", "fr", "ja"
+   * @returns {Promise<WikipediaLookupOutput>} The result of the wikipedia_lookup operation
+   */
+  async WikipediaLookup(
+    title?: string,
+    lat?: number,
+    lon?: number,
+    radius?: number,
+    limit?: number,
+    language?: string,
+  ): Promise<WikipediaLookupOutput> {
+    return this.call("wikipedia_lookup", {
+      title,
+      lat,
+      lon,
+      radius,
+      limit,
+      language,
+    });
   }
 }
