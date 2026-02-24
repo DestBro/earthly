@@ -63,6 +63,7 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from '../../../components/ui/tooltip'
+import { canExecuteEditorCommand, executeEditorCommand, type EditorCommandId } from '../commands'
 import type { EditorMode } from '../core'
 import { useEditorStore } from '../store'
 import type { GeoSearchResult } from '../types'
@@ -83,7 +84,7 @@ const OSM_FILTER_PRESETS = [
 
 type ToolbarButton = {
 	key: string
-	icon: React.ComponentType<any>
+	icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
 	onClick: () => void
 	disabled?: boolean
 	variant?: 'default' | 'outline'
@@ -246,6 +247,8 @@ interface GeometryOpsDropdownProps {
 	onConnect: () => void
 	onUnion: () => void
 	onDifference: () => void
+	canMerge?: boolean
+	canSplit?: boolean
 	canConnect?: boolean
 	canBooleanOps?: boolean
 	booleanOpActive?: { type: 'union' | 'difference' }
@@ -259,6 +262,8 @@ function GeometryOpsDropdown({
 	onConnect,
 	onUnion,
 	onDifference,
+	canMerge,
+	canSplit,
 	canConnect,
 	canBooleanOps,
 	booleanOpActive,
@@ -289,11 +294,11 @@ function GeometryOpsDropdown({
 					</TooltipContent>
 				</Tooltip>
 				<DropdownMenuContent align="start">
-					<DropdownMenuItem onClick={onMerge}>
+					<DropdownMenuItem onClick={onMerge} disabled={!canMerge}>
 						<Merge className="h-4 w-4" />
 						Merge to Multi
 					</DropdownMenuItem>
-					<DropdownMenuItem onClick={onSplit}>
+					<DropdownMenuItem onClick={onSplit} disabled={!canSplit}>
 						<SplitIcon className="h-4 w-4" />
 						Split Multi
 					</DropdownMenuItem>
@@ -631,12 +636,9 @@ export function Toolbar({
 }: ToolbarProps) {
 	const editor = useEditorStore((state) => state.editor)
 	const mode = useEditorStore((state) => state.mode)
-	const setMode = useEditorStore((state) => state.setMode)
 	const snappingEnabled = useEditorStore((state) => state.snappingEnabled)
-	const setSnappingEnabled = useEditorStore((state) => state.setSnappingEnabled)
 	const viewMode = useEditorStore((state) => state.viewMode)
 	const history = useEditorStore((state) => state.history)
-	const setHistoryState = useEditorStore((state) => state.setHistoryState)
 
 	// UI State
 	const mobileToolsOpen = useEditorStore((state) => state.mobileToolsOpen)
@@ -676,26 +678,28 @@ export function Toolbar({
 	// Computed: Is editing disabled (view mode active)?
 	const isEditingDisabled = viewMode !== 'edit'
 
+	const runEditorCommand = (commandId: EditorCommandId, args?: Record<string, unknown>) => {
+		executeEditorCommand(commandId, args)
+	}
+
 	const handleModeChange = (newMode: EditorMode) => {
 		if (inspectorActive) {
 			setInspectorActive(false)
 			onInspectorDeactivate?.()
 		}
-		setMode(newMode)
+		runEditorCommand('set_mode', { mode: newMode })
 	}
 
 	const handleUndo = () => {
-		editor?.undo()
-		setHistoryState(editor?.history.canUndo() ?? false, editor?.history.canRedo() ?? false)
+		runEditorCommand('undo')
 	}
 
 	const handleRedo = () => {
-		editor?.redo()
-		setHistoryState(editor?.history.canUndo() ?? false, editor?.history.canRedo() ?? false)
+		runEditorCommand('redo')
 	}
 
 	const handleToggleSnapping = () => {
-		setSnappingEnabled(!snappingEnabled)
+		runEditorCommand('toggle_snapping')
 	}
 
 	const handleToggleInspector = () => {
@@ -705,7 +709,7 @@ export function Toolbar({
 		} else {
 			setInspectorActive(true)
 			if (mode !== 'select') {
-				setMode('select')
+				runEditorCommand('set_mode', { mode: 'select' })
 			}
 		}
 	}
@@ -726,34 +730,31 @@ export function Toolbar({
 	}
 
 	const handleDeleteSelected = () => {
-		const selected = editor?.getSelectedFeatures()
-		if (selected && selected.length > 0) {
-			editor?.deleteFeatures(selected.map((f) => f.id))
-		}
+		runEditorCommand('delete_selected_features')
 	}
 
 	const handleMergeSelected = () => {
-		editor?.combineSelectedFeatures()
+		runEditorCommand('merge_selected_features')
 	}
 
 	const handleSplitSelected = () => {
-		editor?.splitSelectedFeatures()
+		runEditorCommand('split_selected_features')
 	}
 
 	const handleDuplicate = () => {
-		editor?.duplicateSelectedFeatures()
+		runEditorCommand('duplicate_selected_features')
 	}
 
 	const handleBooleanUnion = () => {
-		editor?.startBooleanUnion()
+		runEditorCommand('start_boolean_union')
 	}
 
 	const handleBooleanDifference = () => {
-		editor?.startBooleanDifference()
+		runEditorCommand('start_boolean_difference')
 	}
 
 	const handleConnectLines = () => {
-		editor?.connectSelectedLines()
+		runEditorCommand('connect_selected_lines')
 	}
 
 	const handleCopyShareUrl = async () => {
@@ -784,14 +785,15 @@ export function Toolbar({
 		setMagicPopoverOpen(false)
 	}
 
-	// Check if single polygon is selected (required for boolean ops)
-	const selectedFeatures = editor?.getSelectedFeatures() ?? []
-	const singlePolygonSelected =
-		selectedFeatures.length === 1 &&
-		(selectedFeatures[0]?.geometry.type === 'Polygon' ||
-			selectedFeatures[0]?.geometry.type === 'MultiPolygon')
+	const canUndo = canExecuteEditorCommand('undo')
+	const canRedo = canExecuteEditorCommand('redo')
+	const canDeleteSelected = canExecuteEditorCommand('delete_selected_features')
+	const canDuplicateSelected = canExecuteEditorCommand('duplicate_selected_features')
+	const canMergeSelected = canExecuteEditorCommand('merge_selected_features')
+	const canSplitSelected = canExecuteEditorCommand('split_selected_features')
+	const canConnectLines = canExecuteEditorCommand('connect_selected_lines')
+	const canStartBooleanOps = canExecuteEditorCommand('start_boolean_union')
 	const booleanOpActive = editor?.getBooleanOperation()
-	const canConnectLines = editor?.canConnectSelectedLines() ?? false
 
 	// ============================================
 	// BUTTON SECTIONS - Organized by function
@@ -825,7 +827,7 @@ export function Toolbar({
 			key: 'undo',
 			icon: Undo2,
 			onClick: handleUndo,
-			disabled: !history.canUndo || isEditingDisabled,
+			disabled: !history.canUndo || !canUndo || isEditingDisabled,
 			ariaLabel: 'Undo',
 			description: 'Undo last action',
 		},
@@ -833,7 +835,7 @@ export function Toolbar({
 			key: 'redo',
 			icon: Redo2,
 			onClick: handleRedo,
-			disabled: !history.canRedo || isEditingDisabled,
+			disabled: !history.canRedo || !canRedo || isEditingDisabled,
 			ariaLabel: 'Redo',
 			description: 'Redo last action',
 		},
@@ -863,7 +865,7 @@ export function Toolbar({
 			key: 'delete',
 			icon: Trash2,
 			onClick: handleDeleteSelected,
-			disabled: isEditingDisabled,
+			disabled: isEditingDisabled || !canDeleteSelected,
 			ariaLabel: 'Delete',
 			description: 'Delete selected features',
 		},
@@ -871,7 +873,7 @@ export function Toolbar({
 			key: 'duplicate',
 			icon: Copy,
 			onClick: handleDuplicate,
-			disabled: isEditingDisabled,
+			disabled: isEditingDisabled || !canDuplicateSelected,
 			ariaLabel: 'Duplicate',
 			description: 'Duplicate selected features',
 		},
@@ -894,157 +896,155 @@ export function Toolbar({
 	// ============================================
 	if (isMobile) {
 		return (
-			<>
-				<div className="pointer-events-auto w-full max-w-md px-2 mx-auto">
-					{mobileToolsOpen && (
-						<div className="glass-panel rounded-lg p-1.5">
-							{/* Row 1: Session + Select + Draw */}
-							<div className="flex items-center justify-center gap-1 flex-wrap mb-1">
-								<SessionButton
-									viewMode={viewMode}
-									onStartNew={onStartNewDataset}
-									onCancel={onCancelEditing}
-									small
-								/>
-								<Divider />
-								<IconButtonRow buttons={selectButtons} small />
-								<Divider />
-								<DrawButtonGroup
-									mode={mode}
-									onModeChange={handleModeChange}
-									disabled={isEditingDisabled}
-									small
-								/>
-							</div>
-							{/* Row 2: History + Edit tools + Geometry ops */}
-							<div className="flex items-center justify-center gap-1 flex-wrap">
-								<IconButtonRow buttons={historyButtons} small />
-								<Divider />
-								<IconButtonRow buttons={editButtons} small />
-								<GeometryOpsDropdown
-									disabled={isEditingDisabled}
-									onMerge={handleMergeSelected}
-									onSplit={handleSplitSelected}
-									onConnect={handleConnectLines}
-									onUnion={handleBooleanUnion}
-									onDifference={handleBooleanDifference}
-									canConnect={canConnectLines}
-									canBooleanOps={singlePolygonSelected}
-									booleanOpActive={booleanOpActive}
-									small
-								/>
-							</div>
-						</div>
-					)}
-
-					{mobileSearchOpen && (
-						<div className="glass-panel flex flex-col gap-2 rounded-lg p-1.5">
-							<div className="flex items-center gap-2">
-								<SearchBar
-									query={searchQuery}
-									loading={searchLoading}
-									placeholder="Search..."
-									onSubmit={(e) => {
-										e.preventDefault()
-										handleSearchSubmit(e)
-									}}
-									onQueryChange={setSearchQuery}
-									onClear={clearSearch}
-								/>
-								<IconButtonRow buttons={lookupButtons} small />
-							</div>
-							{searchResults && searchResults.length > 0 && (
-								<div className="max-h-48 overflow-y-auto space-y-1 bg-white rounded-lg border border-gray-100">
-									{searchResults.map((result) => (
-										<button
-											type="button"
-											key={result.placeId}
-											className="w-full text-left text-sm p-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 truncate"
-											onClick={() => onSearchResultSelect?.(result)}
-										>
-											{result.displayName}
-										</button>
-									))}
-								</div>
-							)}
-							{searchError && <div className="text-xs text-red-600 px-1">{searchError}</div>}
-						</div>
-					)}
-
-					{mobileActionsOpen && datasetActions && (
-						<div className="glass-panel rounded-lg p-1.5">
-							<div className="flex items-center justify-center gap-1 flex-wrap">
-								<FileDropdown
-									onImportClick={() => fileInputRef.current?.click()}
-									onExport={datasetActions.onExport ?? (() => {})}
-									canExport={datasetActions.canExport}
-									disabled={isEditingDisabled}
-									small
-								/>
-								<OsmImportPopover
-									open={magicPopoverOpen}
-									onOpenChange={setMagicPopoverOpen}
-									osmQueryFilter={osmQueryFilter}
-									onOsmFilterChange={setOsmQueryFilter}
-									onOsmClickMode={handleOsmClickMode}
-									onOsmQueryView={handleOsmQueryView}
-									onOsmAdvanced={onOsmAdvanced}
-									isClickMode={osmQueryMode === 'click'}
-									small
-								/>
-								<CreateMapPopover />
-								<Divider />
-								<PublishDropdown
-									canPublishNew={datasetActions.canPublishNew}
-									canPublishUpdate={datasetActions.canPublishUpdate}
-									canPublishCopy={datasetActions.canPublishCopy}
-									isPublishing={datasetActions.isPublishing}
-									onPublishNew={datasetActions.onPublishNew}
-									onPublishUpdate={datasetActions.onPublishUpdate}
-									onPublishCopy={datasetActions.onPublishCopy}
-									small
-								/>
-								<Divider />
-								<HelpPopover
-									multiSelectModifier={editor?.getMultiSelectModifierLabel() ?? 'Shift'}
-								/>
-								<TooltipProvider delayDuration={500}>
-									<Popover open={showMapSettings} onOpenChange={setShowMapSettings}>
-										<Tooltip>
-											<TooltipTrigger asChild>
-												<PopoverTrigger asChild>
-													<Button
-														variant={showMapSettings ? 'default' : 'outline'}
-														size="icon"
-														className="h-8 w-8"
-														aria-label="Settings"
-													>
-														<Settings2 className="h-3.5 w-3.5" />
-													</Button>
-												</PopoverTrigger>
-											</TooltipTrigger>
-											<TooltipContent side="bottom" sideOffset={8}>
-												<p>Map settings</p>
-											</TooltipContent>
-										</Tooltip>
-										<PopoverContent className="w-72" side="bottom" align="center">
-											<MapSettingsPanel />
-										</PopoverContent>
-									</Popover>
-								</TooltipProvider>
-								{showLogin && <LoginSessionButtons />}
-							</div>
-							<input
-								type="file"
-								ref={fileInputRef}
-								className="hidden"
-								accept=".geojson,.json"
-								onChange={handleFileImport}
+			<div className="pointer-events-auto w-full max-w-md px-2 mx-auto">
+				{mobileToolsOpen && (
+					<div className="glass-panel rounded-lg p-1.5">
+						{/* Row 1: Session + Select + Draw */}
+						<div className="flex items-center justify-center gap-1 flex-wrap mb-1">
+							<SessionButton
+								viewMode={viewMode}
+								onStartNew={onStartNewDataset}
+								onCancel={onCancelEditing}
+								small
+							/>
+							<Divider />
+							<IconButtonRow buttons={selectButtons} small />
+							<Divider />
+							<DrawButtonGroup
+								mode={mode}
+								onModeChange={handleModeChange}
+								disabled={isEditingDisabled}
+								small
 							/>
 						</div>
-					)}
-				</div>
-			</>
+						{/* Row 2: History + Edit tools + Geometry ops */}
+						<div className="flex items-center justify-center gap-1 flex-wrap">
+							<IconButtonRow buttons={historyButtons} small />
+							<Divider />
+							<IconButtonRow buttons={editButtons} small />
+							<GeometryOpsDropdown
+								disabled={isEditingDisabled}
+								onMerge={handleMergeSelected}
+								onSplit={handleSplitSelected}
+								onConnect={handleConnectLines}
+								onUnion={handleBooleanUnion}
+								onDifference={handleBooleanDifference}
+								canMerge={canMergeSelected}
+								canSplit={canSplitSelected}
+								canConnect={canConnectLines}
+								canBooleanOps={canStartBooleanOps}
+								booleanOpActive={booleanOpActive}
+								small
+							/>
+						</div>
+					</div>
+				)}
+
+				{mobileSearchOpen && (
+					<div className="glass-panel flex flex-col gap-2 rounded-lg p-1.5">
+						<div className="flex items-center gap-2">
+							<SearchBar
+								query={searchQuery}
+								loading={searchLoading}
+								placeholder="Search..."
+								onSubmit={(e) => {
+									e.preventDefault()
+									handleSearchSubmit(e)
+								}}
+								onQueryChange={setSearchQuery}
+								onClear={clearSearch}
+							/>
+							<IconButtonRow buttons={lookupButtons} small />
+						</div>
+						{searchResults && searchResults.length > 0 && (
+							<div className="max-h-48 overflow-y-auto space-y-1 bg-white rounded-lg border border-gray-100">
+								{searchResults.map((result) => (
+									<button
+										type="button"
+										key={result.placeId}
+										className="w-full text-left text-sm p-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 truncate"
+										onClick={() => onSearchResultSelect?.(result)}
+									>
+										{result.displayName}
+									</button>
+								))}
+							</div>
+						)}
+						{searchError && <div className="text-xs text-red-600 px-1">{searchError}</div>}
+					</div>
+				)}
+
+				{mobileActionsOpen && datasetActions && (
+					<div className="glass-panel rounded-lg p-1.5">
+						<div className="flex items-center justify-center gap-1 flex-wrap">
+							<FileDropdown
+								onImportClick={() => fileInputRef.current?.click()}
+								onExport={datasetActions.onExport ?? (() => {})}
+								canExport={datasetActions.canExport}
+								disabled={isEditingDisabled}
+								small
+							/>
+							<OsmImportPopover
+								open={magicPopoverOpen}
+								onOpenChange={setMagicPopoverOpen}
+								osmQueryFilter={osmQueryFilter}
+								onOsmFilterChange={setOsmQueryFilter}
+								onOsmClickMode={handleOsmClickMode}
+								onOsmQueryView={handleOsmQueryView}
+								onOsmAdvanced={onOsmAdvanced}
+								isClickMode={osmQueryMode === 'click'}
+								small
+							/>
+							<CreateMapPopover />
+							<Divider />
+							<PublishDropdown
+								canPublishNew={datasetActions.canPublishNew}
+								canPublishUpdate={datasetActions.canPublishUpdate}
+								canPublishCopy={datasetActions.canPublishCopy}
+								isPublishing={datasetActions.isPublishing}
+								onPublishNew={datasetActions.onPublishNew}
+								onPublishUpdate={datasetActions.onPublishUpdate}
+								onPublishCopy={datasetActions.onPublishCopy}
+								small
+							/>
+							<Divider />
+							<HelpPopover multiSelectModifier={editor?.getMultiSelectModifierLabel() ?? 'Shift'} />
+							<TooltipProvider delayDuration={500}>
+								<Popover open={showMapSettings} onOpenChange={setShowMapSettings}>
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<PopoverTrigger asChild>
+												<Button
+													variant={showMapSettings ? 'default' : 'outline'}
+													size="icon"
+													className="h-8 w-8"
+													aria-label="Settings"
+												>
+													<Settings2 className="h-3.5 w-3.5" />
+												</Button>
+											</PopoverTrigger>
+										</TooltipTrigger>
+										<TooltipContent side="bottom" sideOffset={8}>
+											<p>Map settings</p>
+										</TooltipContent>
+									</Tooltip>
+									<PopoverContent className="w-72" side="bottom" align="center">
+										<MapSettingsPanel />
+									</PopoverContent>
+								</Popover>
+							</TooltipProvider>
+							{showLogin && <LoginSessionButtons />}
+						</div>
+						<input
+							type="file"
+							ref={fileInputRef}
+							className="hidden"
+							accept=".geojson,.json"
+							onChange={handleFileImport}
+						/>
+					</div>
+				)}
+			</div>
 		)
 	}
 
@@ -1093,8 +1093,10 @@ export function Toolbar({
 						onConnect={handleConnectLines}
 						onUnion={handleBooleanUnion}
 						onDifference={handleBooleanDifference}
+						canMerge={canMergeSelected}
+						canSplit={canSplitSelected}
 						canConnect={canConnectLines}
-						canBooleanOps={singlePolygonSelected}
+						canBooleanOps={canStartBooleanOps}
 						booleanOpActive={booleanOpActive}
 					/>
 				</div>

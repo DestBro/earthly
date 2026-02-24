@@ -34,6 +34,7 @@ const MAX_USER_MESSAGE_CHARS = 6000
 const MAX_ASSISTANT_MESSAGE_CHARS = 8000
 const MAX_TOOL_MESSAGE_CHARS = 12000
 const MAX_SYSTEM_MESSAGE_CHARS = 1800
+const MAX_REASONING_CONTENT_CHARS = 4000
 const BUDGET_ESTIMATE_CHARS_PER_TOKEN = 2
 const MESSAGE_TOKEN_OVERHEAD = 24
 const MIN_CONTEXT_TOKENS_FOR_INLINE_IMAGE = 16000
@@ -49,6 +50,10 @@ function messageContentToText(content: ChatMessage['content']): string {
 			return ''
 		})
 		.join(' ')
+}
+
+function messageReasoningToText(reasoningContent: ChatMessage['reasoning_content']): string {
+	return typeof reasoningContent === 'string' ? reasoningContent : ''
 }
 
 function truncateTextForPrompt(text: string, maxChars: number): string {
@@ -72,15 +77,25 @@ function getMessageCharLimit(role: ChatMessage['role']): number {
 function sanitizeMessageForPrompt(message: ChatMessage): ChatMessage {
 	const maxChars = getMessageCharLimit(message.role)
 	const { content } = message
+	const reasoning_content =
+		typeof message.reasoning_content === 'string'
+			? truncateTextForPrompt(message.reasoning_content, MAX_REASONING_CONTENT_CHARS)
+			: message.reasoning_content
 
 	if (typeof content === 'string') {
 		return {
 			...message,
 			content: truncateTextForPrompt(content, maxChars),
+			reasoning_content,
 		}
 	}
 
-	if (!content) return message
+	if (!content) {
+		return {
+			...message,
+			reasoning_content,
+		}
+	}
 
 	let remainingChars = maxChars
 	const sanitizedParts = content
@@ -99,24 +114,31 @@ function sanitizeMessageForPrompt(message: ChatMessage): ChatMessage {
 	return {
 		...message,
 		content: sanitizedParts.length > 0 ? sanitizedParts : '',
+		reasoning_content,
 	}
 }
 
 function estimateMessageTokensForBudget(message: ChatMessage): number {
 	const contentText = messageContentToText(message.content)
+	const reasoningText = messageReasoningToText(message.reasoning_content)
 	const toolCallsText = message.tool_calls ? JSON.stringify(message.tool_calls) : ''
-	const combined = `${contentText}${toolCallsText}`
+	const combined = `${contentText}${reasoningText}${toolCallsText}`
 	return Math.ceil(combined.length / BUDGET_ESTIMATE_CHARS_PER_TOKEN) + MESSAGE_TOKEN_OVERHEAD
 }
 
 function truncateMessageToTokenBudget(message: ChatMessage, budgetTokens: number): ChatMessage {
 	const maxChars = Math.max(128, budgetTokens * BUDGET_ESTIMATE_CHARS_PER_TOKEN)
 	const { content } = message
+	const reasoning_content =
+		typeof message.reasoning_content === 'string'
+			? truncateTextForPrompt(message.reasoning_content, maxChars)
+			: message.reasoning_content
 
 	if (typeof content === 'string') {
 		return {
 			...message,
 			content: truncateTextForPrompt(content, maxChars),
+			reasoning_content,
 		}
 	}
 
@@ -124,6 +146,7 @@ function truncateMessageToTokenBudget(message: ChatMessage, budgetTokens: number
 		return {
 			...message,
 			content: '[content omitted for context window]',
+			reasoning_content,
 		}
 	}
 
@@ -154,6 +177,7 @@ function truncateMessageToTokenBudget(message: ChatMessage, budgetTokens: number
 	return {
 		...message,
 		content: truncatedParts.length > 0 ? truncatedParts : '[content omitted for context window]',
+		reasoning_content,
 	}
 }
 
@@ -247,6 +271,30 @@ function modelMaySupportVision(provider: ProviderConfig, modelId: string): boole
 	const providerSupportsVisionTransport =
 		provider.type === 'lmstudio' || provider.type === 'routstr' || provider.type === 'custom'
 	return providerSupportsVisionTransport && visionHints.some((hint) => lower.includes(hint))
+}
+
+function providerMayRequireReasoningContent(provider: ProviderConfig, modelId: string): boolean {
+	if (provider.type !== 'custom') return false
+	const lowerModel = modelId.toLowerCase()
+	const lowerBaseUrl = provider.baseUrl.toLowerCase()
+	return lowerModel.includes('kimi') || lowerBaseUrl.includes('moonshot.ai')
+}
+
+function ensureReasoningContentForToolMessages(
+	messages: ChatMessage[],
+	required: boolean,
+): ChatMessage[] {
+	if (!required) return messages
+	return messages.map((message) => {
+		if (message.role !== 'assistant' || !message.tool_calls?.length) {
+			return message
+		}
+		return {
+			...message,
+			reasoning_content:
+				typeof message.reasoning_content === 'string' ? message.reasoning_content : '',
+		}
+	})
 }
 
 function tryExtractSnapshotId(toolResultContent: string): string | null {
@@ -517,6 +565,7 @@ export const useChatStore = create<ChatStore>()(
 					requestMessages: ChatMessage[],
 				): Promise<{
 					content: string
+					reasoningContent: string
 					toolCalls: ToolCall[]
 					finishReason?: string
 				}> => {
@@ -525,7 +574,10 @@ export const useChatStore = create<ChatStore>()(
 					// Payment flow only for paid providers
 					if (providerConfig.requiresPayment) {
 						const totalText = requestMessages
-							.map((message) => messageContentToText(message.content))
+							.map(
+								(message) =>
+									`${messageContentToText(message.content)} ${messageReasoningToText(message.reasoning_content)}`,
+							)
 							.join(' ')
 						const inputTokens = estimateTokens(totalText)
 						const estimatedCost = estimateMaxCost(model, inputTokens, maxTokens)
@@ -560,6 +612,7 @@ export const useChatStore = create<ChatStore>()(
 
 					return new Promise((resolve, reject) => {
 						let accumulatedContent = ''
+						let accumulatedReasoningContent = ''
 						let accumulatedToolCalls: ToolCall[] = []
 						let resultFinishReason: string | undefined
 
@@ -585,6 +638,9 @@ export const useChatStore = create<ChatStore>()(
 									accumulatedContent += token
 									set({ streamingContent: accumulatedContent })
 								},
+								onReasoningToken: (token: string) => {
+									accumulatedReasoningContent += token
+								},
 								onToolCall: (toolCalls: ToolCall[]) => {
 									console.log(
 										'[Chat] Received tool calls:',
@@ -597,6 +653,7 @@ export const useChatStore = create<ChatStore>()(
 									await processRefund(refundToken)
 									resolve({
 										content: accumulatedContent,
+										reasoningContent: accumulatedReasoningContent,
 										toolCalls: accumulatedToolCalls,
 										finishReason: resultFinishReason,
 									})
@@ -620,6 +677,10 @@ export const useChatStore = create<ChatStore>()(
 					let conversationMessages = [...get().messages]
 					let oneShotVisionMessages: ChatMessage[] = []
 					const effectiveContextTokens = getEffectiveContextTokens(model, providerConfig)
+					const requiresReasoningContent = providerMayRequireReasoningContent(
+						providerConfig,
+						selectedModel,
+					)
 					const canUseVision =
 						modelMaySupportVision(providerConfig, selectedModel) &&
 						effectiveContextTokens >= MIN_CONTEXT_TOKENS_FOR_INLINE_IMAGE
@@ -650,9 +711,14 @@ export const useChatStore = create<ChatStore>()(
 						if (mapContextMessage) {
 							requestMessages = [sanitizeMessageForPrompt(mapContextMessage), ...requestMessages]
 						}
+						requestMessages = ensureReasoningContentForToolMessages(
+							requestMessages,
+							requiresReasoningContent,
+						)
 
 						let result: {
 							content: string
+							reasoningContent: string
 							toolCalls: ToolCall[]
 							finishReason?: string
 						}
@@ -673,11 +739,15 @@ export const useChatStore = create<ChatStore>()(
 						if (result.toolCalls.length > 0) {
 							set({ executingTools: true, streamingContent: '' })
 
+							const normalizedReasoningContent = result.reasoningContent.trim()
+
 							// Add assistant message with tool calls
 							const assistantMessage: ChatMessage = {
 								role: 'assistant',
 								content: result.content || null,
 								tool_calls: result.toolCalls,
+								reasoning_content:
+									normalizedReasoningContent || (requiresReasoningContent ? '' : undefined),
 							}
 							conversationMessages = [...conversationMessages, assistantMessage]
 							set({ messages: conversationMessages })
@@ -728,9 +798,11 @@ export const useChatStore = create<ChatStore>()(
 
 						// No tool calls - we're done
 						if (result.content) {
+							const normalizedReasoningContent = result.reasoningContent.trim()
 							const assistantMessage: ChatMessage = {
 								role: 'assistant',
 								content: result.content,
+								reasoning_content: normalizedReasoningContent || undefined,
 							}
 							conversationMessages = [...conversationMessages, assistantMessage]
 							set({

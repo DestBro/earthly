@@ -45,6 +45,7 @@ export type ChatMessageContent = string | ChatContentPart[]
 export interface ChatMessage {
 	role: 'user' | 'assistant' | 'system' | 'tool'
 	content: ChatMessageContent | null
+	reasoning_content?: string | null
 	tool_calls?: ToolCall[]
 	tool_call_id?: string // For tool role messages
 }
@@ -105,6 +106,7 @@ export interface StreamChunk {
 		delta: {
 			role?: string
 			content?: string | null
+			reasoning_content?: string | null
 			tool_calls?: StreamToolCall[]
 		}
 		finish_reason: string | null // 'stop' | 'tool_calls' | 'length'
@@ -291,6 +293,7 @@ export async function chatCompletion(
 
 export interface StreamCallbacks {
 	onToken: (token: string) => void
+	onReasoningToken?: (token: string) => void
 	onToolCall?: (toolCalls: ToolCall[]) => void
 	onComplete: (refundToken: string | null, finishReason?: string) => void
 	/** Called on error - refundToken may be present in error responses */
@@ -354,7 +357,10 @@ export async function streamChatCompletion(
 				errorMessage = `Stream failed: ${errorJson.error.message}`
 			}
 		} catch {
-			// Not JSON, use raw text
+			const looksLikeHtml = errorText.includes('<!DOCTYPE html') || errorText.includes('<html')
+			if (looksLikeHtml) {
+				errorMessage = `Stream failed: ${response.status} ${response.statusText} (provider returned an HTML error page)`
+			}
 		}
 
 		callbacks.onError(new Error(errorMessage), refundToken)
@@ -377,6 +383,76 @@ export async function streamChatCompletion(
 	const toolCallsMap = new Map<number, { id: string; name: string; arguments: string }>()
 	let finishReason: string | undefined
 
+	const processSseDataLine = (data: string): 'done' | 'continue' => {
+		if (data === '[DONE]') {
+			// If we accumulated tool calls, emit them
+			if (toolCallsMap.size > 0 && callbacks.onToolCall) {
+				const toolCalls: ToolCall[] = Array.from(toolCallsMap.values()).map((tc) => ({
+					id: tc.id,
+					type: 'function' as const,
+					function: {
+						name: tc.name,
+						arguments: tc.arguments,
+					},
+				}))
+				callbacks.onToolCall(toolCalls)
+			}
+			callbacks.onComplete(refundToken, finishReason)
+			return 'done'
+		}
+
+		try {
+			const chunk: StreamChunk = JSON.parse(data)
+			const choice = chunk.choices[0]
+
+			// Handle regular content
+			const content = choice?.delta?.content
+			if (content) {
+				callbacks.onToken(content)
+			}
+
+			// Some providers stream reasoning separately
+			const reasoningContent = choice?.delta?.reasoning_content
+			if (reasoningContent && callbacks.onReasoningToken) {
+				callbacks.onReasoningToken(reasoningContent)
+			}
+
+			// Handle tool calls (streamed in parts)
+			const deltaToolCalls = choice?.delta?.tool_calls
+			if (deltaToolCalls) {
+				for (const tc of deltaToolCalls) {
+					const index = typeof tc.index === 'number' ? tc.index : 0
+					const existing = toolCallsMap.get(index)
+					if (existing) {
+						if (tc.id && !existing.id) {
+							existing.id = tc.id
+						}
+						if (tc.function?.name) {
+							existing.name = tc.function.name
+						}
+						if (tc.function?.arguments) {
+							existing.arguments += tc.function.arguments
+						}
+					} else {
+						toolCallsMap.set(index, {
+							id: tc.id || `tool_${index}`,
+							name: tc.function?.name || '',
+							arguments: tc.function?.arguments || '',
+						})
+					}
+				}
+			}
+
+			// Track finish reason
+			if (choice?.finish_reason) {
+				finishReason = choice.finish_reason
+			}
+		} catch {
+			// Skip malformed chunks
+		}
+		return 'continue'
+	}
+
 	try {
 		while (true) {
 			const { done, value } = await reader.read()
@@ -389,62 +465,18 @@ export async function streamChatCompletion(
 			for (const line of lines) {
 				if (line.startsWith('data: ')) {
 					const data = line.slice(6).trim()
-					if (data === '[DONE]') {
-						// If we accumulated tool calls, emit them
-						if (toolCallsMap.size > 0 && callbacks.onToolCall) {
-							const toolCalls: ToolCall[] = Array.from(toolCallsMap.values()).map((tc) => ({
-								id: tc.id,
-								type: 'function' as const,
-								function: {
-									name: tc.name,
-									arguments: tc.arguments,
-								},
-							}))
-							callbacks.onToolCall(toolCalls)
-						}
-						callbacks.onComplete(refundToken, finishReason)
+					if (processSseDataLine(data) === 'done') {
 						return
 					}
-
-					try {
-						const chunk: StreamChunk = JSON.parse(data)
-						const choice = chunk.choices[0]
-
-						// Handle regular content
-						const content = choice?.delta?.content
-						if (content) {
-							callbacks.onToken(content)
-						}
-
-						// Handle tool calls (streamed in parts)
-						const deltaToolCalls = choice?.delta?.tool_calls
-						if (deltaToolCalls) {
-							for (const tc of deltaToolCalls) {
-								const existing = toolCallsMap.get(tc.index)
-								if (existing) {
-									// Append to existing tool call
-									if (tc.function?.arguments) {
-										existing.arguments += tc.function.arguments
-									}
-								} else {
-									// Start new tool call
-									toolCallsMap.set(tc.index, {
-										id: tc.id || `tool_${tc.index}`,
-										name: tc.function?.name || '',
-										arguments: tc.function?.arguments || '',
-									})
-								}
-							}
-						}
-
-						// Track finish reason
-						if (choice?.finish_reason) {
-							finishReason = choice.finish_reason
-						}
-					} catch {
-						// Skip malformed chunks
-					}
 				}
+			}
+		}
+
+		const trailingLine = buffer.trim()
+		if (trailingLine.startsWith('data: ')) {
+			const data = trailingLine.slice(6).trim()
+			if (processSseDataLine(data) === 'done') {
+				return
 			}
 		}
 

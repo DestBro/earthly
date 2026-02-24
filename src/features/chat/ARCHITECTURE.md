@@ -89,7 +89,7 @@ Geo tools are a mix of:
 | `query_osm_by_id` | `osmType`, `osmId` | One OSM feature by exact id |
 | `query_osm_nearby` | `lat`, `lon`, `radius?`, `filters?`, `limit?` | GeoJSON features near a point |
 | `query_osm_bbox` | `west`, `south`, `east`, `north`, `filters?`, `limit?` | GeoJSON features in bounding box |
-| `import_osm_to_editor` | `name`, optional bbox/point/filters | Imports matching OSM features into editor |
+| `import_osm_to_editor` | `name`, optional bbox/point/filters | Imports matching OSM features into editor (best after query step) |
 
 Tools use OpenAI function calling format. Toggled on/off in the UI — when disabled, no `tools` array is sent with the request.
 
