@@ -11,10 +11,12 @@ export type EditorCommandId =
   | "merge_selected_features"
   | "split_selected_features"
   | "connect_selected_lines"
+  | "dissolve_selected_lines"
   | "start_boolean_union"
   | "start_boolean_difference"
   | "cancel_boolean_operation"
-  | "finish_drawing";
+  | "finish_drawing"
+  | "simplify_selected_features";
 
 type EditorCommandArgs = Record<string, unknown>;
 type EditorStoreSnapshot = ReturnType<typeof useEditorStore.getState>;
@@ -115,6 +117,20 @@ function hasSingleSelectedPolygon(state: EditorStoreSnapshot): boolean {
   if (selected.length !== 1) return false;
   const geometryType = selected[0]?.geometry.type;
   return geometryType === "Polygon" || geometryType === "MultiPolygon";
+}
+
+function parseSimplifyTolerance(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 0.0001;
+  }
+  return Math.min(1, Math.max(1e-8, value));
+}
+
+function parseLineMergeTolerance(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 0.00001;
+  }
+  return Math.min(1, Math.max(1e-8, value));
 }
 
 const editorCommands: EditorCommandDefinition[] = [
@@ -368,6 +384,55 @@ const editorCommands: EditorCommandDefinition[] = [
     },
   },
   {
+    id: "dissolve_selected_lines",
+    label: "Dissolve selected lines",
+    description:
+      "Merge selected LineString/MultiLineString features into longer connected lines.",
+    canExecute: (state) => Boolean(state.editor?.canDissolveSelectedLines()),
+    ai: {
+      toolName: "editor_dissolve_selected_lines",
+      description:
+        "Dissolve selected line features by snapping nearby endpoints and merging connected segments.",
+      parameters: {
+        type: "object",
+        properties: {
+          tolerance: {
+            type: "number",
+            description:
+              "Endpoint snap tolerance in lon/lat degrees. Default 0.00001 (~1m at equator).",
+          },
+        },
+      },
+    },
+    execute: (state, args) => {
+      const editor = state.editor;
+      if (!editor) {
+        return failure("dissolve_selected_lines", "Map editor is not ready.");
+      }
+
+      const tolerance = parseLineMergeTolerance(args.tolerance);
+      const result = editor.dissolveSelectedLines(tolerance);
+      if (result.createdCount === 0) {
+        return failure(
+          "dissolve_selected_lines",
+          "No selected line features could be dissolved.",
+        );
+      }
+
+      syncHistoryState(state);
+      return success(
+        "dissolve_selected_lines",
+        `Dissolved ${result.sourceFeatureCount} source feature(s) into ${result.createdCount} merged line(s).`,
+        {
+          sourceFeatureCount: result.sourceFeatureCount,
+          createdCount: result.createdCount,
+          skippedPartCount: result.skippedPartCount,
+          tolerance,
+        },
+      );
+    },
+  },
+  {
     id: "start_boolean_union",
     label: "Boolean union",
     description: "Start polygon boolean union workflow.",
@@ -475,6 +540,53 @@ const editorCommands: EditorCommandDefinition[] = [
         {
           featureId: feature.id,
           geometryType: feature.geometry.type,
+        },
+      );
+    },
+  },
+  {
+    id: "simplify_selected_features",
+    label: "Simplify selected",
+    description: "Simplify selected line/polygon geometries.",
+    canExecute: (state) => Boolean(state.editor?.canSimplifySelectedFeatures()),
+    ai: {
+      toolName: "editor_simplify_selected",
+      description:
+        "Simplify selected LineString/Polygon features to reduce vertex count while preserving general shape.",
+      parameters: {
+        type: "object",
+        properties: {
+          tolerance: {
+            type: "number",
+            description:
+              "Simplification tolerance in lon/lat degrees. Smaller keeps more detail. Default 0.0001.",
+          },
+        },
+      },
+    },
+    execute: (state, args) => {
+      const editor = state.editor;
+      if (!editor) {
+        return failure("simplify_selected_features", "Map editor is not ready.");
+      }
+
+      const tolerance = parseSimplifyTolerance(args.tolerance);
+      const result = editor.simplifySelectedFeatures(tolerance);
+      if (result.updatedCount === 0) {
+        return failure(
+          "simplify_selected_features",
+          "No selected line/polygon features could be simplified.",
+        );
+      }
+
+      syncHistoryState(state);
+      return success(
+        "simplify_selected_features",
+        `Simplified ${result.updatedCount} feature(s).`,
+        {
+          updatedCount: result.updatedCount,
+          skippedCount: result.skippedCount,
+          tolerance,
         },
       );
     },

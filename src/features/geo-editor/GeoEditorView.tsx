@@ -369,7 +369,7 @@ export function GeoEditorView() {
 		// Only compute when viewMode is 'edit' - this is when DatasetSizeIndicator is shown
 		if (viewMode !== 'edit') return null
 		return buildCollectionFromEditor()
-	}, [buildCollectionFromEditor, viewMode])
+	}, [buildCollectionFromEditor, viewMode, features])
 
 	const {
 		infoMode,

@@ -1,400 +1,268 @@
 # Chat Feature Architecture
 
-Multi-provider AI chat with Cashu micropayments and geo tool calling.
+Multi-provider AI chat with tool-calling for map state, OSM/web retrieval, and direct geo-editor commands.
 
-## Files
+## Scope
+
+The chat stack is a client-side orchestrator:
+
+1. Send prompt to an OpenAI-compatible model endpoint.
+2. Let the model call tools.
+3. Execute tools locally (editor/store) or through MCP (`contextvm/server.ts` over Nostr).
+4. Feed tool results back to the model until it returns a final answer.
+
+No backend middleware is required for chat orchestration.
+
+## Core Modules
 
 | File | Purpose |
 |------|---------|
-| `routstr.ts` | OpenAI-compatible API client — streaming, provider config, token estimation |
-| `store.ts` | Zustand store — messages, payment orchestration, tool call loop |
-| `tools.ts` | Geo tool definitions and execution via EarthlyGeoServerClient (MCP) |
-| `ChatPanel.tsx` | React UI — provider/model picker, message list, input |
-| `index.ts` | Public exports |
+| `src/features/chat/routstr.ts` | Provider config, model discovery, OpenAI-compatible streaming client, SSE parsing |
+| `src/features/chat/store.ts` | Zustand orchestration for message flow, tool-call loop, context budgeting, diagnostics |
+| `src/features/chat/tools.ts` | OpenAI tool schemas + tool executors (editor + MCP tools) |
+| `src/features/chat/ChatPanel.tsx` | Chat UI with diagnostics, reasoning/tool disclosures, copy/debug affordances |
+| `src/features/geo-editor/commands.ts` | Headless editor command registry, exposed as `editor_*` AI tools |
+| `contextvm/server.ts` | MCP server exposing geo + web tools over Nostr transport |
 
 ## Providers
 
-All providers use the OpenAI `/v1/chat/completions` API format.
+All providers use `/v1/chat/completions`.
 
 | Provider | Base URL | Payment |
 |----------|----------|---------|
-| **Routstr** | `https://api.routstr.com/v1` | Cashu prepay + refund |
-| **LM Studio** | `http://localhost:1234/v1` | Free |
-| **Ollama** | `http://localhost:11434/v1` | Free |
-| **Custom** | User-provided | Free |
+| `routstr` | `https://api.routstr.com/v1` | Cashu prepay + refund |
+| `lmstudio` | `http://localhost:1234/v1` | Free |
+| `ollama` | `http://localhost:11434/v1` | Free |
+| `custom` | user-provided | Free (API key optional) |
 
-Provider selection triggers model list reload via `GET /models`.
+Provider switch triggers `GET /models` and model list reload.
 
-## Message Flow
+## End-to-End Flow
 
-```
-User types message
-    │
-    ▼
-sendMessage() ─── store.ts
-    │
-    ├─ [Routstr only] Estimate cost → mint Cashu token via NIP-60 wallet
-    │
-    ▼
-streamChatCompletion() ─── routstr.ts
-    │
-    ├─ POST /chat/completions  (stream: true)
-    │   Headers: X-Cashu (payment), Authorization (if custom)
-    │   Body: model, messages, max_tokens, tools (if enabled)
-    │
-    ├─ Parse SSE stream → onToken callbacks → UI updates
-    │
-    ├─ Accumulate tool calls across chunks
-    │
-    ▼
-┌─ Tool calls present? ──────────────────────────────────┐
-│ YES:                                                    │
-│  1. Add assistant message with tool_calls to history    │
-│  2. Execute each tool via executeToolCall() (tools.ts)  │
-│  3. Add tool result messages (role: 'tool')             │
-│  4. Loop back to streamChatCompletion with new messages │
-│  5. Max 5 rounds to prevent infinite loops              │
-│                                                         │
-│ NO:                                                     │
-│  Add assistant message → process refund → done          │
-└─────────────────────────────────────────────────────────┘
+```text
+User message
+  -> store.sendMessage()
+    -> append user message
+    -> compute prompt budget / context guardrails
+    -> inject map-context system message (when tools enabled)
+    -> stream completion
+      -> accumulate content, reasoning_content, tool_calls
+      -> if tool_calls:
+           append assistant(tool_calls)
+           execute each tool
+           append tool messages
+           loop
+      -> else:
+           append final assistant answer
+           done
 ```
 
-## Payment Model (Routstr only)
+Loop guardrail: `MAX_TOOL_CALL_ROUNDS = 10`.
 
-**Prepay with automatic refund.**
+## Routstr Payment Flow
 
-1. **Estimate** — `estimateTokens()` approximates input tokens (`text.length / 4`), assumes `DEFAULT_MAX_TOKENS` (512) for output. Calculates cost using model pricing (input/output per 1M tokens + per-request fee) with a 5 sat buffer. Minimum prepayment: 10 sats.
+For `routstr`, each request uses prepay + automatic refund:
 
-2. **Pay** — NIP-60 wallet mints a Cashu token for the estimated amount. Sent in the `X-Cashu` request header.
+1. Estimate max cost from prompt token estimate + reserved completion tokens.
+2. Mint Cashu token via NIP-60 wallet and send as `X-Cashu` header.
+3. Receive refund token from response headers (or structured error payloads) and redeem it back into wallet state.
 
-3. **Refund** — Server returns unused balance as a Cashu token in the response `X-Cashu` header. The store receives it back into the wallet immediately. Refunds are also extracted from error responses (`error.refund_token` in JSON body).
+Local/custom providers skip payment flow.
 
-Local providers skip all payment logic.
+## Context and Token Budgeting
 
-## Tool Calling
+`store.ts` applies explicit context controls to reduce provider failures:
 
-Geo tools are a mix of:
-- Read-only MCP queries (OSM/Nominatim via `EarthlyGeoServerClient`)
-- Local map actions (importing features directly into the editor via `useEditorStore`)
+- Per-message sanitization/truncation by role.
+- Prompt budget derived from effective context window minus completion reserve and safety margin.
+- LM Studio hard context cap handling (`4096`) to avoid `n_keep >= n_ctx` failures.
+- Emergency retry mode for context overflow with a reduced prompt window.
+- Tool-enabled requests enforce a minimum completion budget (`MIN_TOOL_ENABLED_MAX_TOKENS = 1024`).
 
-| Tool | Parameters | Returns |
-|------|-----------|---------|
-| `get_editor_state` | `detail?` (`compact` default, `full` optional) | Compact editor/map state by default; full snapshot on demand |
-| `capture_map_snapshot` | `mimeType?`, `quality?`, `maxWidth?`, `maxHeight?` | Snapshot metadata + `snapshotId` for vision handoff |
-| `write_geojson_to_editor` | `geojson` or `geojsonText`, `replaceExisting?` | Imports custom GeoJSON directly into editor |
-| `add_feature_to_editor` | `feature?` or `geometry`, `properties?`, `id?`, `replaceExisting?` | Adds one LLM-generated GeoJSON feature into editor |
-| `search_location` | `query`, `limit?` | Places with coordinates, bbox, addresses |
-| `reverse_lookup` | `lat`, `lon`, `zoom?` | Address for coordinates |
-| `query_osm_by_id` | `osmType`, `osmId` | One OSM feature by exact id |
-| `query_osm_nearby` | `lat`, `lon`, `radius?`, `filters?`, `limit?` | GeoJSON features near a point |
-| `query_osm_bbox` | `west`, `south`, `east`, `north`, `filters?`, `limit?` | GeoJSON features in bounding box |
-| `import_osm_to_editor` | `name`, optional bbox/point/filters | Imports matching OSM features into editor (best after query step) |
+Diagnostics surfaced in UI:
 
-Tools use OpenAI function calling format. Toggled on/off in the UI — when disabled, no `tools` array is sent with the request.
+- Effective context tokens.
+- Prompt budget.
+- Estimated prompt/completion token usage.
+- Finish reason.
+- Tool-call count.
+- Streaming phase and stall time.
 
-When tools are enabled, each request gets an ephemeral system preflight message containing current map context JSON (center/zoom/bbox/layers/selection) so the model starts with map awareness before choosing tools.
+## Tooling Architecture
 
-**Example map-edit chain:**
-```
-User: "Take the river Rhine and bring it into the editor"
-  → Assistant calls get_editor_state()
-  → Assistant calls import_osm_to_editor(name: "Rhine", filters: {waterway: "river"})
-  → Tool queries OSM + imports features directly into map editor
-  → Assistant reports imported feature count
-```
+### Tool Families
 
-### MCP Tool Origin
+### Map/editor state and write tools
 
-The tools originate from an MCP server (`contextvm/server.ts`) that wraps OpenStreetMap APIs. The chat feature connects to it over Nostr relays using `@contextvm/sdk`.
+- `get_editor_state` (`detail: compact|full`, default `compact`)
+- `capture_map_snapshot`
+- `write_geojson_to_editor`
+- `add_feature_to_editor`
 
-```mermaid
-graph TB
-    subgraph "Chat Feature (Frontend)"
-        A["tools.ts<br/>OpenAI function definitions"] --> B["executeToolCall()"]
-        B --> C["EarthlyGeoServerClient<br/>src/ctxcn/"]
-        B --> D["useEditorStore<br/>src/features/geo-editor/store.ts"]
-    end
+### OSM + location tools
 
-    subgraph "MCP Transport (@contextvm/sdk)"
-        C --> E["NostrClientTransport<br/>NIP-04 encrypted"]
-        E --> F["Nostr Relay<br/>wss://relay.wavefunc.live"]
-        F --> G["NostrServerTransport"]
-    end
+- `search_location`
+- `reverse_lookup`
+- `query_osm_by_id`
+- `query_osm_nearby`
+- `query_osm_bbox`
+- `import_osm_to_editor`
 
-    subgraph "MCP Server (contextvm/server.ts)"
-        G --> H["McpServer<br/>earthly-geo-server"]
-        H --> I["search_location<br/>reverse_lookup"]
-        H --> J["query_osm_by_id<br/>query_osm_nearby<br/>query_osm_bbox"]
-        H --> K["create_map_extract<br/>create_map_upload"]
-    end
+### Web context tools
 
-    subgraph "Data Sources"
-        I --> L["Nominatim API<br/>nominatim.openstreetmap.org"]
-        J --> M["Overpass API<br/>(3 failover endpoints)"]
-        K --> N["PMTiles + Blossom"]
-    end
-```
+- `web_search`
+- `fetch_url`
+- `wikipedia_lookup`
 
-### Tool Call Lifecycle
+### Headless editor command tools (`editor_*`)
 
-Shows how an AI model's tool call flows through the system and back into the conversation:
+Generated dynamically from `src/features/geo-editor/commands.ts`:
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant Store as store.ts
-    participant LLM as AI Provider
-    participant Tools as tools.ts
-    participant MCP as EarthlyGeoServerClient
-    participant Relay as Nostr Relay
-    participant Server as MCP Server
-    participant OSM as Nominatim / Overpass
+- `editor_set_mode`
+- `editor_undo`
+- `editor_redo`
+- `editor_toggle_snapping`
+- `editor_delete_selected`
+- `editor_duplicate_selected`
+- `editor_merge_selected`
+- `editor_split_selected`
+- `editor_connect_selected_lines`
+- `editor_start_boolean_union`
+- `editor_start_boolean_difference`
+- `editor_cancel_boolean_operation`
+- `editor_finish_drawing`
 
-    User->>Store: sendMessage("Find cafes near the Eiffel Tower")
-    Store->>LLM: POST /chat/completions (stream, tools=[...])
-    LLM-->>Store: tool_call: search_location("Eiffel Tower")
+This keeps toolbar/store actions and AI-callable actions on one command surface.
 
-    Store->>Tools: executeToolCall(search_location)
-    Tools->>MCP: SearchLocation("Eiffel Tower")
-    MCP->>Relay: NIP-04 encrypted MCP request
-    Relay->>Server: forward to server pubkey
-    Server->>OSM: GET nominatim.openstreetmap.org/search
-    OSM-->>Server: [{lat: 48.858, lon: 2.294, ...}]
-    Server-->>Relay: encrypted MCP response
-    Relay-->>MCP: forward to client
-    MCP-->>Tools: SearchLocationOutput
-    Tools-->>Store: tool result message
+## Map Awareness Preflight
 
-    Store->>LLM: POST (messages + tool result, tools=[...])
-    LLM-->>Store: tool_call: query_osm_nearby(48.858, 2.294, {amenity:cafe})
+When tools are enabled, each request gets an ephemeral system message from `createMapContextSystemMessage()` with compact map state:
 
-    Store->>Tools: executeToolCall(query_osm_nearby)
-    Tools->>MCP: QueryOsmNearby(...)
-    MCP->>Relay: encrypted request
-    Relay->>Server: forward
-    Server->>OSM: POST overpass-api.de (Overpass QL)
-    OSM-->>Server: GeoJSON features
-    Server-->>Relay: encrypted response
-    Relay-->>MCP: forward
-    MCP-->>Tools: QueryOsmNearbyOutput
-    Tools-->>Store: tool result message
+- editor readiness + mode
+- feature/selection counts
+- map center/zoom/bbox (`mapView`)
+- geometry counts
+- layer/dataset counts and short layer id list
+- map source
 
-    Store->>LLM: POST (messages + tool results)
-    LLM-->>Store: "I found 12 cafes near the Eiffel Tower..."
-    Store-->>User: display final response
-```
+Prompt-level instructions bias the model to:
 
-### MCP over Nostr Transport
+- call tools instead of claiming it cannot edit maps
+- generate GeoJSON directly for drawing/editing requests
+- query OSM before import for ambiguous targets
+- keep tool arguments strict JSON and compact
 
-The key architectural choice: MCP requests travel as encrypted Nostr DMs rather than HTTP. This enables decentralized server discovery — the client only needs the server's public key and a relay URL.
+## Tool Argument Robustness
 
-```mermaid
-graph LR
-    subgraph Client
-        A[MCP Client] -->|callTool| B[NostrClientTransport]
-        B -->|sign + NIP-04 encrypt| C[Nostr Event]
-    end
+`parseToolCallArguments()` in `tools.ts` attempts resilient parsing:
 
-    C -->|publish| D[(Nostr Relay)]
+- raw JSON parse
+- fenced JSON extraction
+- first-object extraction
+- best-effort repair for likely truncated JSON objects
 
-    subgraph Server
-        D -->|subscription filter:<br/>kind + p-tag| E[NostrServerTransport]
-        E -->|decrypt + parse| F[MCP Server]
-        F -->|result| E
-        E -->|encrypt + publish| D
-    end
+If parsing still fails, it returns a structured error with raw argument prefix for debugging.
 
-    D -->|deliver| B
-    B -->|structured response| A
+## Tool Result Serialization
+
+Tool results are serialized as full JSON strings (no model-side truncation wrapper in chat layer).  
+UI handles readability via collapsible previews instead of truncating payload text in the protocol message.
+
+## MCP and Transport
+
+Chat tools call `EarthlyGeoServerClient`, which talks to `contextvm/server.ts` over Nostr transport.
+
+High-level data path:
+
+```text
+Chat tool call
+  -> EarthlyGeoServerClient
+    -> Nostr relay transport (@contextvm/sdk)
+      -> contextvm/server.ts MCP tool
+        -> external APIs (Nominatim / Overpass / web providers)
+      -> structured response
 ```
 
-**Client identity:** Anonymous ephemeral key (no login required)
-**Server identity:** Hardcoded pubkey `ceadb7d...b304cc`
-**Relays:** `wss://relay.wavefunc.live` (production), `ws://localhost:3334` (dev)
+`contextvm/server.ts` currently includes:
 
-## Roadmap: Planned MCP Servers & Tools
+- OSM/location queries
+- PMTiles extract/upload helpers
+- web search + URL fetch + Wikipedia lookup
 
-> Full design document: [docs/GEO_AI_ARCHITECTURE.md](../../../docs/GEO_AI_ARCHITECTURE.md)
+Transport constraints still apply (Nostr plaintext and payload budgets), so server-side response fitting/simplification is used when needed.
 
-### Design Principles
+## Streaming and Stall Handling
 
-1. **No REST APIs** — All backend services are ContextVM servers over Nostr
-2. **Bring Your Own AI (BYOAI)** — User chooses and pays for their AI provider directly (Routstr, Ollama, LM Studio, any OpenAI-compatible endpoint)
-3. **ContextVM for Tools** — Domain-specific tools via MCP over Nostr, replacing traditional web servers
-4. **Client-Side Orchestration** — Frontend handles AI <-> Tool coordination; no middleman sees queries or payments
+`routstr.ts` parses SSE by event blocks (not single lines), preserving multiline `data:` payloads and reducing malformed streamed tool-argument assembly.
 
-Three ContextVM MCP servers are planned. The **Geo Server already exists**; the other two are next.
+`store.ts` adds runtime protections:
 
-### Planned ContextVM Servers
+- Stall warning after 15s without progress.
+- Automatic failure after 45s without progress.
+- User cancel via AbortController.
+- Stream phase tracking (`requesting`, `streaming`, `executing_tools`, `recovering_context`, `finalizing`).
 
-```mermaid
-graph TB
-    subgraph "Frontend Tool Router"
-        TR["tools.ts<br/>executeToolCall()"]
-    end
+## Chat UI Transparency
 
-    TR --> GS
-    TR --> WS
-    TR --> GEN
+`ChatPanel.tsx` provides debugging-first presentation:
 
-    subgraph "1. Geo Server ✅ (contextvm/server.ts)"
-        GS["earthly-geo-server"]
-        GS --> GS_DONE["✅ search_location<br/>✅ reverse_lookup<br/>✅ query_osm_by_id<br/>✅ query_osm_nearby<br/>✅ query_osm_bbox<br/>✅ create_map_extract<br/>✅ create_map_upload"]
-        GS --> GS_NEW["🔲 calculate_route<br/>🔲 route_with_waypoints<br/>🔲 generate_isochrone<br/>🔲 buffer_geometry<br/>🔲 simplify_geometry<br/>🔲 union_geometries<br/>🔲 clip_to_boundary"]
-    end
+- Collapsible reasoning block:
+  - Tree-line rendering (`├` / `└`)
+  - Collapsed view keeps recent lines visible
+  - Expanded view supports auto-scroll toggle (default on)
+- Collapsible tool-result block:
+  - 2-line preview when collapsed
+  - Scrollable full payload when expanded
+- Copy buttons on user/assistant/tool-call/tool-result/reasoning bubbles
+- Approx token estimate per bubble
+- Top diagnostic pills (context/budget/finish/tool-count)
 
-    subgraph "2. Web Server 🔲 (contextvm/web-server.ts)"
-        WS["earthly-web-server"]
-        WS --> WS_TOOLS["🔲 web_search<br/>🔲 fetch_url<br/>🔲 wikipedia_lookup<br/>🔲 wikidata_query<br/>🔲 news_search"]
-    end
+## Known Operational Limits
 
-    subgraph "3. AI Generation Server 🔲 (contextvm/gen-server.ts)"
-        GEN["earthly-gen-server"]
-        GEN --> GEN_TOOLS["🔲 describe_region<br/>🔲 interpolate_path<br/>🔲 suggest_boundaries<br/>🔲 classify_land_use<br/>🔲 generate_labels"]
-    end
+- Tool loops are bounded at 10 rounds.
+- Large geometry/tool payloads can still hit model context or transport limits depending on provider/model.
+- Some providers require assistant tool-call messages to include `reasoning_content`; store contains provider-specific compatibility handling for this.
 
-    GS_DONE --> NOM["Nominatim"]
-    GS_DONE --> OVP["Overpass API"]
-    GS_DONE --> PMT["PMTiles + Blossom"]
-    GS_NEW --> OSRM["OSRM / Valhalla"]
-    GS_NEW --> TURF["Turf.js"]
-    WS_TOOLS --> DDG["DuckDuckGo / Brave"]
-    WS_TOOLS --> WIKI["Wikipedia / Wikidata"]
-    GEN_TOOLS --> AI["LLM inference"]
-```
+## Prompt Cookbook (AI + Chat + Map)
 
-### Server 1: Geo Server — new tools
+Use direct, imperative prompts that encourage tool action.
 
-Already running at `contextvm/server.ts`. These are additional tools to add:
+### Map import and extraction
 
-| Tool | Backend | Description |
-|------|---------|-------------|
-| `calculate_route` | OSRM or Valhalla | A→B routing with travel mode (walk/bike/car) |
-| `route_with_waypoints` | OSRM + Overpass | A→B routing that detours past POI categories |
-| `generate_isochrone` | Valhalla | Travel-time polygons (e.g. "15 min walk from here") |
-| `buffer_geometry` | Turf.js | Buffer a point/line/polygon by distance |
-| `simplify_geometry` | Turf.js | Douglas-Peucker simplification |
-| `union_geometries` | Turf.js | Merge overlapping polygons |
-| `clip_to_boundary` | Turf.js | Clip features to an area boundary |
+- `Import the Rhine river features currently visible on my map into the editor.`
+- `Find Vienna state boundary from OSM, import it as polygon, and name the feature "Vienna Boundary".`
+- `In my current viewport, import all military bases and keep only point features with name/operator metadata.`
+- `Load all hospitals in the visible bbox and set a property source=osm_hospital_import on each feature.`
 
-**Already in MCP server but not yet exposed to chat:**
-- `create_map_extract` — extract PMTiles for a bbox (requires 2-step signing flow)
-- `create_map_upload` — upload extracted tiles to Blossom
+### Direct geometry generation
 
-### Server 2: Web Server (planned)
+- `Draw a 5-point star centered on the current map center with ~500m radius.`
+- `Create a 2km buffer polygon around the currently selected point feature.`
+- `Add a polygon approximating a 15-minute walk shed around the map center using a simple circle approximation.`
+- `Create a polyline route between the two selected points and tag it with route_type=manual.`
 
-New MCP server at `contextvm/web-server.ts` for internet research tools:
+### Editor command orchestration
 
-| Tool | Backend | Description |
-|------|---------|-------------|
-| `web_search` | DuckDuckGo / Brave | General web search |
-| `fetch_url` | HTTP fetch + readability | Fetch and parse a webpage |
-| `wikipedia_lookup` | Wikipedia API | Article by coordinates or topic |
-| `wikidata_query` | SPARQL | Structured geo entity queries |
-| `news_search` | News API | Recent news for a location |
+- `Switch to draw_polygon mode, then remind me to click points and finish drawing.`
+- `Duplicate selected features and then merge compatible ones.`
+- `Undo the last two operations and return to select mode.`
+- `Enable snapping, split selected multi-geometries, then connect selected lines if possible.`
 
-### Server 3: AI Generation Server (planned)
+### Visual + map-context reasoning
 
-New MCP server at `contextvm/gen-server.ts` for AI-assisted geometry creation:
+- `Capture a snapshot of my current viewport and tell me what major land-use patterns you see.`
+- `What am I likely looking at near the map center? Use reverse lookup and one supporting OSM query.`
+- `Given current bbox + zoom, suggest three likely POI categories worth importing.`
 
-| Tool | Description |
-|------|-------------|
-| `describe_region` | Natural language → polygon vertices ("Blue Banana" → polygon) |
-| `interpolate_path` | Smooth path generation between points |
-| `suggest_boundaries` | AI-suggested region boundaries from context |
-| `classify_land_use` | Analyze satellite imagery for land classification |
-| `generate_labels` | Smart label placement for features |
+### Research-assisted geo workflows
 
-### Use Case Examples
+- `Find recent news about flood risk in the visible region and summarize implications for mapping.`
+- `Use web search + Wikipedia to identify historically significant places in this viewport, then import matching OSM features.`
+- `Fetch a source page about protected areas in this region and propose OSM filters to map them.`
 
-| Category | Example Prompts |
-|----------|-----------------|
-| **Creative** | "Draw the Blue Banana megalopolis across Europe" |
-| **Routing** | "Plan a scenic bike route avoiding hills" |
-| | "Find the fastest walking path that passes a pharmacy" |
-| **Historical** | "What buildings here are over 100 years old?" |
-| | "Show me the historical boundary of this city in 1900" |
-| **Analysis** | "What's the walkability score of this neighborhood?" |
-| | "Show 15-minute isochrones from this transit stop" |
-| **Discovery** | "Find all UNESCO sites within 50km" |
-| | "What restaurants here have outdoor seating?" |
-| **Research** | "Summarize recent news about this area" |
-| | "What's the zoning classification for this parcel?" |
-| **Planning** | "Suggest optimal locations for EV chargers" |
-| | "Generate a walking tour of Art Deco buildings" |
+### Prompt patterns that usually work best
 
-### Implementation Phases
-
-```mermaid
-gantt
-    title Geo-AI Copilot Roadmap
-    dateFormat YYYY-MM-DD
-    axisFormat %b
-
-    section Phase 1 ✅
-    Chat panel + streaming           :done, p1a, 2025-01-01, 30d
-    Routstr client + Cashu payments  :done, p1b, after p1a, 20d
-    Existing geo tools in chat       :done, p1c, after p1b, 15d
-    Editor integration (write/import):done, p1d, after p1c, 15d
-    Vision + context management      :done, p1e, after p1d, 10d
-
-    section Phase 2
-    Routing tools (OSRM/Valhalla)    :p2a, 2025-06-01, 30d
-    Geometric operations (Turf.js)   :p2b, after p2a, 20d
-    Isochrone generation             :p2c, after p2b, 15d
-
-    section Phase 3
-    Web search server                :p3a, after p2c, 25d
-    Wikipedia/Wikidata integration   :p3b, after p3a, 15d
-    URL fetch + summarization        :p3c, after p3b, 10d
-
-    section Phase 4
-    NL → geometry generation         :p4a, after p3c, 30d
-    Smart region suggestions         :p4b, after p4a, 20d
-    Land use classification          :p4c, after p4b, 20d
-```
-
-## Streaming
-
-- Uses `ReadableStream` with `TextDecoder` to parse SSE chunks
-- Each `data:` line parsed as JSON; `delta.content` emitted via `onToken` callback
-- Tool call arguments streamed incrementally, assembled in a `Map<index, ToolCall>`
-- Stream terminates on `[DONE]` token
-- `AbortController` supports cancellation
-
-## Store
-
-Zustand store with `persist` middleware. Only settings persist across sessions (provider, model, tools toggle). Messages and payment stats reset on reload.
-
-**Key state:**
-
-| Group | Fields |
-|-------|--------|
-| Provider | `provider`, `customEndpoint`, `customApiKey` |
-| Models | `models`, `selectedModel`, `modelsLoading`, `modelsError` |
-| Chat | `messages`, `isStreaming`, `streamingContent`, `executingTools`, `error` |
-| Settings | `maxTokens`, `toolsEnabled` |
-| Stats | `totalSpent`, `totalRefunded` |
-
-## UI Structure
-
-```
-ChatPanel
-├─ Header
-│  ├─ Provider dropdown (routstr / lmstudio / ollama / custom)
-│  ├─ Clear chat button
-│  ├─ Custom endpoint config (shown when provider=custom)
-│  ├─ Model dropdown with pricing info
-│  └─ Wallet status (or "Local - free") + Tools toggle
-├─ Messages
-│  ├─ MessageBubble per message
-│  │  ├─ User — right-aligned, primary color
-│  │  ├─ Assistant — left-aligned, muted
-│  │  ├─ Tool calls — orange wrench badges
-│  │  └─ Tool results — blue card, scrollable, truncated
-│  └─ Streaming indicator ("Thinking..." / "Executing geo tools...")
-└─ Input
-   ├─ Auto-resizing textarea (Enter sends, Shift+Enter newline)
-   └─ Send / Cancel button
-```
+- `Do the work directly with tools. Ask me only if absolutely required.`
+- `Use compact tool arguments. One feature per add_feature_to_editor call unless bulk import is better.`
+- `Before importing by name, first verify candidates with query_osm_* and only then import.`
+- `After editing, summarize exactly what was changed (counts + geometry types + key properties).`

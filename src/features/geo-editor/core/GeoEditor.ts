@@ -1160,6 +1160,167 @@ export class GeoEditor {
 		return selected.every((f) => f.geometry.type === 'LineString')
 	}
 
+	canDissolveSelectedLines(): boolean {
+		const selected = this.getSelectedFeatures().filter((feature) =>
+			this.isLineGeometryType(feature.geometry.type),
+		)
+		if (selected.length === 0) return false
+
+		const partCount = selected.reduce(
+			(total, feature) => total + this.extractLinePartsFromGeometry(feature.geometry).length,
+			0,
+		)
+		return partCount >= 2
+	}
+
+	dissolveSelectedLines(
+		tolerance: number = 0.00001,
+	): {
+		sourceFeatureCount: number
+		createdCount: number
+		skippedPartCount: number
+	} {
+		const selected = this.getSelectedFeatures().filter((feature) =>
+			this.isLineGeometryType(feature.geometry.type),
+		)
+		if (selected.length === 0) {
+			return { sourceFeatureCount: 0, createdCount: 0, skippedPartCount: 0 }
+		}
+
+		const safeTolerance = Number.isFinite(tolerance)
+			? Math.min(1, Math.max(1e-8, tolerance))
+			: 0.00001
+
+		const lineParts = selected.flatMap((feature) =>
+			this.extractLinePartsFromGeometry(feature.geometry).map((coords) => ({ feature, coords })),
+		)
+
+		const snappedParts: Position[][] = []
+		let skippedPartCount = 0
+		for (const part of lineParts) {
+			const snapped = this.normalizeLineCoordinates(part.coords, safeTolerance)
+			if (snapped.length < 2) {
+				skippedPartCount += 1
+				continue
+			}
+			snappedParts.push(snapped)
+		}
+
+		if (snappedParts.length === 0) {
+			return {
+				sourceFeatureCount: selected.length,
+				createdCount: 0,
+				skippedPartCount,
+			}
+		}
+
+		const mergedLines = this.mergeLinePartsBySharedEndpoints(snappedParts, safeTolerance)
+		if (mergedLines.length === 0) {
+			return {
+				sourceFeatureCount: selected.length,
+				createdCount: 0,
+				skippedPartCount,
+			}
+		}
+
+		const template = this.cloneFeature(selected[0])
+		const mergedFeatures: EditorFeature[] = mergedLines.map((coordinates) =>
+			this.normalizeFeature({
+				...template,
+				id: generateId(),
+				geometry: {
+					type: 'LineString',
+					coordinates,
+				} as Geometry,
+			}),
+		)
+
+		selected.forEach((feature) => {
+			this.features.delete(feature.id)
+		})
+		mergedFeatures.forEach((feature) => {
+			this.features.set(feature.id, feature)
+		})
+
+		this.selection.clearSelection()
+		this.selection.select(mergedFeatures.map((feature) => feature.id))
+		this.history.recordUpdate(mergedFeatures, selected)
+		this.render()
+		if (this.mode === 'edit') this.renderVertices()
+		this.emit('selection.change', {
+			type: 'selection.change',
+			features: this.getSelectedFeatures(),
+		})
+		this.emit('update', { type: 'update', features: mergedFeatures })
+
+		return {
+			sourceFeatureCount: selected.length,
+			createdCount: mergedFeatures.length,
+			skippedPartCount,
+		}
+	}
+
+	canSimplifySelectedFeatures(): boolean {
+		return this.getSelectedFeatures().some((feature) =>
+			this.isSimplifiableGeometryType(feature.geometry.type),
+		)
+	}
+
+	simplifySelectedFeatures(
+		tolerance: number = 0.0001,
+	): {
+		updatedCount: number
+		skippedCount: number
+	} {
+		const selected = this.getSelectedFeatures().filter((feature) =>
+			this.isSimplifiableGeometryType(feature.geometry.type),
+		)
+
+		if (selected.length === 0) {
+			return { updatedCount: 0, skippedCount: 0 }
+		}
+
+		const safeTolerance = Number.isFinite(tolerance)
+			? Math.min(1, Math.max(1e-8, tolerance))
+			: 0.0001
+
+		const updated: EditorFeature[] = []
+		const previous: EditorFeature[] = []
+		let skippedCount = 0
+
+		for (const feature of selected) {
+			try {
+				const simplified = this.transform.simplify(feature, safeTolerance)
+				if (JSON.stringify(simplified.geometry) === JSON.stringify(feature.geometry)) {
+					skippedCount += 1
+					continue
+				}
+
+				const normalized = this.normalizeFeature({
+					...feature,
+					geometry: simplified.geometry,
+				})
+				this.features.set(feature.id, normalized)
+				updated.push(normalized)
+				previous.push(feature)
+			} catch (error) {
+				console.error(`Failed to simplify feature ${feature.id}:`, error)
+				skippedCount += 1
+			}
+		}
+
+		if (updated.length === 0) {
+			return { updatedCount: 0, skippedCount }
+		}
+
+		this.history.recordUpdate(updated, previous)
+		this.render()
+		if (this.mode === 'edit') this.renderVertices()
+		this.emit('update', { type: 'update', features: updated })
+
+		return { updatedCount: updated.length, skippedCount }
+	}
+
 	copySelectedFeatures(): void {
 		const selected = this.getSelectedFeatures()
 		if (selected.length === 0) return
@@ -1654,6 +1815,170 @@ export class GeoEditor {
 			mode === 'draw_polygon' ||
 			mode === 'draw_annotation'
 		)
+	}
+
+	private isSimplifiableGeometryType(type: Geometry['type']): boolean {
+		return (
+			type === 'LineString' ||
+			type === 'Polygon' ||
+			type === 'MultiLineString' ||
+			type === 'MultiPolygon'
+		)
+	}
+
+	private isLineGeometryType(type: Geometry['type']): boolean {
+		return type === 'LineString' || type === 'MultiLineString'
+	}
+
+	private extractLinePartsFromGeometry(geometry: Geometry): Position[][] {
+		if (geometry.type === 'LineString') {
+			return [JSON.parse(JSON.stringify(geometry.coordinates)) as Position[]]
+		}
+		if (geometry.type === 'MultiLineString') {
+			return JSON.parse(JSON.stringify(geometry.coordinates)) as Position[][]
+		}
+		return []
+	}
+
+	private normalizeLineCoordinates(coords: Position[], tolerance: number): Position[] {
+		const snapped = coords.map((coord) => this.snapPosition(coord, tolerance))
+		return this.removeConsecutiveDuplicatePositions(snapped, tolerance)
+	}
+
+	private snapPosition(coord: Position, tolerance: number): Position {
+		const lon = Math.round(coord[0] / tolerance) * tolerance
+		const lat = Math.round(coord[1] / tolerance) * tolerance
+		if (coord.length > 2) {
+			return [lon, lat, ...coord.slice(2)] as Position
+		}
+		return [lon, lat]
+	}
+
+	private removeConsecutiveDuplicatePositions(coords: Position[], tolerance: number): Position[] {
+		if (coords.length === 0) return coords
+		const deduped: Position[] = [coords[0]]
+		for (let i = 1; i < coords.length; i++) {
+			const previous = deduped[deduped.length - 1]
+			const current = coords[i]
+			if (!previous || !current) continue
+			if (!this.positionsEquivalent(previous, current, tolerance)) {
+				deduped.push(current)
+			}
+		}
+		return deduped
+	}
+
+	private positionKey(position: Position, tolerance: number): string {
+		const lon = Math.round(position[0] / tolerance)
+		const lat = Math.round(position[1] / tolerance)
+		return `${lon}:${lat}`
+	}
+
+	private positionsEquivalent(a: Position, b: Position, tolerance: number): boolean {
+		return this.positionKey(a, tolerance) === this.positionKey(b, tolerance)
+	}
+
+	private mergeLinePartsBySharedEndpoints(lines: Position[][], tolerance: number): Position[][] {
+		const adjacency = new Map<string, Set<string>>()
+		const nodeCoords = new Map<string, Position>()
+		const allEdges = new Set<string>()
+
+		const toEdgeKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`)
+		const registerNode = (position: Position): string => {
+			const key = this.positionKey(position, tolerance)
+			if (!nodeCoords.has(key)) {
+				nodeCoords.set(key, position)
+			}
+			return key
+		}
+
+		for (const coords of lines) {
+			if (coords.length < 2) continue
+			for (let i = 0; i < coords.length - 1; i++) {
+				const start = coords[i]
+				const end = coords[i + 1]
+				if (!start || !end) continue
+				if (this.positionsEquivalent(start, end, tolerance)) continue
+
+				const startKey = registerNode(start)
+				const endKey = registerNode(end)
+				const edgeKey = toEdgeKey(startKey, endKey)
+				if (allEdges.has(edgeKey)) {
+					continue
+				}
+
+				allEdges.add(edgeKey)
+				const startLinks = adjacency.get(startKey) ?? new Set<string>()
+				startLinks.add(endKey)
+				adjacency.set(startKey, startLinks)
+
+				const endLinks = adjacency.get(endKey) ?? new Set<string>()
+				endLinks.add(startKey)
+				adjacency.set(endKey, endLinks)
+			}
+		}
+
+		if (allEdges.size === 0) return []
+
+		const visitedEdges = new Set<string>()
+		const walkPath = (startKey: string, nextKey: string): string[] => {
+			const path = [startKey, nextKey]
+			visitedEdges.add(toEdgeKey(startKey, nextKey))
+
+			let previous = startKey
+			let current = nextKey
+
+			while (true) {
+				const neighbors = [...(adjacency.get(current) ?? [])].filter((key) => key !== previous)
+				if (neighbors.length === 0) break
+
+				const candidate = neighbors.find(
+					(neighborKey) => !visitedEdges.has(toEdgeKey(current, neighborKey)),
+				)
+				if (!candidate) break
+
+				path.push(candidate)
+				visitedEdges.add(toEdgeKey(current, candidate))
+				previous = current
+				current = candidate
+			}
+
+			return path
+		}
+
+		const toCoordinatePath = (nodePath: string[]): Position[] => {
+			const positions = nodePath
+				.map((key) => nodeCoords.get(key))
+				.filter((position): position is Position => Boolean(position))
+			return this.removeConsecutiveDuplicatePositions(positions, tolerance)
+		}
+
+		const merged: Position[][] = []
+		const nodeKeys = [...adjacency.keys()]
+		const nonLinearNodes = nodeKeys.filter((key) => (adjacency.get(key)?.size ?? 0) !== 2)
+
+		for (const startKey of nonLinearNodes) {
+			for (const neighborKey of adjacency.get(startKey) ?? []) {
+				const edgeKey = toEdgeKey(startKey, neighborKey)
+				if (visitedEdges.has(edgeKey)) continue
+				const path = toCoordinatePath(walkPath(startKey, neighborKey))
+				if (path.length >= 2) {
+					merged.push(path)
+				}
+			}
+		}
+
+		for (const edgeKey of allEdges) {
+			if (visitedEdges.has(edgeKey)) continue
+			const [startKey, endKey] = edgeKey.split('|')
+			if (!startKey || !endKey) continue
+			const path = toCoordinatePath(walkPath(startKey, endKey))
+			if (path.length >= 2) {
+				merged.push(path)
+			}
+		}
+
+		return merged
 	}
 
 	private updateDoubleClickZoomState(): void {

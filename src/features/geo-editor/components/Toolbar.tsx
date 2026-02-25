@@ -34,12 +34,21 @@ import {
 	XCircle,
 	Check,
 } from 'lucide-react'
+import type { Geometry } from 'geojson'
 import type React from 'react'
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { HelpPopover } from '../../../components/HelpPopover'
 import { LoginSessionButtons } from '../../../components/LoginSessionButtom'
 import { Button } from '../../../components/ui/button'
 import { ButtonGroup } from '../../../components/ui/button-group'
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from '../../../components/ui/dialog'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -57,6 +66,7 @@ import {
 	SelectValue,
 } from '../../../components/ui/select'
 import { SidebarTrigger } from '../../../components/ui/sidebar'
+import { Slider } from '../../../components/ui/slider'
 import {
 	Tooltip,
 	TooltipContent,
@@ -64,9 +74,11 @@ import {
 	TooltipTrigger,
 } from '../../../components/ui/tooltip'
 import { canExecuteEditorCommand, executeEditorCommand, type EditorCommandId } from '../commands'
-import type { EditorMode } from '../core'
+import { BLOSSOM_UPLOAD_THRESHOLD_BYTES } from '../constants'
+import type { EditorFeature, EditorMode, GeoEditor } from '../core'
 import { useEditorStore } from '../store'
 import type { GeoSearchResult } from '../types'
+import { formatBytes } from '../../../lib/blossom/blossomUpload'
 import { CreateMapPopover } from './CreateMapPopover'
 import { MapSettingsPanel } from './MapSettingsPanel'
 
@@ -81,6 +93,172 @@ const OSM_FILTER_PRESETS = [
 	{ label: 'Amenities', value: 'amenity' },
 	{ label: 'All', value: 'all' },
 ] as const
+
+const SIMPLIFY_SLIDER_MIN = 0
+const SIMPLIFY_SLIDER_MAX = 100
+const SIMPLIFY_TOLERANCE_MIN = 1e-8
+const SIMPLIFY_TOLERANCE_MAX = 1e-3
+const DEFAULT_SIMPLIFY_TOLERANCE = 0.0001
+const BYTE_ENCODER = new TextEncoder()
+
+type SimplifyPreviewMetrics = {
+	selectedFeatureCount: number
+	updatedFeatureCount: number
+	skippedFeatureCount: number
+	vertexCountBefore: number
+	vertexCountAfter: number
+	selectedBytesBefore: number
+	selectedBytesAfter: number
+	datasetBytesBefore: number
+	datasetBytesAfter: number
+}
+
+function sliderValueToTolerance(value: number): number {
+	const clamped = Math.max(SIMPLIFY_SLIDER_MIN, Math.min(SIMPLIFY_SLIDER_MAX, value))
+	const ratio = clamped / (SIMPLIFY_SLIDER_MAX - SIMPLIFY_SLIDER_MIN)
+	const scale = SIMPLIFY_TOLERANCE_MAX / SIMPLIFY_TOLERANCE_MIN
+	return SIMPLIFY_TOLERANCE_MIN * scale ** ratio
+}
+
+function toleranceToSliderValue(tolerance: number): number {
+	const safe = Math.max(SIMPLIFY_TOLERANCE_MIN, Math.min(SIMPLIFY_TOLERANCE_MAX, tolerance))
+	const scale = SIMPLIFY_TOLERANCE_MAX / SIMPLIFY_TOLERANCE_MIN
+	return Math.round((Math.log(safe / SIMPLIFY_TOLERANCE_MIN) / Math.log(scale)) * 100)
+}
+
+function countGeometryVertices(geometry: Geometry): number {
+	switch (geometry.type) {
+		case 'Point':
+			return 1
+		case 'MultiPoint':
+		case 'LineString':
+			return geometry.coordinates.length
+		case 'MultiLineString':
+		case 'Polygon':
+			return geometry.coordinates.reduce((sum, ring) => sum + ring.length, 0)
+		case 'MultiPolygon':
+			return geometry.coordinates.reduce(
+				(sum, polygon) => sum + polygon.reduce((ringSum, ring) => ringSum + ring.length, 0),
+				0,
+			)
+		case 'GeometryCollection':
+			return geometry.geometries.reduce((sum, child) => sum + countGeometryVertices(child), 0)
+		default:
+			return 0
+	}
+}
+
+function isSimplifiableGeometryType(type: Geometry['type']): boolean {
+	return (
+		type === 'LineString' ||
+		type === 'Polygon' ||
+		type === 'MultiLineString' ||
+		type === 'MultiPolygon'
+	)
+}
+
+function estimateFeatureCollectionBytes(features: EditorFeature[]): number {
+	return BYTE_ENCODER.encode(
+		JSON.stringify({
+			type: 'FeatureCollection',
+			features,
+		}),
+	).length
+}
+
+function estimateSingleFeatureBytes(feature: EditorFeature): number {
+	return BYTE_ENCODER.encode(JSON.stringify(feature)).length
+}
+
+function isGeometryEquivalent(a: Geometry, b: Geometry): boolean {
+	return JSON.stringify(a) === JSON.stringify(b)
+}
+
+function buildSimplifyPreviewMetrics(
+	editor: GeoEditor | null,
+	features: EditorFeature[],
+	selectedFeatureIds: string[],
+	tolerance: number,
+): SimplifyPreviewMetrics {
+	const selectedIdSet = new Set(selectedFeatureIds)
+	const selectedFeatures = features.filter(
+		(feature) =>
+			selectedIdSet.has(feature.id) &&
+			feature.geometry &&
+			isSimplifiableGeometryType(feature.geometry.type),
+	)
+
+	if (!editor || selectedFeatures.length === 0) {
+		const datasetBytes = estimateFeatureCollectionBytes(features)
+		return {
+			selectedFeatureCount: selectedFeatures.length,
+			updatedFeatureCount: 0,
+			skippedFeatureCount: 0,
+			vertexCountBefore: 0,
+			vertexCountAfter: 0,
+			selectedBytesBefore: 0,
+			selectedBytesAfter: 0,
+			datasetBytesBefore: datasetBytes,
+			datasetBytesAfter: datasetBytes,
+		}
+	}
+
+	let vertexCountBefore = 0
+	let vertexCountAfter = 0
+	let selectedBytesBefore = 0
+	let selectedBytesAfter = 0
+	let updatedFeatureCount = 0
+	let skippedFeatureCount = 0
+
+	const simplifiedById = new Map<string, EditorFeature>()
+
+	for (const feature of selectedFeatures) {
+		vertexCountBefore += countGeometryVertices(feature.geometry)
+		selectedBytesBefore += estimateSingleFeatureBytes(feature)
+
+		try {
+			const simplified = editor.transform.simplify(feature, tolerance)
+			const simplifiedFeature: EditorFeature = {
+				...feature,
+				geometry: simplified.geometry,
+			}
+			vertexCountAfter += countGeometryVertices(simplifiedFeature.geometry)
+			selectedBytesAfter += estimateSingleFeatureBytes(simplifiedFeature)
+			simplifiedById.set(feature.id, simplifiedFeature)
+
+			if (isGeometryEquivalent(feature.geometry, simplifiedFeature.geometry)) {
+				skippedFeatureCount += 1
+			} else {
+				updatedFeatureCount += 1
+			}
+		} catch {
+			vertexCountAfter += countGeometryVertices(feature.geometry)
+			selectedBytesAfter += estimateSingleFeatureBytes(feature)
+			skippedFeatureCount += 1
+		}
+	}
+
+	const datasetBytesBefore = estimateFeatureCollectionBytes(features)
+	const featuresAfter = features.map((feature) => simplifiedById.get(feature.id) ?? feature)
+	const datasetBytesAfter = estimateFeatureCollectionBytes(featuresAfter)
+
+	return {
+		selectedFeatureCount: selectedFeatures.length,
+		updatedFeatureCount,
+		skippedFeatureCount,
+		vertexCountBefore,
+		vertexCountAfter,
+		selectedBytesBefore,
+		selectedBytesAfter,
+		datasetBytesBefore,
+		datasetBytesAfter,
+	}
+}
+
+function percentageChange(before: number, after: number): number {
+	if (before <= 0) return 0
+	return ((after - before) / before) * 100
+}
 
 type ToolbarButton = {
 	key: string
@@ -245,11 +423,15 @@ interface GeometryOpsDropdownProps {
 	onMerge: () => void
 	onSplit: () => void
 	onConnect: () => void
+	onDissolve: () => void
+	onSimplify: () => void
 	onUnion: () => void
 	onDifference: () => void
 	canMerge?: boolean
 	canSplit?: boolean
 	canConnect?: boolean
+	canDissolve?: boolean
+	canSimplify?: boolean
 	canBooleanOps?: boolean
 	booleanOpActive?: { type: 'union' | 'difference' }
 	small?: boolean
@@ -260,11 +442,15 @@ function GeometryOpsDropdown({
 	onMerge,
 	onSplit,
 	onConnect,
+	onDissolve,
+	onSimplify,
 	onUnion,
 	onDifference,
 	canMerge,
 	canSplit,
 	canConnect,
+	canDissolve,
+	canSimplify,
 	canBooleanOps,
 	booleanOpActive,
 	small,
@@ -305,6 +491,14 @@ function GeometryOpsDropdown({
 					<DropdownMenuItem onClick={onConnect} disabled={!canConnect}>
 						<Link2 className="h-4 w-4" />
 						Connect Lines
+					</DropdownMenuItem>
+					<DropdownMenuItem onClick={onDissolve} disabled={!canDissolve}>
+						<Combine className="h-4 w-4" />
+						Dissolve Lines
+					</DropdownMenuItem>
+					<DropdownMenuItem onClick={onSimplify} disabled={!canSimplify}>
+						<Route className="h-4 w-4" />
+						Simplify Selection
 					</DropdownMenuItem>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem onClick={onUnion} disabled={!canBooleanOps}>
@@ -635,7 +829,9 @@ export function Toolbar({
 	onOsmAdvanced,
 }: ToolbarProps) {
 	const editor = useEditorStore((state) => state.editor)
+	const features = useEditorStore((state) => state.features)
 	const mode = useEditorStore((state) => state.mode)
+	const selectedFeatureIds = useEditorStore((state) => state.selectedFeatureIds)
 	const snappingEnabled = useEditorStore((state) => state.snappingEnabled)
 	const viewMode = useEditorStore((state) => state.viewMode)
 	const history = useEditorStore((state) => state.history)
@@ -674,6 +870,10 @@ export function Toolbar({
 	const [sharePopoverOpen, setSharePopoverOpen] = useState(false)
 	const [copiedUrl, setCopiedUrl] = useState(false)
 	const [magicPopoverOpen, setMagicPopoverOpen] = useState(false)
+	const [simplifyDialogOpen, setSimplifyDialogOpen] = useState(false)
+	const [simplifySliderValue, setSimplifySliderValue] = useState<number[]>([
+		toleranceToSliderValue(DEFAULT_SIMPLIFY_TOLERANCE),
+	])
 
 	// Computed: Is editing disabled (view mode active)?
 	const isEditingDisabled = viewMode !== 'edit'
@@ -681,6 +881,16 @@ export function Toolbar({
 	const runEditorCommand = (commandId: EditorCommandId, args?: Record<string, unknown>) => {
 		executeEditorCommand(commandId, args)
 	}
+
+	const simplifyTolerance = useMemo(
+		() => sliderValueToTolerance(simplifySliderValue[0] ?? SIMPLIFY_SLIDER_MIN),
+		[simplifySliderValue],
+	)
+
+	const simplifyPreviewMetrics = useMemo(
+		() => buildSimplifyPreviewMetrics(editor, features, selectedFeatureIds, simplifyTolerance),
+		[editor, features, selectedFeatureIds, simplifyTolerance],
+	)
 
 	const handleModeChange = (newMode: EditorMode) => {
 		if (inspectorActive) {
@@ -757,6 +967,21 @@ export function Toolbar({
 		runEditorCommand('connect_selected_lines')
 	}
 
+	const handleDissolveLines = () => {
+		runEditorCommand('dissolve_selected_lines')
+	}
+
+	const handleSimplifySelected = () => {
+		setSimplifyDialogOpen(true)
+	}
+
+	const handleApplySimplify = () => {
+		runEditorCommand('simplify_selected_features', {
+			tolerance: simplifyTolerance,
+		})
+		setSimplifyDialogOpen(false)
+	}
+
 	const handleCopyShareUrl = async () => {
 		const url = window.location.href
 		try {
@@ -792,8 +1017,20 @@ export function Toolbar({
 	const canMergeSelected = canExecuteEditorCommand('merge_selected_features')
 	const canSplitSelected = canExecuteEditorCommand('split_selected_features')
 	const canConnectLines = canExecuteEditorCommand('connect_selected_lines')
+	const canDissolveLines = canExecuteEditorCommand('dissolve_selected_lines')
+	const canSimplifySelected = canExecuteEditorCommand('simplify_selected_features')
 	const canStartBooleanOps = canExecuteEditorCommand('start_boolean_union')
 	const booleanOpActive = editor?.getBooleanOperation()
+	const vertexDeltaPercent = percentageChange(
+		simplifyPreviewMetrics.vertexCountBefore,
+		simplifyPreviewMetrics.vertexCountAfter,
+	)
+	const datasetDeltaPercent = percentageChange(
+		simplifyPreviewMetrics.datasetBytesBefore,
+		simplifyPreviewMetrics.datasetBytesAfter,
+	)
+	const nextDatasetOverLimit =
+		simplifyPreviewMetrics.datasetBytesAfter > BLOSSOM_UPLOAD_THRESHOLD_BYTES
 
 	// ============================================
 	// BUTTON SECTIONS - Organized by function
@@ -891,160 +1128,274 @@ export function Toolbar({
 		},
 	]
 
+	const simplifyDialog = (
+		<Dialog open={simplifyDialogOpen} onOpenChange={setSimplifyDialogOpen}>
+			<DialogContent className="sm:max-w-md">
+				<DialogHeader>
+					<DialogTitle>Simplify Selection</DialogTitle>
+					<DialogDescription>
+						Reduce vertices in selected lines/polygons and preview impact before applying.
+					</DialogDescription>
+				</DialogHeader>
+
+				<div className="space-y-4 py-1">
+					<div className="space-y-2">
+						<div className="flex items-center justify-between text-xs">
+							<span className="font-medium text-gray-700">Tolerance</span>
+							<span className="font-mono text-gray-600">
+								{simplifyTolerance.toExponential(2)} (~{(simplifyTolerance * 111320).toFixed(2)} m)
+							</span>
+						</div>
+						<Slider
+							value={simplifySliderValue}
+							onValueChange={setSimplifySliderValue}
+							min={SIMPLIFY_SLIDER_MIN}
+							max={SIMPLIFY_SLIDER_MAX}
+							step={1}
+							disabled={!canSimplifySelected}
+						/>
+						<div className="flex items-center justify-between text-[10px] text-muted-foreground">
+							<span>Fine detail</span>
+							<span>Aggressive</span>
+						</div>
+					</div>
+
+					<div className="grid grid-cols-1 gap-2 text-xs">
+						<div className="rounded-md border border-gray-200 bg-gray-50 p-2">
+							<div className="font-medium text-gray-700">Selected geometries</div>
+							<div className="mt-1 text-gray-600">
+								{simplifyPreviewMetrics.selectedFeatureCount} selected •{' '}
+								{simplifyPreviewMetrics.updatedFeatureCount} will change •{' '}
+								{simplifyPreviewMetrics.skippedFeatureCount} unchanged
+							</div>
+						</div>
+
+						<div className="rounded-md border border-gray-200 p-2">
+							<div className="font-medium text-gray-700">Coordinate points</div>
+							<div className="mt-1 text-gray-800">
+								{simplifyPreviewMetrics.vertexCountBefore.toLocaleString()} →{' '}
+								{simplifyPreviewMetrics.vertexCountAfter.toLocaleString()}
+							</div>
+							<div className="text-[10px] text-gray-500">
+								{vertexDeltaPercent <= 0
+									? `${Math.abs(vertexDeltaPercent).toFixed(1)}% fewer points`
+									: `${vertexDeltaPercent.toFixed(1)}% more points`}
+							</div>
+						</div>
+
+						<div className="rounded-md border border-gray-200 p-2">
+							<div className="font-medium text-gray-700">Selected payload estimate</div>
+							<div className="mt-1 text-gray-800">
+								{formatBytes(simplifyPreviewMetrics.selectedBytesBefore)} →{' '}
+								{formatBytes(simplifyPreviewMetrics.selectedBytesAfter)}
+							</div>
+						</div>
+
+						<div
+							className={`rounded-md border p-2 ${
+								nextDatasetOverLimit
+									? 'border-amber-200 bg-amber-50'
+									: 'border-green-200 bg-green-50'
+							}`}
+						>
+							<div className="font-medium text-gray-700">Dataset size estimate</div>
+							<div className="mt-1 text-gray-800">
+								{formatBytes(simplifyPreviewMetrics.datasetBytesBefore)} →{' '}
+								{formatBytes(simplifyPreviewMetrics.datasetBytesAfter)}
+							</div>
+							<div className="text-[10px] text-gray-500">
+								{datasetDeltaPercent <= 0
+									? `${Math.abs(datasetDeltaPercent).toFixed(1)}% smaller`
+									: `${datasetDeltaPercent.toFixed(1)}% larger`}{' '}
+								• limit {formatBytes(BLOSSOM_UPLOAD_THRESHOLD_BYTES)} •{' '}
+								{nextDatasetOverLimit ? 'still over limit' : 'within limit'}
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<DialogFooter>
+					<Button variant="outline" onClick={() => setSimplifyDialogOpen(false)}>
+						Cancel
+					</Button>
+					<Button
+						onClick={handleApplySimplify}
+						disabled={
+							!canSimplifySelected ||
+							simplifyPreviewMetrics.selectedFeatureCount === 0 ||
+							simplifyPreviewMetrics.updatedFeatureCount === 0
+						}
+					>
+						Apply Simplify
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	)
+
 	// ============================================
 	// MOBILE TOOLBAR
 	// ============================================
 	if (isMobile) {
 		return (
-			<div className="pointer-events-auto w-full max-w-md px-2 mx-auto">
-				{mobileToolsOpen && (
-					<div className="glass-panel rounded-lg p-1.5">
-						{/* Row 1: Session + Select + Draw */}
-						<div className="flex items-center justify-center gap-1 flex-wrap mb-1">
-							<SessionButton
-								viewMode={viewMode}
-								onStartNew={onStartNewDataset}
-								onCancel={onCancelEditing}
-								small
-							/>
-							<Divider />
-							<IconButtonRow buttons={selectButtons} small />
-							<Divider />
-							<DrawButtonGroup
-								mode={mode}
-								onModeChange={handleModeChange}
-								disabled={isEditingDisabled}
-								small
-							/>
-						</div>
-						{/* Row 2: History + Edit tools + Geometry ops */}
-						<div className="flex items-center justify-center gap-1 flex-wrap">
-							<IconButtonRow buttons={historyButtons} small />
-							<Divider />
-							<IconButtonRow buttons={editButtons} small />
-							<GeometryOpsDropdown
-								disabled={isEditingDisabled}
-								onMerge={handleMergeSelected}
-								onSplit={handleSplitSelected}
-								onConnect={handleConnectLines}
-								onUnion={handleBooleanUnion}
-								onDifference={handleBooleanDifference}
-								canMerge={canMergeSelected}
-								canSplit={canSplitSelected}
-								canConnect={canConnectLines}
-								canBooleanOps={canStartBooleanOps}
-								booleanOpActive={booleanOpActive}
-								small
-							/>
-						</div>
-					</div>
-				)}
-
-				{mobileSearchOpen && (
-					<div className="glass-panel flex flex-col gap-2 rounded-lg p-1.5">
-						<div className="flex items-center gap-2">
-							<SearchBar
-								query={searchQuery}
-								loading={searchLoading}
-								placeholder="Search..."
-								onSubmit={(e) => {
-									e.preventDefault()
-									handleSearchSubmit(e)
-								}}
-								onQueryChange={setSearchQuery}
-								onClear={clearSearch}
-							/>
-							<IconButtonRow buttons={lookupButtons} small />
-						</div>
-						{searchResults && searchResults.length > 0 && (
-							<div className="max-h-48 overflow-y-auto space-y-1 bg-white rounded-lg border border-gray-100">
-								{searchResults.map((result) => (
-									<button
-										type="button"
-										key={result.placeId}
-										className="w-full text-left text-sm p-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 truncate"
-										onClick={() => onSearchResultSelect?.(result)}
-									>
-										{result.displayName}
-									</button>
-								))}
+			<>
+				<div className="pointer-events-auto w-full max-w-md px-2 mx-auto">
+					{mobileToolsOpen && (
+						<div className="glass-panel rounded-lg p-1.5">
+							{/* Row 1: Session + Select + Draw */}
+							<div className="flex items-center justify-center gap-1 flex-wrap mb-1">
+								<SessionButton
+									viewMode={viewMode}
+									onStartNew={onStartNewDataset}
+									onCancel={onCancelEditing}
+									small
+								/>
+								<Divider />
+								<IconButtonRow buttons={selectButtons} small />
+								<Divider />
+								<DrawButtonGroup
+									mode={mode}
+									onModeChange={handleModeChange}
+									disabled={isEditingDisabled}
+									small
+								/>
 							</div>
-						)}
-						{searchError && <div className="text-xs text-red-600 px-1">{searchError}</div>}
-					</div>
-				)}
-
-				{mobileActionsOpen && datasetActions && (
-					<div className="glass-panel rounded-lg p-1.5">
-						<div className="flex items-center justify-center gap-1 flex-wrap">
-							<FileDropdown
-								onImportClick={() => fileInputRef.current?.click()}
-								onExport={datasetActions.onExport ?? (() => {})}
-								canExport={datasetActions.canExport}
-								disabled={isEditingDisabled}
-								small
-							/>
-							<OsmImportPopover
-								open={magicPopoverOpen}
-								onOpenChange={setMagicPopoverOpen}
-								osmQueryFilter={osmQueryFilter}
-								onOsmFilterChange={setOsmQueryFilter}
-								onOsmClickMode={handleOsmClickMode}
-								onOsmQueryView={handleOsmQueryView}
-								onOsmAdvanced={onOsmAdvanced}
-								isClickMode={osmQueryMode === 'click'}
-								small
-							/>
-							<CreateMapPopover />
-							<Divider />
-							<PublishDropdown
-								canPublishNew={datasetActions.canPublishNew}
-								canPublishUpdate={datasetActions.canPublishUpdate}
-								canPublishCopy={datasetActions.canPublishCopy}
-								isPublishing={datasetActions.isPublishing}
-								onPublishNew={datasetActions.onPublishNew}
-								onPublishUpdate={datasetActions.onPublishUpdate}
-								onPublishCopy={datasetActions.onPublishCopy}
-								small
-							/>
-							<Divider />
-							<HelpPopover multiSelectModifier={editor?.getMultiSelectModifierLabel() ?? 'Shift'} />
-							<TooltipProvider delayDuration={500}>
-								<Popover open={showMapSettings} onOpenChange={setShowMapSettings}>
-									<Tooltip>
-										<TooltipTrigger asChild>
-											<PopoverTrigger asChild>
-												<Button
-													variant={showMapSettings ? 'default' : 'outline'}
-													size="icon"
-													className="h-8 w-8"
-													aria-label="Settings"
-												>
-													<Settings2 className="h-3.5 w-3.5" />
-												</Button>
-											</PopoverTrigger>
-										</TooltipTrigger>
-										<TooltipContent side="bottom" sideOffset={8}>
-											<p>Map settings</p>
-										</TooltipContent>
-									</Tooltip>
-									<PopoverContent className="w-72" side="bottom" align="center">
-										<MapSettingsPanel />
-									</PopoverContent>
-								</Popover>
-							</TooltipProvider>
-							{showLogin && <LoginSessionButtons />}
+							{/* Row 2: History + Edit tools + Geometry ops */}
+							<div className="flex items-center justify-center gap-1 flex-wrap">
+								<IconButtonRow buttons={historyButtons} small />
+								<Divider />
+								<IconButtonRow buttons={editButtons} small />
+								<GeometryOpsDropdown
+									disabled={isEditingDisabled}
+									onMerge={handleMergeSelected}
+									onSplit={handleSplitSelected}
+									onConnect={handleConnectLines}
+									onDissolve={handleDissolveLines}
+									onSimplify={handleSimplifySelected}
+									onUnion={handleBooleanUnion}
+									onDifference={handleBooleanDifference}
+									canMerge={canMergeSelected}
+									canSplit={canSplitSelected}
+									canConnect={canConnectLines}
+									canDissolve={canDissolveLines}
+									canSimplify={canSimplifySelected}
+									canBooleanOps={canStartBooleanOps}
+									booleanOpActive={booleanOpActive}
+									small
+								/>
+							</div>
 						</div>
-						<input
-							type="file"
-							ref={fileInputRef}
-							className="hidden"
-							accept=".geojson,.json"
-							onChange={handleFileImport}
-						/>
-					</div>
-				)}
-			</div>
+					)}
+
+					{mobileSearchOpen && (
+						<div className="glass-panel flex flex-col gap-2 rounded-lg p-1.5">
+							<div className="flex items-center gap-2">
+								<SearchBar
+									query={searchQuery}
+									loading={searchLoading}
+									placeholder="Search..."
+									onSubmit={(e) => {
+										e.preventDefault()
+										handleSearchSubmit(e)
+									}}
+									onQueryChange={setSearchQuery}
+									onClear={clearSearch}
+								/>
+								<IconButtonRow buttons={lookupButtons} small />
+							</div>
+							{searchResults && searchResults.length > 0 && (
+								<div className="max-h-48 overflow-y-auto space-y-1 bg-white rounded-lg border border-gray-100">
+									{searchResults.map((result) => (
+										<button
+											type="button"
+											key={result.placeId}
+											className="w-full text-left text-sm p-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 truncate"
+											onClick={() => onSearchResultSelect?.(result)}
+										>
+											{result.displayName}
+										</button>
+									))}
+								</div>
+							)}
+							{searchError && <div className="text-xs text-red-600 px-1">{searchError}</div>}
+						</div>
+					)}
+
+					{mobileActionsOpen && datasetActions && (
+						<div className="glass-panel rounded-lg p-1.5">
+							<div className="flex items-center justify-center gap-1 flex-wrap">
+								<FileDropdown
+									onImportClick={() => fileInputRef.current?.click()}
+									onExport={datasetActions.onExport ?? (() => {})}
+									canExport={datasetActions.canExport}
+									disabled={isEditingDisabled}
+									small
+								/>
+								<OsmImportPopover
+									open={magicPopoverOpen}
+									onOpenChange={setMagicPopoverOpen}
+									osmQueryFilter={osmQueryFilter}
+									onOsmFilterChange={setOsmQueryFilter}
+									onOsmClickMode={handleOsmClickMode}
+									onOsmQueryView={handleOsmQueryView}
+									onOsmAdvanced={onOsmAdvanced}
+									isClickMode={osmQueryMode === 'click'}
+									small
+								/>
+								<CreateMapPopover />
+								<Divider />
+								<PublishDropdown
+									canPublishNew={datasetActions.canPublishNew}
+									canPublishUpdate={datasetActions.canPublishUpdate}
+									canPublishCopy={datasetActions.canPublishCopy}
+									isPublishing={datasetActions.isPublishing}
+									onPublishNew={datasetActions.onPublishNew}
+									onPublishUpdate={datasetActions.onPublishUpdate}
+									onPublishCopy={datasetActions.onPublishCopy}
+									small
+								/>
+								<Divider />
+								<HelpPopover
+									multiSelectModifier={editor?.getMultiSelectModifierLabel() ?? 'Shift'}
+								/>
+								<TooltipProvider delayDuration={500}>
+									<Popover open={showMapSettings} onOpenChange={setShowMapSettings}>
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<PopoverTrigger asChild>
+													<Button
+														variant={showMapSettings ? 'default' : 'outline'}
+														size="icon"
+														className="h-8 w-8"
+														aria-label="Settings"
+													>
+														<Settings2 className="h-3.5 w-3.5" />
+													</Button>
+												</PopoverTrigger>
+											</TooltipTrigger>
+											<TooltipContent side="bottom" sideOffset={8}>
+												<p>Map settings</p>
+											</TooltipContent>
+										</Tooltip>
+										<PopoverContent className="w-72" side="bottom" align="center">
+											<MapSettingsPanel />
+										</PopoverContent>
+									</Popover>
+								</TooltipProvider>
+								{showLogin && <LoginSessionButtons />}
+							</div>
+							<input
+								type="file"
+								ref={fileInputRef}
+								className="hidden"
+								accept=".geojson,.json"
+								onChange={handleFileImport}
+							/>
+						</div>
+					)}
+				</div>
+				{simplifyDialog}
+			</>
 		)
 	}
 
@@ -1052,210 +1403,217 @@ export function Toolbar({
 	// DESKTOP TOOLBAR
 	// ============================================
 	return (
-		<div className="flex flex-col gap-2 pointer-events-auto">
-			<div className="glass-panel flex flex-wrap items-center gap-1 rounded-lg p-1.5">
-				{/* Row 1: Core editing tools */}
-				<div className="flex items-center gap-1">
-					{/* Sidebar toggle */}
-					<SidebarTrigger className="h-9 w-9" />
-					<Divider />
+		<>
+			<div className="flex flex-col gap-2 pointer-events-auto">
+				<div className="glass-panel flex flex-wrap items-center gap-1 rounded-lg p-1.5">
+					{/* Row 1: Core editing tools */}
+					<div className="flex items-center gap-1">
+						{/* Sidebar toggle */}
+						<SidebarTrigger className="h-9 w-9" />
+						<Divider />
 
-					{/* Session control (New Dataset / Cancel) */}
-					<SessionButton
-						viewMode={viewMode}
-						onStartNew={onStartNewDataset}
-						onCancel={onCancelEditing}
-					/>
-					<Divider />
-
-					{/* Select */}
-					<IconButtonRow buttons={selectButtons} />
-					<Divider />
-
-					{/* Draw */}
-					<DrawButtonGroup
-						mode={mode}
-						onModeChange={handleModeChange}
-						disabled={isEditingDisabled}
-					/>
-					<Divider />
-
-					{/* History */}
-					<IconButtonRow buttons={historyButtons} />
-					<Divider />
-
-					{/* Edit */}
-					<IconButtonRow buttons={editButtons} />
-					<GeometryOpsDropdown
-						disabled={isEditingDisabled}
-						onMerge={handleMergeSelected}
-						onSplit={handleSplitSelected}
-						onConnect={handleConnectLines}
-						onUnion={handleBooleanUnion}
-						onDifference={handleBooleanDifference}
-						canMerge={canMergeSelected}
-						canSplit={canSplitSelected}
-						canConnect={canConnectLines}
-						canBooleanOps={canStartBooleanOps}
-						booleanOpActive={booleanOpActive}
-					/>
-				</div>
-
-				{/* Flexible spacer - grows on wide screens, shrinks/wraps on narrow */}
-				<div className="flex-1 min-w-4" />
-
-				{/* Row 2: Search, data & publish tools */}
-				<div className="flex items-center gap-1">
-					{/* Search */}
-					<div className="relative">
-						<SearchBar
-							query={searchQuery}
-							loading={searchLoading}
-							placeholder="Search location..."
-							onSubmit={handleSearchSubmit}
-							onQueryChange={setSearchQuery}
-							onClear={clearSearch}
-							className="w-48"
+						{/* Session control (New Dataset / Cancel) */}
+						<SessionButton
+							viewMode={viewMode}
+							onStartNew={onStartNewDataset}
+							onCancel={onCancelEditing}
 						/>
-						{searchResults && searchResults.length > 0 && (
-							<div className="absolute top-full left-0 mt-2 w-64 rounded-lg bg-white p-2 shadow-lg z-50 border border-gray-100">
-								<div className="flex items-center justify-between border-b border-gray-100 pb-2 mb-2">
-									<span className="text-xs font-medium text-gray-500">Results</span>
-									<Button
-										variant="ghost"
-										size="sm"
-										className="h-auto p-0 text-xs"
-										onClick={clearSearch}
-									>
-										Close
-									</Button>
-								</div>
-								<div className="max-h-60 overflow-y-auto space-y-1">
-									{searchResults.map((result) => (
-										<button
-											type="button"
-											key={result.placeId}
-											className="w-full text-left text-sm p-1.5 hover:bg-gray-50 rounded truncate"
-											onClick={() => onSearchResultSelect?.(result)}
+						<Divider />
+
+						{/* Select */}
+						<IconButtonRow buttons={selectButtons} />
+						<Divider />
+
+						{/* Draw */}
+						<DrawButtonGroup
+							mode={mode}
+							onModeChange={handleModeChange}
+							disabled={isEditingDisabled}
+						/>
+						<Divider />
+
+						{/* History */}
+						<IconButtonRow buttons={historyButtons} />
+						<Divider />
+
+						{/* Edit */}
+						<IconButtonRow buttons={editButtons} />
+						<GeometryOpsDropdown
+							disabled={isEditingDisabled}
+							onMerge={handleMergeSelected}
+							onSplit={handleSplitSelected}
+							onConnect={handleConnectLines}
+							onDissolve={handleDissolveLines}
+							onSimplify={handleSimplifySelected}
+							onUnion={handleBooleanUnion}
+							onDifference={handleBooleanDifference}
+							canMerge={canMergeSelected}
+							canSplit={canSplitSelected}
+							canConnect={canConnectLines}
+							canDissolve={canDissolveLines}
+							canSimplify={canSimplifySelected}
+							canBooleanOps={canStartBooleanOps}
+							booleanOpActive={booleanOpActive}
+						/>
+					</div>
+
+					{/* Flexible spacer - grows on wide screens, shrinks/wraps on narrow */}
+					<div className="flex-1 min-w-4" />
+
+					{/* Row 2: Search, data & publish tools */}
+					<div className="flex items-center gap-1">
+						{/* Search */}
+						<div className="relative">
+							<SearchBar
+								query={searchQuery}
+								loading={searchLoading}
+								placeholder="Search location..."
+								onSubmit={handleSearchSubmit}
+								onQueryChange={setSearchQuery}
+								onClear={clearSearch}
+								className="w-48"
+							/>
+							{searchResults && searchResults.length > 0 && (
+								<div className="absolute top-full left-0 mt-2 w-64 rounded-lg bg-white p-2 shadow-lg z-50 border border-gray-100">
+									<div className="flex items-center justify-between border-b border-gray-100 pb-2 mb-2">
+										<span className="text-xs font-medium text-gray-500">Results</span>
+										<Button
+											variant="ghost"
+											size="sm"
+											className="h-auto p-0 text-xs"
+											onClick={clearSearch}
 										>
-											{result.displayName}
-										</button>
-									))}
+											Close
+										</Button>
+									</div>
+									<div className="max-h-60 overflow-y-auto space-y-1">
+										{searchResults.map((result) => (
+											<button
+												type="button"
+												key={result.placeId}
+												className="w-full text-left text-sm p-1.5 hover:bg-gray-50 rounded truncate"
+												onClick={() => onSearchResultSelect?.(result)}
+											>
+												{result.displayName}
+											</button>
+										))}
+									</div>
 								</div>
-							</div>
+							)}
+						</div>
+
+						{/* Lookup */}
+						<IconButtonRow buttons={lookupButtons} />
+						<Divider />
+
+						{/* File, OSM, Map & Publish */}
+						<FileDropdown
+							onImportClick={() => fileInputRef.current?.click()}
+							onExport={datasetActions?.onExport ?? (() => {})}
+							canExport={datasetActions?.canExport}
+							disabled={isEditingDisabled}
+						/>
+						<OsmImportPopover
+							open={magicPopoverOpen}
+							onOpenChange={setMagicPopoverOpen}
+							osmQueryFilter={osmQueryFilter}
+							onOsmFilterChange={setOsmQueryFilter}
+							onOsmClickMode={handleOsmClickMode}
+							onOsmQueryView={handleOsmQueryView}
+							onOsmAdvanced={onOsmAdvanced}
+							isClickMode={osmQueryMode === 'click'}
+						/>
+						<CreateMapPopover />
+						<PublishDropdown
+							canPublishNew={datasetActions?.canPublishNew}
+							canPublishUpdate={datasetActions?.canPublishUpdate}
+							canPublishCopy={datasetActions?.canPublishCopy}
+							isPublishing={datasetActions?.isPublishing}
+							onPublishNew={datasetActions?.onPublishNew}
+							onPublishUpdate={datasetActions?.onPublishUpdate}
+							onPublishCopy={datasetActions?.onPublishCopy}
+						/>
+
+						{/* Share button - only visible when focused on a route */}
+						{isFocused && (
+							<>
+								<Divider />
+								<TooltipProvider delayDuration={500}>
+									<Popover open={sharePopoverOpen} onOpenChange={setSharePopoverOpen}>
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<PopoverTrigger asChild>
+													<Button variant="default" size="icon" aria-label="Share">
+														<Share2 className="h-4 w-4" />
+													</Button>
+												</PopoverTrigger>
+											</TooltipTrigger>
+											<TooltipContent side="bottom" sideOffset={8}>
+												<p>Share this view</p>
+											</TooltipContent>
+										</Tooltip>
+										<PopoverContent className="w-64" side="bottom" align="end">
+											<div className="space-y-3">
+												<div>
+													<h4 className="text-sm font-semibold mb-1">Share this view</h4>
+													<p className="text-xs text-gray-500">
+														Others will see only this{' '}
+														{focusedType === 'collection' ? 'collection' : 'dataset'}.
+													</p>
+												</div>
+												<div className="flex flex-col gap-2">
+													<Button
+														size="sm"
+														variant="outline"
+														className="w-full justify-start"
+														onClick={handleCopyShareUrl}
+													>
+														{copiedUrl ? (
+															<>
+																<Check className="h-4 w-4 mr-2 text-green-600" />
+																Copied!
+															</>
+														) : (
+															<>
+																<Copy className="h-4 w-4 mr-2" />
+																Copy link
+															</>
+														)}
+													</Button>
+													<Button
+														size="sm"
+														variant="ghost"
+														className="w-full justify-start text-gray-600"
+														onClick={handleExitFocus}
+													>
+														<X className="h-4 w-4 mr-2" />
+														Exit focus mode
+													</Button>
+												</div>
+											</div>
+										</PopoverContent>
+									</Popover>
+								</TooltipProvider>
+							</>
 						)}
 					</div>
 
-					{/* Lookup */}
-					<IconButtonRow buttons={lookupButtons} />
-					<Divider />
-
-					{/* File, OSM, Map & Publish */}
-					<FileDropdown
-						onImportClick={() => fileInputRef.current?.click()}
-						onExport={datasetActions?.onExport ?? (() => {})}
-						canExport={datasetActions?.canExport}
-						disabled={isEditingDisabled}
+					<input
+						type="file"
+						ref={fileInputRef}
+						className="hidden"
+						accept=".geojson,.json"
+						onChange={handleFileImport}
 					/>
-					<OsmImportPopover
-						open={magicPopoverOpen}
-						onOpenChange={setMagicPopoverOpen}
-						osmQueryFilter={osmQueryFilter}
-						onOsmFilterChange={setOsmQueryFilter}
-						onOsmClickMode={handleOsmClickMode}
-						onOsmQueryView={handleOsmQueryView}
-						onOsmAdvanced={onOsmAdvanced}
-						isClickMode={osmQueryMode === 'click'}
-					/>
-					<CreateMapPopover />
-					<PublishDropdown
-						canPublishNew={datasetActions?.canPublishNew}
-						canPublishUpdate={datasetActions?.canPublishUpdate}
-						canPublishCopy={datasetActions?.canPublishCopy}
-						isPublishing={datasetActions?.isPublishing}
-						onPublishNew={datasetActions?.onPublishNew}
-						onPublishUpdate={datasetActions?.onPublishUpdate}
-						onPublishCopy={datasetActions?.onPublishCopy}
-					/>
-
-					{/* Share button - only visible when focused on a route */}
-					{isFocused && (
-						<>
-							<Divider />
-							<TooltipProvider delayDuration={500}>
-								<Popover open={sharePopoverOpen} onOpenChange={setSharePopoverOpen}>
-									<Tooltip>
-										<TooltipTrigger asChild>
-											<PopoverTrigger asChild>
-												<Button variant="default" size="icon" aria-label="Share">
-													<Share2 className="h-4 w-4" />
-												</Button>
-											</PopoverTrigger>
-										</TooltipTrigger>
-										<TooltipContent side="bottom" sideOffset={8}>
-											<p>Share this view</p>
-										</TooltipContent>
-									</Tooltip>
-									<PopoverContent className="w-64" side="bottom" align="end">
-										<div className="space-y-3">
-											<div>
-												<h4 className="text-sm font-semibold mb-1">Share this view</h4>
-												<p className="text-xs text-gray-500">
-													Others will see only this{' '}
-													{focusedType === 'collection' ? 'collection' : 'dataset'}.
-												</p>
-											</div>
-											<div className="flex flex-col gap-2">
-												<Button
-													size="sm"
-													variant="outline"
-													className="w-full justify-start"
-													onClick={handleCopyShareUrl}
-												>
-													{copiedUrl ? (
-														<>
-															<Check className="h-4 w-4 mr-2 text-green-600" />
-															Copied!
-														</>
-													) : (
-														<>
-															<Copy className="h-4 w-4 mr-2" />
-															Copy link
-														</>
-													)}
-												</Button>
-												<Button
-													size="sm"
-													variant="ghost"
-													className="w-full justify-start text-gray-600"
-													onClick={handleExitFocus}
-												>
-													<X className="h-4 w-4 mr-2" />
-													Exit focus mode
-												</Button>
-											</div>
-										</div>
-									</PopoverContent>
-								</Popover>
-							</TooltipProvider>
-						</>
-					)}
 				</div>
 
-				<input
-					type="file"
-					ref={fileInputRef}
-					className="hidden"
-					accept=".geojson,.json"
-					onChange={handleFileImport}
-				/>
+				{searchError && (
+					<div className="rounded-lg bg-red-50 p-2 text-xs text-red-600 shadow-sm self-start">
+						{searchError}
+					</div>
+				)}
 			</div>
-
-			{searchError && (
-				<div className="rounded-lg bg-red-50 p-2 text-xs text-red-600 shadow-sm self-start">
-					{searchError}
-				</div>
-			)}
-		</div>
+			{simplifyDialog}
+		</>
 	)
 }
