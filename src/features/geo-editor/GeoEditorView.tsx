@@ -247,6 +247,7 @@ export function GeoEditorView() {
 	const setShowTips = useEditorStore((state) => state.setShowTips)
 	// Unified mobile panel state
 	const mobilePanelOpen = useEditorStore((state) => state.mobilePanelOpen)
+	const mobilePanelSnap = useEditorStore((state) => state.mobilePanelSnap)
 	const setMobilePanelOpen = useEditorStore((state) => state.setMobilePanelOpen)
 	// Mobile toolbar state (for upper toolbar sections)
 	const mobileToolsOpen = useEditorStore((state) => state.mobileToolsOpen)
@@ -2051,7 +2052,11 @@ export function GeoEditorView() {
 							{/* Mobile buttons - positioned to move up when drawer is open */}
 							<div
 								className={`fixed bottom-2 right-2 z-50 flex flex-col gap-2 md:hidden transition-all duration-300 ${
-									mobilePanelOpen ? 'bottom-[calc(45vh+0.5rem)]' : ''
+									mobilePanelOpen
+										? mobilePanelSnap === 'expanded'
+											? 'bottom-[calc(82vh+0.5rem)]'
+											: 'bottom-[calc(45vh+0.5rem)]'
+										: ''
 								}`}
 							>
 								{/* Draw tools toggle */}

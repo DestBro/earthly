@@ -1,5 +1,14 @@
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { FeatureCollection } from 'geojson'
-import { Database, FolderOpen, HelpCircle, MessageSquare, Pencil, Settings2, User } from 'lucide-react'
+import {
+	Database,
+	FolderOpen,
+	HelpCircle,
+	MessageSquare,
+	Pencil,
+	Settings2,
+	User,
+} from 'lucide-react'
 import { GeoDatasetsPanelContent } from '../../../components/GeoDatasetsPanel'
 import { GeoEditorInfoPanelContent } from '../../../components/GeoEditorInfoPanel'
 import { HelpPanel } from '../../../components/HelpPanel'
@@ -15,7 +24,14 @@ import type { BlossomUploadResult } from '../../../lib/blossom/blossomUpload'
 import { useEditorStore } from '../store'
 import { MapSettingsPanel } from './MapSettingsPanel'
 
-export type MobilePanelTab = 'datasets' | 'collections' | 'edit' | 'profile' | 'posts' | 'settings' | 'help'
+export type MobilePanelTab =
+	| 'datasets'
+	| 'collections'
+	| 'edit'
+	| 'profile'
+	| 'posts'
+	| 'settings'
+	| 'help'
 
 export interface MobilePanelProps {
 	// Data
@@ -70,8 +86,7 @@ export interface MobilePanelProps {
 	onZoomToFeature?: (feature: EditorFeature) => void
 	featureCollectionForUpload?: FeatureCollection | null
 	onBlossomUploadComplete?: (result: BlossomUploadResult) => void
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	ndk?: any
+	ndk?: import('@nostr-dev-kit/ndk').default | null
 	/** Callback when filtered dataset keys change (for map visibility sync) */
 	onFilteredDatasetKeysChange?: (keys: Set<string>) => void
 }
@@ -85,6 +100,17 @@ const TAB_CONFIG: { id: MobilePanelTab; label: string; icon: typeof Database }[]
 	{ id: 'settings', label: 'Settings', icon: Settings2 },
 	{ id: 'help', label: 'Help', icon: HelpCircle },
 ]
+
+const PANEL_HEIGHTS_VH = {
+	peek: 45,
+	expanded: 82,
+} as const
+
+const PANEL_SNAP_THRESHOLD_VH = (PANEL_HEIGHTS_VH.peek + PANEL_HEIGHTS_VH.expanded) / 2
+
+function clampPanelHeightVh(heightVh: number): number {
+	return Math.min(PANEL_HEIGHTS_VH.expanded, Math.max(PANEL_HEIGHTS_VH.peek, heightVh))
+}
 
 export function MobilePanel(props: MobilePanelProps) {
 	const {
@@ -136,19 +162,96 @@ export function MobilePanel(props: MobilePanelProps) {
 	// Store state for panel
 	const mobilePanelOpen = useEditorStore((state) => state.mobilePanelOpen)
 	const mobilePanelTab = useEditorStore((state) => state.mobilePanelTab)
+	const mobilePanelSnap = useEditorStore((state) => state.mobilePanelSnap)
 	const setMobilePanelOpen = useEditorStore((state) => state.setMobilePanelOpen)
 	const setMobilePanelTab = useEditorStore((state) => state.setMobilePanelTab)
+	const setMobilePanelSnap = useEditorStore((state) => state.setMobilePanelSnap)
+
+	const [dragHeightVh, setDragHeightVh] = useState<number | null>(null)
+	const dragHeightRef = useRef<number | null>(null)
+	const dragStartYRef = useRef<number | null>(null)
+	const dragStartHeightRef = useRef<number>(PANEL_HEIGHTS_VH.peek)
+	const draggedRef = useRef(false)
 
 	const handleClose = () => setMobilePanelOpen(false)
+	const baseHeightVh =
+		mobilePanelSnap === 'expanded' ? PANEL_HEIGHTS_VH.expanded : PANEL_HEIGHTS_VH.peek
+	const panelHeightVh = dragHeightVh ?? baseHeightVh
+
+	const handleOpenChange = (open: boolean) => {
+		setMobilePanelOpen(open)
+		if (!open) {
+			setDragHeightVh(null)
+			dragHeightRef.current = null
+		}
+	}
+
+	const handleDragStart = (event: ReactPointerEvent<HTMLButtonElement>) => {
+		event.preventDefault()
+		dragStartYRef.current = event.clientY
+		dragStartHeightRef.current = panelHeightVh
+		draggedRef.current = false
+		setDragHeightVh(panelHeightVh)
+		dragHeightRef.current = panelHeightVh
+
+		const handlePointerMove = (moveEvent: PointerEvent) => {
+			if (dragStartYRef.current == null || typeof window === 'undefined') return
+			const deltaY = dragStartYRef.current - moveEvent.clientY
+			if (Math.abs(deltaY) > 4) {
+				draggedRef.current = true
+			}
+			const deltaVh = (deltaY / window.innerHeight) * 100
+			const nextHeight = clampPanelHeightVh(dragStartHeightRef.current + deltaVh)
+			dragHeightRef.current = nextHeight
+			setDragHeightVh(nextHeight)
+		}
+
+		const handlePointerUp = () => {
+			const finalHeight = dragHeightRef.current ?? baseHeightVh
+			const nextSnap = finalHeight >= PANEL_SNAP_THRESHOLD_VH ? 'expanded' : 'peek'
+			setMobilePanelSnap(nextSnap)
+			setDragHeightVh(null)
+			dragHeightRef.current = null
+			dragStartYRef.current = null
+			window.removeEventListener('pointermove', handlePointerMove)
+			window.removeEventListener('pointerup', handlePointerUp)
+			window.removeEventListener('pointercancel', handlePointerUp)
+		}
+
+		window.addEventListener('pointermove', handlePointerMove, { passive: true })
+		window.addEventListener('pointerup', handlePointerUp)
+		window.addEventListener('pointercancel', handlePointerUp)
+	}
+
+	const handleGrabberClick = () => {
+		if (draggedRef.current) {
+			draggedRef.current = false
+			return
+		}
+		setMobilePanelSnap(mobilePanelSnap === 'expanded' ? 'peek' : 'expanded')
+	}
 
 	return (
-		<Sheet open={mobilePanelOpen} onOpenChange={setMobilePanelOpen} modal={false}>
+		<Sheet open={mobilePanelOpen} onOpenChange={handleOpenChange} modal={false}>
 			<SheetContent
 				side="bottom"
-				className="p-0 h-[45vh] md:hidden flex flex-col"
+				className="p-0 md:hidden flex flex-col gap-0"
+				style={{ height: `${panelHeightVh}vh` }}
 				onPointerDownOutside={(e) => e.preventDefault()}
 				onInteractOutside={(e) => e.preventDefault()}
 			>
+				<div className="shrink-0 border-b border-gray-200 bg-white/95 backdrop-blur px-0 py-1">
+					<button
+						type="button"
+						onPointerDown={handleDragStart}
+						onClick={handleGrabberClick}
+						className="w-full flex items-center justify-center touch-none py-1"
+						aria-label="Resize panel"
+					>
+						<span className="h-1.5 w-12 rounded-full bg-gray-300" />
+					</button>
+				</div>
+
 				{/* Scrollable Tab Bar */}
 				<div className="border-b border-gray-200 bg-gray-50/80 shrink-0 overflow-x-auto scrollbar-hide">
 					<div className="flex min-w-max">
@@ -207,7 +310,7 @@ export function MobilePanel(props: MobilePanelProps) {
 							isFocused={isFocused}
 							onExitFocus={onExitFocus}
 							onFilteredDatasetKeysChange={onFilteredDatasetKeysChange}
-																				/>
+						/>
 					)}
 
 					{mobilePanelTab === 'collections' && (
@@ -240,7 +343,7 @@ export function MobilePanel(props: MobilePanelProps) {
 							isFocused={isFocused}
 							onExitFocus={onExitFocus}
 							onFilteredDatasetKeysChange={onFilteredDatasetKeysChange}
-																				/>
+						/>
 					)}
 
 					{mobilePanelTab === 'edit' && (
@@ -297,7 +400,7 @@ export function MobilePanel(props: MobilePanelProps) {
 							onInspectCollection={onInspectCollection}
 							onEditCollection={onEditCollection}
 							onOpenDebug={onOpenDebug}
-																				/>
+						/>
 					)}
 
 					{mobilePanelTab === 'posts' && (

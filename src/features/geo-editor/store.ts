@@ -5,7 +5,7 @@ import type { NDKGeoCollectionEvent } from '../../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
 import type { EditorFeature, EditorMode, GeoEditor } from './core'
 import type { CollectionMeta, EditorBlobReference, GeoSearchResult } from './types'
-import type { SidebarViewMode } from "./hooks/useRouting";
+import type { SidebarViewMode } from './hooks/useRouting'
 import {
 	detectBlobScope,
 	ensureFeatureCollection,
@@ -38,6 +38,17 @@ export interface MapLayerState {
 	file?: string
 	pmtilesType?: string
 }
+
+export type MobilePanelTab =
+	| 'datasets'
+	| 'collections'
+	| 'edit'
+	| 'profile'
+	| 'posts'
+	| 'settings'
+	| 'help'
+
+export type MobilePanelSnap = 'peek' | 'expanded'
 
 interface EditorState {
 	editor: GeoEditor | null
@@ -110,9 +121,10 @@ interface EditorState {
 	mobileActionsOpen: boolean
 	// Unified mobile panel state (replaces individual panel states)
 	mobilePanelOpen: boolean
-	mobilePanelTab: 'datasets' | 'collections' | 'edit' | 'profile' | 'posts' | 'settings' | 'help'
+	mobilePanelTab: MobilePanelTab
+	mobilePanelSnap: MobilePanelSnap
 	inspectorActive: boolean
-    sidebarViewMode: SidebarViewMode;
+	sidebarViewMode: SidebarViewMode
 
 	// Search State
 	searchQuery: string
@@ -207,11 +219,12 @@ interface EditorState {
 	setMobileActiveState: (state: 'datasets' | 'info' | 'tools' | 'search' | 'actions' | null) => void
 	// Unified mobile panel setters
 	setMobilePanelOpen: (open: boolean) => void
-	setMobilePanelTab: (tab: 'datasets' | 'collections' | 'edit' | 'profile' | 'posts' | 'settings' | 'help') => void
-	openMobilePanel: (tab?: 'datasets' | 'collections' | 'edit' | 'profile' | 'posts' | 'settings' | 'help') => void
+	setMobilePanelTab: (tab: MobilePanelTab) => void
+	setMobilePanelSnap: (snap: MobilePanelSnap) => void
+	openMobilePanel: (tab?: MobilePanelTab) => void
 	closeMobilePanel: () => void
 	setInspectorActive: (active: boolean) => void
-    setSidebarViewMode: (mode: SidebarViewMode) => void;
+	setSidebarViewMode: (mode: SidebarViewMode) => void
 
 	// Search Actions
 	setSearchQuery: (query: string) => void
@@ -330,6 +343,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	mobileActionsOpen: false,
 	mobilePanelOpen: false,
 	mobilePanelTab: 'datasets',
+	mobilePanelSnap: 'peek',
 	inspectorActive: false,
 	sidebarViewMode: 'datasets',
 
@@ -599,12 +613,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 			mobileActionsOpen: state === 'actions',
 		}),
 	// Unified mobile panel setters
-	setMobilePanelOpen: (open) => set({ mobilePanelOpen: open }),
+	setMobilePanelOpen: (open) =>
+		set((state) => ({
+			mobilePanelOpen: open,
+			mobilePanelSnap: open ? 'peek' : state.mobilePanelSnap,
+		})),
 	setMobilePanelTab: (tab) => set({ mobilePanelTab: tab }),
+	setMobilePanelSnap: (mobilePanelSnap) => set({ mobilePanelSnap }),
 	openMobilePanel: (tab) =>
 		set((state) => ({
 			mobilePanelOpen: true,
 			mobilePanelTab: tab ?? state.mobilePanelTab,
+			mobilePanelSnap: 'peek',
 		})),
 	closeMobilePanel: () => set({ mobilePanelOpen: false }),
 	setInspectorActive: (active) => set({ inspectorActive: active }),
