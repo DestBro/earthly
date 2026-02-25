@@ -8,6 +8,7 @@ import { EarthlyGeoServerClient } from '@/ctxcn/EarthlyGeoServerClient'
 import type { EditorFeature } from '@/features/geo-editor/core'
 import { executeEditorAiTool, getEditorAiToolDefinitions } from '@/features/geo-editor/commands'
 import { useEditorStore } from '@/features/geo-editor/store'
+import { isStyleProperty } from '@/features/geo-editor/types/styleProperties'
 import type { ChatMessage } from './routstr'
 
 // OpenAI function calling tool definition
@@ -56,7 +57,6 @@ const MAX_QUERY_LIMIT = 500
 const DEFAULT_SNAPSHOT_MAX_WIDTH = 1024
 const DEFAULT_SNAPSHOT_MAX_HEIGHT = 768
 const MAX_SNAPSHOT_CACHE_SIZE = 5
-const MAX_TOOL_RESULT_CHARS = 20000
 const MAX_GEOJSON_TEXT_CHARS = 200000
 const NAME_MATCH_KEYS = [
 	'name',
@@ -68,6 +68,24 @@ const NAME_MATCH_KEYS = [
 	'short_name',
 	'alt_name',
 ]
+const NON_CUSTOM_EDITOR_PROPERTY_KEYS = new Set([
+	'meta',
+	'active',
+	'mode',
+	'parent',
+	'coord_path',
+	'featureId',
+	'importSource',
+	'customProperties',
+	'name',
+	'description',
+	'featureType',
+	'text',
+	'textFontSize',
+	'textColor',
+	'textHaloColor',
+	'textHaloWidth',
+])
 
 interface CachedMapSnapshot {
 	snapshotId: string
@@ -147,7 +165,7 @@ export const geoTools: Tool[] = [
 		function: {
 			name: 'write_geojson_to_editor',
 			description:
-				'Create features in the editor from GeoJSON. Accepts FeatureCollection, Feature, or Geometry. Use this for custom shapes and direct map edits.',
+				'Create features in the editor from GeoJSON. Accepts FeatureCollection, Feature, or Geometry. Use this for custom shapes and direct map edits. Prefer geojson object arguments; avoid large escaped JSON strings in geojsonText.',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -175,7 +193,7 @@ export const geoTools: Tool[] = [
 		function: {
 			name: 'add_feature_to_editor',
 			description:
-				'Add one generated GeoJSON feature to the editor. Preferred for direct LLM-authored geometry edits.',
+				'Add one generated GeoJSON feature to the editor. Preferred for direct LLM-authored geometry edits. Keep arguments compact and strictly valid JSON.',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -354,13 +372,14 @@ export const geoTools: Tool[] = [
 		function: {
 			name: 'import_osm_to_editor',
 			description:
-				'Import OSM features directly into the editor after narrowing candidates. Recommended flow: run query_osm_bbox/query_osm_nearby first, then import with explicit bbox/point + filters. For boundaries, use filters like {"boundary":"administrative","admin_level":"4"}.',
+				'Import OSM features directly into the editor after narrowing candidates. Recommended flow: run query_osm_bbox/query_osm_nearby first, then import with explicit bbox/point + filters. Name is optional; omit it to import all matched features in the selected area.',
 			parameters: {
 				type: 'object',
 				properties: {
 					name: {
 						type: 'string',
-						description: 'Target feature name to match (example: "Rhine").',
+						description:
+							'Optional target feature name to match (example: "Rhine"). Omit to import all matched features.',
 					},
 					west: {
 						type: 'number',
@@ -405,7 +424,6 @@ export const geoTools: Tool[] = [
 							'If true, replace all editor features with imported set. Default false (append).',
 					},
 				},
-				required: ['name'],
 			},
 		},
 	},
@@ -624,7 +642,9 @@ export function createMapContextSystemMessage(): ChatMessage | null {
 			'You have map-editing tool access in this chat.',
 			'If the user asks to draw/create/edit map features, call tools instead of replying that you cannot edit the map.',
 			'For draw requests, generate GeoJSON yourself and call add_feature_to_editor or write_geojson_to_editor directly.',
+			'For many OSM features in an area (e.g. all military bases in viewport), prefer import_osm_to_editor with filters and bbox/point instead of embedding large GeoJSON argument strings.',
 			'For toolbar-like operations (undo/redo/mode/selection ops), use editor_* tools.',
+			'For add_feature_to_editor, send one feature per call with compact JSON.',
 			'Do not ask the user for intermediate geometry parameters unless they explicitly want to customize shape details.',
 			'For OSM imports, first query candidates with query_osm_bbox/query_osm_nearby, verify non-empty results, then import with explicit bbox/point and filters.',
 			'When calling a tool, output strict JSON arguments only.',
@@ -651,19 +671,13 @@ export function consumeMapSnapshot(snapshotId: string): CachedMapSnapshot | null
 }
 
 function serializeToolResult(result: unknown): string {
-	const raw = JSON.stringify(result, null, 2)
-	if (raw.length <= MAX_TOOL_RESULT_CHARS) return raw
-
-	return JSON.stringify(
-		{
-			truncated: true,
-			originalLength: raw.length,
-			preview: raw.slice(0, MAX_TOOL_RESULT_CHARS),
-			note: 'Result truncated to fit model context window. Narrow the query if you need more detail.',
-		},
-		null,
-		2,
-	)
+	if (typeof result === 'string') return result
+	try {
+		return JSON.stringify(result) ?? 'null'
+	} catch (error) {
+		console.error('Failed to serialize tool result', error)
+		return JSON.stringify({ error: 'Tool result serialization failed' })
+	}
 }
 
 function toFiniteNumber(value: unknown): number | undefined {
@@ -745,12 +759,32 @@ function featureStableId(feature: GeoJSON.Feature): string {
 function toEditorFeature(feature: GeoJSON.Feature): EditorFeature {
 	const stableId = featureStableId(feature)
 	const sourceProps = (feature.properties || {}) as Record<string, unknown>
+	const existingCustomProperties =
+		sourceProps.customProperties &&
+		typeof sourceProps.customProperties === 'object' &&
+		!Array.isArray(sourceProps.customProperties)
+			? (sourceProps.customProperties as Record<string, unknown>)
+			: {}
+	const mirroredCustomProperties: Record<string, unknown> = {}
+	for (const [key, value] of Object.entries(sourceProps)) {
+		if (NON_CUSTOM_EDITOR_PROPERTY_KEYS.has(key) || isStyleProperty(key)) {
+			continue
+		}
+		mirroredCustomProperties[key] = value
+	}
+	const mergedCustomProperties = {
+		...existingCustomProperties,
+		...mirroredCustomProperties,
+	}
 
 	return {
 		...feature,
 		id: stableId,
 		properties: {
 			...sourceProps,
+			...(Object.keys(mergedCustomProperties).length > 0
+				? { customProperties: mergedCustomProperties }
+				: {}),
 			meta: 'feature',
 			featureId: stableId,
 			importSource: 'chat_tool',
@@ -917,6 +951,68 @@ function extractFirstJsonObject(raw: string): string | null {
 	return null
 }
 
+function repairLikelyTruncatedJsonObject(raw: string): string | null {
+	const start = raw.indexOf('{')
+	if (start < 0) return null
+	const source = raw.slice(start)
+	let output = ''
+	const stack: string[] = []
+	let inString = false
+	let escaping = false
+
+	for (let i = 0; i < source.length; i++) {
+		const ch = source[i]
+		if (!ch) continue
+		output += ch
+
+		if (inString) {
+			if (escaping) {
+				escaping = false
+				continue
+			}
+			if (ch === '\\') {
+				escaping = true
+				continue
+			}
+			if (ch === '"') {
+				inString = false
+			}
+			continue
+		}
+
+		if (ch === '"') {
+			inString = true
+			continue
+		}
+
+		if (ch === '{') {
+			stack.push('}')
+			continue
+		}
+		if (ch === '[') {
+			stack.push(']')
+			continue
+		}
+		if ((ch === '}' || ch === ']') && stack.length > 0) {
+			const expected = stack[stack.length - 1]
+			if (expected === ch) {
+				stack.pop()
+			}
+		}
+	}
+
+	if (inString) {
+		output += '"'
+	}
+	while (stack.length > 0) {
+		const close = stack.pop()
+		if (close) output += close
+	}
+
+	const cleaned = output.replace(/,(\s*[}\]])/g, '$1').trim()
+	return cleaned.length > 0 ? cleaned : null
+}
+
 function parseToolCallArguments(rawArguments: string | undefined): Record<string, unknown> {
 	const raw = rawArguments?.trim()
 	if (!raw) return {}
@@ -927,6 +1023,10 @@ function parseToolCallArguments(rawArguments: string | undefined): Record<string
 	const extracted = extractFirstJsonObject(fenceStripped)
 	if (extracted) {
 		candidates.add(extracted)
+	}
+	const repaired = repairLikelyTruncatedJsonObject(fenceStripped)
+	if (repaired) {
+		candidates.add(repaired)
 	}
 
 	for (const candidate of candidates) {
@@ -1195,9 +1295,6 @@ export async function executeToolCall(toolCall: ToolCall): Promise<ToolResult> {
 			}
 			case 'import_osm_to_editor': {
 				const name = typeof args.name === 'string' ? args.name.trim() : ''
-				if (!name) {
-					throw new Error('name is required')
-				}
 
 				const limit = clampLimit(args.limit, DEFAULT_IMPORT_LIMIT)
 				const replaceExisting = Boolean(args.replaceExisting)
@@ -1244,6 +1341,11 @@ export async function executeToolCall(toolCall: ToolCall): Promise<ToolResult> {
 					} else {
 						usedBbox = getEditorViewportBbox()
 						if (!usedBbox) {
+							if (!name) {
+								throw new Error(
+									'No viewport bbox available. Provide explicit bbox/point arguments or a name for search fallback.',
+								)
+							}
 							source = 'search_location'
 							const searchResponse = await client.SearchLocation(name, 1)
 							const first = searchResponse.result.results[0]
@@ -1263,7 +1365,12 @@ export async function executeToolCall(toolCall: ToolCall): Promise<ToolResult> {
 				let validFeatures = rawFeatures
 					.map(asFeatureObject)
 					.filter((feature): feature is GeoJSON.Feature => feature !== null)
-				if (validFeatures.length === 0 && !hasExplicitPoint(args) && !hasExplicitBbox(args)) {
+				if (
+					name &&
+					validFeatures.length === 0 &&
+					!hasExplicitPoint(args) &&
+					!hasExplicitBbox(args)
+				) {
 					const searchResponse = await client.SearchLocation(name, 1)
 					const fallbackBbox = ensureBbox(searchResponse.result.results[0]?.boundingbox)
 					if (fallbackBbox) {
@@ -1282,25 +1389,27 @@ export async function executeToolCall(toolCall: ToolCall): Promise<ToolResult> {
 					)
 				}
 
-				const matchedByName = validFeatures.filter((feature) => featureMatchesName(feature, name))
+				const matchedByName = name
+					? validFeatures.filter((feature) => featureMatchesName(feature, name))
+					: validFeatures
 				const selected = matchedByName.length > 0 ? matchedByName : validFeatures
 
 				const importResult = importFeaturesToEditor(selected, replaceExisting)
 
 				result = {
 					source,
-					name,
+					name: name || null,
 					filters: filters ?? null,
 					usedBbox,
 					queryResultCount: validFeatures.length,
-					nameMatchedCount: matchedByName.length,
+					nameMatchedCount: name ? matchedByName.length : null,
 					importedCount: importResult.importedCount,
 					skippedDuplicates: importResult.skippedDuplicates,
 					totalFeaturesInEditor: importResult.totalFeaturesInEditor,
 					replaceExisting,
 					usedSearchFallback,
 					warning:
-						matchedByName.length === 0
+						name && matchedByName.length === 0
 							? 'No name-matching features found; imported unfiltered query results.'
 							: null,
 				}

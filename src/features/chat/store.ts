@@ -38,6 +38,62 @@ const MAX_REASONING_CONTENT_CHARS = 4000
 const BUDGET_ESTIMATE_CHARS_PER_TOKEN = 2
 const MESSAGE_TOKEN_OVERHEAD = 24
 const MIN_CONTEXT_TOKENS_FOR_INLINE_IMAGE = 16000
+const STREAM_STALL_WARNING_MS = 15000
+const STREAM_STALL_TIMEOUT_MS = 45000
+const MAX_TOOL_CALL_ROUNDS = 10
+const MIN_TOOL_ENABLED_MAX_TOKENS = 1024
+
+type StreamProgressKind =
+	| 'request_start'
+	| 'token'
+	| 'reasoning'
+	| 'tool_calls'
+	| 'tool_result'
+	| 'round_complete'
+	| 'complete'
+	| 'error'
+
+type StreamPhase =
+	| 'idle'
+	| 'requesting'
+	| 'streaming'
+	| 'executing_tools'
+	| 'recovering_context'
+	| 'finalizing'
+
+interface ChatDiagnostics {
+	provider: ProviderType | null
+	modelId: string | null
+	modelReportedContextTokens: number | null
+	effectiveContextTokens: number | null
+	promptBudgetTokens: number | null
+	mapContextTokens: number | null
+	estimatedPromptTokens: number | null
+	estimatedCompletionTokens: number | null
+	finishReason: string | null
+	requestMessageCount: number
+	toolCallCount: number
+	round: number
+	startedAt: number | null
+	completedAt: number | null
+}
+
+const EMPTY_CHAT_DIAGNOSTICS: ChatDiagnostics = {
+	provider: null,
+	modelId: null,
+	modelReportedContextTokens: null,
+	effectiveContextTokens: null,
+	promptBudgetTokens: null,
+	mapContextTokens: null,
+	estimatedPromptTokens: null,
+	estimatedCompletionTokens: null,
+	finishReason: null,
+	requestMessageCount: 0,
+	toolCallCount: 0,
+	round: 0,
+	startedAt: null,
+	completedAt: null,
+}
 
 function messageContentToText(content: ChatMessage['content']): string {
 	if (typeof content === 'string') return content
@@ -197,8 +253,6 @@ function getEffectiveContextTokens(model: RoutstrModel, provider: ProviderConfig
 	}
 
 	switch (provider.type) {
-		case 'lmstudio':
-			return DEFAULT_LMSTUDIO_CONTEXT_TOKENS
 		case 'ollama':
 			return DEFAULT_OLLAMA_CONTEXT_TOKENS
 		default:
@@ -226,6 +280,7 @@ function trimMessagesToPromptBudget(messages: ChatMessage[], budgetTokens: numbe
 
 	for (let i = sanitized.length - 1; i >= 0; i--) {
 		let candidate = sanitized[i]
+		if (!candidate) continue
 		let candidateTokens = estimateMessageTokensForBudget(candidate)
 
 		if (usedTokens + candidateTokens > budgetTokens) {
@@ -251,9 +306,13 @@ function trimMessagesToPromptBudget(messages: ChatMessage[], budgetTokens: numbe
 		selected.shift()
 	}
 
-	return selected.length > 0
-		? selected
-		: [truncateMessageToTokenBudget(sanitized.at(-1) as ChatMessage, budgetTokens)]
+	if (selected.length > 0) {
+		return selected
+	}
+
+	const fallback = sanitized.at(-1)
+	if (!fallback) return []
+	return [truncateMessageToTokenBudget(fallback, budgetTokens)]
 }
 
 function modelMaySupportVision(provider: ProviderConfig, modelId: string): boolean {
@@ -392,7 +451,12 @@ interface ChatState {
 	streamingContent: string
 	pendingToolCalls: ToolCall[] // Tool calls waiting to be executed
 	executingTools: boolean // Whether we're currently executing tools
+	streamPhase: StreamPhase
+	streamWarning: string | null
+	lastProgressAt: number | null
+	lastProgressKind: StreamProgressKind | null
 	error: string | null
+	diagnostics: ChatDiagnostics
 	// Stats
 	totalSpent: number // Total sats spent in this session
 	totalRefunded: number // Total sats refunded
@@ -435,7 +499,12 @@ const initialState: ChatState = {
 	streamingContent: '',
 	pendingToolCalls: [],
 	executingTools: false,
+	streamPhase: 'idle',
+	streamWarning: null,
+	lastProgressAt: null,
+	lastProgressKind: null,
 	error: null,
+	diagnostics: EMPTY_CHAT_DIAGNOSTICS,
 	totalSpent: 0,
 	totalRefunded: 0,
 }
@@ -503,7 +572,17 @@ export const useChatStore = create<ChatStore>()(
 			},
 
 			clearMessages: () => {
-				set({ messages: [], totalSpent: 0, totalRefunded: 0 })
+				set({
+					messages: [],
+					totalSpent: 0,
+					totalRefunded: 0,
+					error: null,
+					streamWarning: null,
+					streamPhase: 'idle',
+					lastProgressAt: null,
+					lastProgressKind: null,
+					diagnostics: EMPTY_CHAT_DIAGNOSTICS,
+				})
 			},
 
 			sendMessage: async (content: string) => {
@@ -517,13 +596,17 @@ export const useChatStore = create<ChatStore>()(
 					customApiKey,
 				} = get()
 				const providerConfig = resolveProvider(provider, customEndpoint, customApiKey)
+				const requestMaxTokens = toolsEnabled
+					? Math.max(maxTokens, MIN_TOOL_ENABLED_MAX_TOKENS)
+					: maxTokens
 
 				if (!selectedModel) {
 					toast.error('Please select a model first')
 					return
 				}
+				const selectedModelId = selectedModel
 
-				const model = models.find((m) => m.id === selectedModel)
+				const model = models.find((m) => m.id === selectedModelId)
 				if (!model) {
 					toast.error('Selected model not found')
 					return
@@ -546,6 +629,10 @@ export const useChatStore = create<ChatStore>()(
 					streamingContent: '',
 					error: null,
 					pendingToolCalls: [],
+					streamWarning: null,
+					streamPhase: 'requesting',
+					lastProgressAt: Date.now(),
+					lastProgressKind: 'request_start',
 				}))
 
 				// Helper to process refund (no-ops when refundToken is null)
@@ -568,8 +655,9 @@ export const useChatStore = create<ChatStore>()(
 					reasoningContent: string
 					toolCalls: ToolCall[]
 					finishReason?: string
+					estimatedCompletionTokens: number
 				}> => {
-					let cashuToken: string | undefined
+					let cashuToken: string | null | undefined
 
 					// Payment flow only for paid providers
 					if (providerConfig.requiresPayment) {
@@ -580,11 +668,11 @@ export const useChatStore = create<ChatStore>()(
 							)
 							.join(' ')
 						const inputTokens = estimateTokens(totalText)
-						const estimatedCost = estimateMaxCost(model, inputTokens, maxTokens)
+						const estimatedCost = estimateMaxCost(model, inputTokens, requestMaxTokens)
 
 						console.log('[Chat] Cost estimate:', {
 							inputTokens,
-							maxOutputTokens: maxTokens,
+							maxOutputTokens: requestMaxTokens,
 							estimatedCost,
 							modelPricing: model.pricing,
 						})
@@ -615,59 +703,141 @@ export const useChatStore = create<ChatStore>()(
 						let accumulatedReasoningContent = ''
 						let accumulatedToolCalls: ToolCall[] = []
 						let resultFinishReason: string | undefined
+						let settled = false
+						let warningTimer: ReturnType<typeof setTimeout> | null = null
+						let timeoutTimer: ReturnType<typeof setTimeout> | null = null
 
 						const requestTools = toolsEnabled ? geoTools : undefined
 						console.log('[Chat] Request config:', {
 							provider: providerConfig.type,
-							model: selectedModel,
+							model: selectedModelId,
 							toolsEnabled,
 							toolCount: requestTools?.length ?? 0,
 							toolNames: requestTools?.map((t) => t.function.name) ?? [],
 						})
 
+						const clearTimers = () => {
+							if (warningTimer) {
+								clearTimeout(warningTimer)
+								warningTimer = null
+							}
+							if (timeoutTimer) {
+								clearTimeout(timeoutTimer)
+								timeoutTimer = null
+							}
+						}
+
+						const failStalledRequest = () => {
+							if (streamAbortController) {
+								streamAbortController.abort()
+							}
+							if (settled) return
+							settled = true
+							clearTimers()
+							set({
+								streamWarning: null,
+								lastProgressAt: Date.now(),
+								lastProgressKind: 'error',
+							})
+							reject(
+								new Error('Stream stalled: no response updates for 45 seconds. Stop and retry.'),
+							)
+						}
+
+						const refreshActivity = (kind: StreamProgressKind) => {
+							const now = Date.now()
+							set({
+								lastProgressAt: now,
+								lastProgressKind: kind,
+								streamWarning: null,
+								streamPhase:
+									kind === 'request_start'
+										? 'requesting'
+										: kind === 'tool_calls'
+											? 'finalizing'
+											: 'streaming',
+							})
+							clearTimers()
+							warningTimer = setTimeout(() => {
+								set({
+									streamWarning:
+										'No stream updates for 15s. The provider may be stuck. You can stop and retry.',
+								})
+							}, STREAM_STALL_WARNING_MS)
+							timeoutTimer = setTimeout(failStalledRequest, STREAM_STALL_TIMEOUT_MS)
+						}
+
+						refreshActivity('request_start')
+
 						streamChatCompletion(
 							{
-								model: selectedModel,
+								model: selectedModelId,
 								messages: requestMessages,
 								stream: true,
-								max_tokens: maxTokens,
+								max_tokens: requestMaxTokens,
 								tools: requestTools,
 							},
 							{
 								onToken: (token: string) => {
+									if (settled) return
 									accumulatedContent += token
 									set({ streamingContent: accumulatedContent })
+									refreshActivity('token')
 								},
 								onReasoningToken: (token: string) => {
+									if (settled) return
 									accumulatedReasoningContent += token
+									refreshActivity('reasoning')
 								},
 								onToolCall: (toolCalls: ToolCall[]) => {
+									if (settled) return
 									console.log(
 										'[Chat] Received tool calls:',
 										toolCalls.map((t) => t.function.name),
 									)
 									accumulatedToolCalls = toolCalls
+									refreshActivity('tool_calls')
 								},
 								onComplete: async (refundToken: string | null, finishReason?: string) => {
+									if (settled) return
+									settled = true
 									resultFinishReason = finishReason
+									clearTimers()
+									set({
+										streamWarning: null,
+										lastProgressAt: Date.now(),
+										lastProgressKind: 'round_complete',
+									})
 									await processRefund(refundToken)
 									resolve({
 										content: accumulatedContent,
 										reasoningContent: accumulatedReasoningContent,
 										toolCalls: accumulatedToolCalls,
 										finishReason: resultFinishReason,
+										estimatedCompletionTokens: estimateTokens(
+											`${accumulatedContent}\n${accumulatedReasoningContent}\n${JSON.stringify(accumulatedToolCalls)}`,
+										),
 									})
 								},
 								onError: async (error: Error, refundToken?: string | null) => {
+									if (settled) return
+									settled = true
+									clearTimers()
 									if (refundToken) {
 										console.log('[Chat] Processing refund from error response')
 										await processRefund(refundToken)
 									}
+									set({
+										streamWarning: null,
+										lastProgressAt: Date.now(),
+										lastProgressKind: 'error',
+									})
 									reject(error)
 								},
 							},
 							providerConfig,
-							cashuToken,
+							cashuToken || undefined,
+							streamAbortController?.signal,
 						)
 					})
 				}
@@ -676,18 +846,46 @@ export const useChatStore = create<ChatStore>()(
 					streamAbortController = new AbortController()
 					let conversationMessages = [...get().messages]
 					let oneShotVisionMessages: ChatMessage[] = []
+					let totalToolCalls = 0
+					let completed = false
 					const effectiveContextTokens = getEffectiveContextTokens(model, providerConfig)
 					const requiresReasoningContent = providerMayRequireReasoningContent(
 						providerConfig,
-						selectedModel,
+						selectedModelId,
 					)
 					const canUseVision =
-						modelMaySupportVision(providerConfig, selectedModel) &&
+						modelMaySupportVision(providerConfig, selectedModelId) &&
 						effectiveContextTokens >= MIN_CONTEXT_TOKENS_FOR_INLINE_IMAGE
-					const promptBudgetTokens = getPromptBudgetTokens(model, providerConfig, maxTokens)
+					const promptBudgetTokens = getPromptBudgetTokens(model, providerConfig, requestMaxTokens)
+					const streamStartAt = Date.now()
 
-					// Loop to handle tool calls (max 5 rounds to prevent infinite loops)
-					for (let round = 0; round < 5; round++) {
+					set({
+						streamPhase: 'requesting',
+						streamWarning: null,
+						lastProgressAt: streamStartAt,
+						lastProgressKind: 'request_start',
+						diagnostics: {
+							provider: providerConfig.type,
+							modelId: selectedModelId,
+							modelReportedContextTokens:
+								typeof model.contextLength === 'number' ? model.contextLength : null,
+							effectiveContextTokens,
+							promptBudgetTokens,
+							mapContextTokens: null,
+							estimatedPromptTokens: null,
+							estimatedCompletionTokens: null,
+							finishReason: null,
+							requestMessageCount: 0,
+							toolCallCount: 0,
+							round: 0,
+							startedAt: streamStartAt,
+							completedAt: null,
+						},
+					})
+
+					// Loop to handle tool calls (bounded to prevent infinite tool loops)
+					for (let round = 0; round < MAX_TOOL_CALL_ROUNDS; round++) {
+						const roundNumber = round + 1
 						let requestMessages: ChatMessage[] = [...conversationMessages]
 						if (oneShotVisionMessages.length > 0) {
 							requestMessages.push(...oneShotVisionMessages)
@@ -715,12 +913,34 @@ export const useChatStore = create<ChatStore>()(
 							requestMessages,
 							requiresReasoningContent,
 						)
+						const estimatedPromptTokens = estimateTokens(
+							requestMessages
+								.map(
+									(message) =>
+										`${messageContentToText(message.content)} ${messageReasoningToText(message.reasoning_content)}`,
+								)
+								.join('\n'),
+						)
+
+						set((state) => ({
+							streamPhase: 'streaming',
+							lastProgressAt: Date.now(),
+							lastProgressKind: 'request_start',
+							diagnostics: {
+								...state.diagnostics,
+								mapContextTokens,
+								requestMessageCount: requestMessages.length,
+								estimatedPromptTokens,
+								round: roundNumber,
+							},
+						}))
 
 						let result: {
 							content: string
 							reasoningContent: string
 							toolCalls: ToolCall[]
 							finishReason?: string
+							estimatedCompletionTokens: number
 						}
 
 						try {
@@ -731,13 +951,32 @@ export const useChatStore = create<ChatStore>()(
 							}
 
 							console.warn('[Chat] Context overflow detected. Retrying with reduced prompt.')
+							set({
+								streamPhase: 'recovering_context',
+								streamWarning:
+									'Context overflow detected. Retrying with a reduced prompt window...',
+							})
 							const emergencyMessages = buildEmergencyRetryMessages(conversationMessages)
 							result = await makeRequest(emergencyMessages)
 						}
 
 						// If we got tool calls, execute them and continue
 						if (result.toolCalls.length > 0) {
-							set({ executingTools: true, streamingContent: '' })
+							totalToolCalls += result.toolCalls.length
+							set((state) => ({
+								executingTools: true,
+								streamingContent: '',
+								streamPhase: 'executing_tools',
+								streamWarning: null,
+								lastProgressAt: Date.now(),
+								lastProgressKind: 'tool_calls',
+								diagnostics: {
+									...state.diagnostics,
+									estimatedCompletionTokens: result.estimatedCompletionTokens,
+									finishReason: result.finishReason ?? null,
+									toolCallCount: totalToolCalls,
+								},
+							}))
 
 							const normalizedReasoningContent = result.reasoningContent.trim()
 
@@ -765,6 +1004,10 @@ export const useChatStore = create<ChatStore>()(
 								}
 								conversationMessages = [...conversationMessages, toolMessage]
 								set({ messages: conversationMessages })
+								set({
+									lastProgressAt: Date.now(),
+									lastProgressKind: 'tool_result',
+								})
 
 								if (canUseVision && toolCall.function.name === 'capture_map_snapshot') {
 									const snapshotId = tryExtractSnapshotId(toolResult.content)
@@ -805,24 +1048,64 @@ export const useChatStore = create<ChatStore>()(
 								reasoning_content: normalizedReasoningContent || undefined,
 							}
 							conversationMessages = [...conversationMessages, assistantMessage]
-							set({
+							set((state) => ({
 								messages: conversationMessages,
 								isStreaming: false,
 								streamingContent: '',
-							})
+								streamPhase: 'idle',
+								streamWarning: null,
+								lastProgressAt: Date.now(),
+								lastProgressKind: 'complete',
+								diagnostics: {
+									...state.diagnostics,
+									estimatedCompletionTokens: result.estimatedCompletionTokens,
+									finishReason: result.finishReason ?? null,
+									toolCallCount: totalToolCalls,
+									completedAt: Date.now(),
+								},
+							}))
 						} else {
-							set({ isStreaming: false, streamingContent: '' })
+							set((state) => ({
+								isStreaming: false,
+								streamingContent: '',
+								streamPhase: 'idle',
+								streamWarning: null,
+								lastProgressAt: Date.now(),
+								lastProgressKind: 'complete',
+								diagnostics: {
+									...state.diagnostics,
+									estimatedCompletionTokens: result.estimatedCompletionTokens,
+									finishReason: result.finishReason ?? null,
+									toolCallCount: totalToolCalls,
+									completedAt: Date.now(),
+								},
+							}))
 						}
+						completed = true
 						break
+					}
+
+					if (!completed) {
+						throw new Error(
+							`Reached maximum tool-call rounds (${MAX_TOOL_CALL_ROUNDS}) without a final response. Please retry with a more specific prompt.`,
+						)
 					}
 				} catch (err) {
 					const message = err instanceof Error ? err.message : 'Failed to send message'
-					set({
+					set((state) => ({
 						isStreaming: false,
 						streamingContent: '',
 						executingTools: false,
+						streamPhase: 'idle',
+						streamWarning: null,
+						lastProgressAt: Date.now(),
+						lastProgressKind: 'error',
 						error: message,
-					})
+						diagnostics: {
+							...state.diagnostics,
+							completedAt: Date.now(),
+						},
+					}))
 					toast.error(message)
 				} finally {
 					streamAbortController = null
@@ -834,10 +1117,16 @@ export const useChatStore = create<ChatStore>()(
 					streamAbortController.abort()
 					streamAbortController = null
 				}
-				set({
+				set((state) => ({
 					isStreaming: false,
 					streamingContent: '',
-				})
+					executingTools: false,
+					streamPhase: 'idle',
+					streamWarning: null,
+					lastProgressAt: Date.now(),
+					lastProgressKind: 'error',
+					error: state.error,
+				}))
 			},
 
 			reset: () => {

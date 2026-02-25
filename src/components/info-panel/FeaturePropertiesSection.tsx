@@ -6,6 +6,43 @@ import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { StylePropertiesSection } from './StylePropertiesSection'
 
+const NON_CUSTOM_EDITOR_PROPERTY_KEYS = new Set([
+	'meta',
+	'active',
+	'mode',
+	'parent',
+	'coord_path',
+	'featureId',
+	'importSource',
+	'customProperties',
+	'name',
+	'description',
+	'featureType',
+	'text',
+	'textFontSize',
+	'textColor',
+	'textHaloColor',
+	'textHaloWidth',
+])
+
+function deriveCustomProperties(properties: EditorFeature['properties'] | undefined) {
+	if (!properties || typeof properties !== 'object') return {}
+	const base = properties as Record<string, unknown>
+	const explicitCustom =
+		base.customProperties && typeof base.customProperties === 'object'
+			? (base.customProperties as Record<string, unknown>)
+			: {}
+	const mirroredFromRoot: Record<string, unknown> = {}
+	for (const [key, value] of Object.entries(base)) {
+		if (NON_CUSTOM_EDITOR_PROPERTY_KEYS.has(key) || isStyleProperty(key)) continue
+		mirroredFromRoot[key] = value
+	}
+	return {
+		...mirroredFromRoot,
+		...explicitCustom,
+	}
+}
+
 export interface FeaturePropertiesSectionProps {
 	feature: EditorFeature
 }
@@ -49,7 +86,7 @@ export function FeaturePropertiesSection({ feature }: FeaturePropertiesSectionPr
 
 	const onCustomPropertyChange = (key: string, value: string) => {
 		if (!editor) return
-		const currentProps = feature.properties?.customProperties || {}
+		const currentProps = deriveCustomProperties(feature.properties)
 		editor.updateFeature(feature.id, {
 			...feature,
 			properties: {
@@ -61,20 +98,22 @@ export function FeaturePropertiesSection({ feature }: FeaturePropertiesSectionPr
 
 	const onRemoveCustomProperty = (key: string) => {
 		if (!editor) return
-		const currentProps = { ...(feature.properties?.customProperties || {}) }
+		const currentProps = { ...deriveCustomProperties(feature.properties) }
 		delete currentProps[key]
+		const nextRootProperties = { ...(feature.properties as Record<string, unknown>) }
+		delete nextRootProperties[key]
 		editor.updateFeature(feature.id, {
 			...feature,
 			properties: {
-				...feature.properties,
-				customProperties: currentProps,
+				...nextRootProperties,
+				...(Object.keys(currentProps).length > 0 ? { customProperties: currentProps } : {}),
 			},
 		})
 	}
 
 	const onAddCustomProperty = () => {
 		if (!editor || !newFeatureProp.key) return
-		const currentProps = feature.properties?.customProperties || {}
+		const currentProps = deriveCustomProperties(feature.properties)
 		editor.updateFeature(feature.id, {
 			...feature,
 			properties: {
@@ -94,7 +133,7 @@ export function FeaturePropertiesSection({ feature }: FeaturePropertiesSectionPr
 		}
 	}
 
-	const customProperties = feature.properties?.customProperties ?? {}
+	const customPropertiesToDisplay = deriveCustomProperties(feature.properties)
 
 	return (
 		<div className="space-y-2">
@@ -174,7 +213,7 @@ export function FeaturePropertiesSection({ feature }: FeaturePropertiesSectionPr
 			{/* Custom properties - compact */}
 			<div className="space-y-1">
 				<div className="text-[10px] text-gray-500 uppercase tracking-wide">Properties</div>
-				{Object.entries(customProperties).map(([key, value]) => (
+				{Object.entries(customPropertiesToDisplay).map(([key, value]) => (
 					<div key={key} className="flex items-center gap-1">
 						<span className="text-[10px] text-gray-600 min-w-[40px] truncate">{key}</span>
 						<Input

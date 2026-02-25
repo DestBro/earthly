@@ -52,9 +52,282 @@ const RELAYS = [
   serverConfig.relayUrl || "ws://localhost:3334",
   "wss://relay.contextvm.org/",
 ];
+const TEXT_ENCODER = new TextEncoder();
+const NOSTR_PLAINTEXT_LIMIT_BYTES = 65535;
+const TRANSPORT_RESPONSE_BUDGET_BYTES = 58_000;
+const COORDINATE_PRECISION_STEPS = [6, 5, 4] as const;
+const GEOMETRY_POINT_LIMIT_STEPS = [2000, 1000, 500, 250, 120, 80] as const;
+const FEATURE_CAP_STEPS = [200, 100, 50, 25, 10, 5, 2, 1] as const;
+
+type QueryByIdLike = {
+  feature: unknown | null;
+  osmType: "node" | "way" | "relation";
+  osmId: number;
+  transport?: Record<string, unknown>;
+};
+
+type QueryFeaturesLike = {
+  features: unknown[];
+  count: number;
+};
+
+function estimateStructuredContentBytes(structuredContent: unknown): number {
+  const messageEnvelope = {
+    jsonrpc: "2.0",
+    id: 1,
+    result: {
+      content: [],
+      structuredContent,
+    },
+  };
+  return TEXT_ENCODER.encode(JSON.stringify(messageEnvelope)).length;
+}
+
+function roundCoordinate(value: number, precision: number): number {
+  const factor = 10 ** precision;
+  return Math.round(value * factor) / factor;
+}
+
+function isCoordinateTuple(value: unknown): value is number[] {
+  return (
+    Array.isArray(value) &&
+    value.length >= 2 &&
+    typeof value[0] === "number" &&
+    typeof value[1] === "number"
+  );
+}
+
+function sameCoordinateTuple(a: unknown, b: unknown): boolean {
+  if (!isCoordinateTuple(a) || !isCoordinateTuple(b)) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function simplifyCoordinateNode(
+  node: unknown,
+  precision: number,
+  maxPointsPerPath: number,
+): unknown {
+  if (!Array.isArray(node)) return node;
+  if (node.length === 0) return node;
+
+  // Base coordinate tuple: [lon, lat, ...]
+  if (typeof node[0] === "number") {
+    return (node as unknown[]).map((value) =>
+      typeof value === "number" ? roundCoordinate(value, precision) : value,
+    );
+  }
+
+  // Path level: [[lon,lat], ...]
+  if (isCoordinateTuple(node[0])) {
+    const path = node as unknown[];
+    const rounded = path.map((point) =>
+      simplifyCoordinateNode(point, precision, maxPointsPerPath),
+    );
+    if (rounded.length <= maxPointsPerPath) return rounded;
+
+    const isClosed =
+      rounded.length > 2 &&
+      sameCoordinateTuple(rounded[0], rounded[rounded.length - 1]);
+    const minTarget = isClosed ? 4 : 2;
+    const target = Math.max(minTarget, maxPointsPerPath);
+    const maxIndex = rounded.length - 1;
+
+    const keepIndexes = new Set<number>([0, maxIndex]);
+    const interiorSlots = Math.max(0, target - 2);
+    for (let i = 1; i <= interiorSlots; i += 1) {
+      const index = Math.round((i * maxIndex) / (interiorSlots + 1));
+      keepIndexes.add(index);
+    }
+
+    const sampled = [...keepIndexes]
+      .sort((a, b) => a - b)
+      .map((index) => rounded[index]);
+
+    if (
+      isClosed &&
+      sampled.length > 0 &&
+      !sameCoordinateTuple(sampled[0], sampled[sampled.length - 1])
+    ) {
+      sampled.push(sampled[0]);
+    }
+
+    return sampled;
+  }
+
+  return node.map((child) =>
+    simplifyCoordinateNode(child, precision, maxPointsPerPath),
+  );
+}
+
+function simplifyFeatureGeometry(
+  feature: unknown,
+  precision: number,
+  maxPointsPerPath: number,
+): unknown {
+  if (!feature || typeof feature !== "object") return feature;
+  const rawFeature = feature as Record<string, unknown>;
+  const rawGeometry =
+    rawFeature.geometry && typeof rawFeature.geometry === "object"
+      ? (rawFeature.geometry as Record<string, unknown>)
+      : null;
+  if (!rawGeometry || !("coordinates" in rawGeometry)) {
+    return rawFeature;
+  }
+
+  return {
+    ...rawFeature,
+    geometry: {
+      ...rawGeometry,
+      coordinates: simplifyCoordinateNode(
+        rawGeometry.coordinates,
+        precision,
+        maxPointsPerPath,
+      ),
+    },
+  };
+}
+
+function fitQueryByIdForTransport(result: QueryByIdLike): QueryByIdLike {
+  const originalBytes = estimateStructuredContentBytes({ result });
+  if (originalBytes <= TRANSPORT_RESPONSE_BUDGET_BYTES) {
+    return result;
+  }
+
+  if (!result.feature) {
+    return result;
+  }
+
+  for (const precision of COORDINATE_PRECISION_STEPS) {
+    for (const maxPointsPerPath of GEOMETRY_POINT_LIMIT_STEPS) {
+      const candidate: QueryByIdLike = {
+        ...result,
+        feature: simplifyFeatureGeometry(
+          result.feature,
+          precision,
+          maxPointsPerPath,
+        ),
+        transport: {
+          truncated: true,
+          originalResponseBytes: originalBytes,
+          responseBudgetBytes: TRANSPORT_RESPONSE_BUDGET_BYTES,
+          coordinatePrecision: precision,
+          maxPointsPerPath,
+          hint: "Geometry simplified to fit Nostr transport size limit.",
+        },
+      };
+      if (
+        estimateStructuredContentBytes({ result: candidate }) <=
+        TRANSPORT_RESPONSE_BUDGET_BYTES
+      ) {
+        console.warn(
+          `⚠️ query_osm_by_id response truncated for transport (${originalBytes}B -> ${estimateStructuredContentBytes(
+            { result: candidate },
+          )}B).`,
+        );
+        return candidate;
+      }
+    }
+  }
+
+  return {
+    ...result,
+    feature: null,
+    transport: {
+      truncated: true,
+      originalResponseBytes: originalBytes,
+      responseBudgetBytes: TRANSPORT_RESPONSE_BUDGET_BYTES,
+      hint: "Feature omitted because payload exceeded Nostr transport size. Narrow query scope.",
+    },
+  };
+}
+
+function fitQueryFeaturesForTransport(
+  result: QueryFeaturesLike,
+  toolName: string,
+): QueryFeaturesLike {
+  const originalBytes = estimateStructuredContentBytes({ result });
+  if (originalBytes <= TRANSPORT_RESPONSE_BUDGET_BYTES) {
+    return result;
+  }
+
+  const originalCount = result.features.length;
+  const capCandidates = [
+    originalCount,
+    ...FEATURE_CAP_STEPS.filter((value) => value < originalCount),
+  ];
+
+  for (const precision of COORDINATE_PRECISION_STEPS) {
+    for (const maxPointsPerPath of GEOMETRY_POINT_LIMIT_STEPS) {
+      const simplifiedFeatures = result.features.map((feature) =>
+        simplifyFeatureGeometry(feature, precision, maxPointsPerPath),
+      );
+
+      for (const cap of capCandidates) {
+        const candidateFeatures = simplifiedFeatures.slice(0, cap);
+        const candidateResult: QueryFeaturesLike & {
+          transport?: Record<string, unknown>;
+        } = {
+          ...result,
+          features: candidateFeatures,
+          count: candidateFeatures.length,
+          transport: {
+            truncated: true,
+            originalFeatureCount: originalCount,
+            returnedFeatureCount: candidateFeatures.length,
+            originalResponseBytes: originalBytes,
+            responseBudgetBytes: TRANSPORT_RESPONSE_BUDGET_BYTES,
+            coordinatePrecision: precision,
+            maxPointsPerPath,
+            hint: "Narrow bbox/radius or lower limit for full-detail geometry.",
+          },
+        };
+
+        if (
+          estimateStructuredContentBytes({ result: candidateResult }) <=
+          TRANSPORT_RESPONSE_BUDGET_BYTES
+        ) {
+          console.warn(
+            `⚠️ ${toolName} response truncated for transport (${originalBytes}B -> ${estimateStructuredContentBytes(
+              { result: candidateResult },
+            )}B).`,
+          );
+          return candidateResult;
+        }
+      }
+    }
+  }
+
+  const fallbackResult: QueryFeaturesLike & {
+    transport?: Record<string, unknown>;
+  } = {
+    ...result,
+    features: [],
+    count: 0,
+    transport: {
+      truncated: true,
+      originalFeatureCount: originalCount,
+      returnedFeatureCount: 0,
+      originalResponseBytes: originalBytes,
+      responseBudgetBytes: TRANSPORT_RESPONSE_BUDGET_BYTES,
+      hint: "No features returned because payload exceeded Nostr transport size. Use tighter filters or bbox.",
+    },
+  };
+
+  console.warn(
+    `⚠️ ${toolName} response exceeded safe transport budget (${originalBytes}B > ${TRANSPORT_RESPONSE_BUDGET_BYTES}B). Returned empty feature set.`,
+  );
+  return fallbackResult;
+}
 
 async function main() {
   console.log("🗺️ Starting ContextVM Geo Server...\n");
+  console.log(
+    `📏 Nostr safe tool-response budget: ${TRANSPORT_RESPONSE_BUDGET_BYTES}/${NOSTR_PLAINTEXT_LIMIT_BYTES} bytes`,
+  );
 
   // 1. Setup Signer and Relay Pool
   const signer = new PrivateKeySigner(SERVER_PRIVATE_KEY);
@@ -147,7 +420,7 @@ async function main() {
     async ({ osmType, osmId }) => {
       try {
         console.log(`🗺️ Querying OSM ${osmType}/${osmId}`);
-        const result = await queryById(osmType, osmId);
+        const result = fitQueryByIdForTransport(await queryById(osmType, osmId));
 
         return {
           content: [],
@@ -177,7 +450,10 @@ async function main() {
     async ({ lat, lon, radius, filters, limit }) => {
       try {
         console.log(`🗺️ Querying OSM nearby: ${lat},${lon} radius=${radius}m`);
-        const result = await queryNearby(lat, lon, radius, filters, limit);
+        const result = fitQueryFeaturesForTransport(
+          await queryNearby(lat, lon, radius, filters, limit),
+          "query_osm_nearby",
+        );
 
         // Log response size for debugging
         const responseStr = JSON.stringify({ result });
@@ -215,13 +491,9 @@ async function main() {
         console.log(
           `🗺️ Querying OSM bbox: [${west},${south},${east},${north}]`,
         );
-        const result = await queryBbox(
-          west,
-          south,
-          east,
-          north,
-          filters,
-          limit,
+        const result = fitQueryFeaturesForTransport(
+          await queryBbox(west, south, east, north, filters, limit),
+          "query_osm_bbox",
         );
 
         // Log response size for debugging

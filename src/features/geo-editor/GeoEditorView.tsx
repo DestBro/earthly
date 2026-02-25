@@ -50,11 +50,29 @@ import {
 } from './hooks'
 import { useEditorStore } from './store'
 import type { GeoSearchResult } from './types'
+import { isStyleProperty } from './types/styleProperties'
 import { ensureFeatureCollection, extractCollectionMeta } from './utils'
 
 const MAGNIFIER_SIZE = 140
 const MAGNIFIER_OFFSET = { x: 80, y: -80 }
 const POINTER_OFFSET = { x: 0, y: -48 }
+const NON_CUSTOM_EDITOR_PROPERTY_KEYS = new Set([
+	'meta',
+	'active',
+	'mode',
+	'parent',
+	'coord_path',
+	'featureId',
+	'customProperties',
+	'name',
+	'description',
+	'featureType',
+	'text',
+	'textFontSize',
+	'textColor',
+	'textHaloColor',
+	'textHaloWidth',
+])
 
 type ReverseLookupResult = ReverseLookupOutput['result']
 
@@ -114,6 +132,42 @@ function bboxFromGeometry(geometry: any): [number, number, number, number] | nul
 		return null
 	}
 	return [west, south, east, north]
+}
+
+function toImportedEditorFeature(feature: GeoJSON.Feature): EditorFeature {
+	const stableId = feature.id?.toString() || crypto.randomUUID()
+	const sourceProps =
+		feature.properties && typeof feature.properties === 'object' ? feature.properties : {}
+	const baseProperties = sourceProps as Record<string, unknown>
+	const existingCustomProperties =
+		baseProperties.customProperties &&
+		typeof baseProperties.customProperties === 'object' &&
+		!Array.isArray(baseProperties.customProperties)
+			? (baseProperties.customProperties as Record<string, unknown>)
+			: {}
+	const mirroredCustomProperties: Record<string, unknown> = {}
+	for (const [key, value] of Object.entries(baseProperties)) {
+		if (NON_CUSTOM_EDITOR_PROPERTY_KEYS.has(key) || isStyleProperty(key)) continue
+		mirroredCustomProperties[key] = value
+	}
+
+	const mergedCustomProperties = {
+		...existingCustomProperties,
+		...mirroredCustomProperties,
+	}
+
+	return {
+		...feature,
+		id: stableId,
+		properties: {
+			...baseProperties,
+			...(Object.keys(mergedCustomProperties).length > 0
+				? { customProperties: mergedCustomProperties }
+				: {}),
+			meta: 'feature',
+			featureId: stableId,
+		},
+	} as EditorFeature
 }
 
 export function GeoEditorView() {
@@ -945,16 +999,7 @@ export function GeoEditorView() {
 		(features: GeoJSON.Feature[]) => {
 			if (!editor) return
 			features.forEach((feature) => {
-				const newFeature = {
-					...feature,
-					id: feature.id?.toString() || crypto.randomUUID(),
-					properties: {
-						...feature.properties,
-						meta: 'feature',
-						featureId: feature.id?.toString() || crypto.randomUUID(),
-					},
-				}
-				editor.addFeature(newFeature as EditorFeature)
+				editor.addFeature(toImportedEditorFeature(feature))
 			})
 		},
 		[editor],
@@ -2116,16 +2161,7 @@ export function GeoEditorView() {
 						onImport={(features) => {
 							if (!editor) return
 							features.forEach((feature) => {
-								const newFeature = {
-									...feature,
-									id: feature.id?.toString() || crypto.randomUUID(),
-									properties: {
-										...feature.properties,
-										meta: 'feature',
-										featureId: feature.id?.toString() || crypto.randomUUID(),
-									},
-								}
-								editor.addFeature(newFeature as EditorFeature)
+								editor.addFeature(toImportedEditorFeature(feature))
 							})
 						}}
 					/>

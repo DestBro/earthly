@@ -172,7 +172,7 @@ interface ApiModel {
 export async function fetchModels(provider: ProviderConfig): Promise<RoutstrModel[]> {
 	const headers: Record<string, string> = {}
 	if (provider.apiKey) {
-		headers['Authorization'] = `Bearer ${provider.apiKey}`
+		headers.Authorization = `Bearer ${provider.apiKey}`
 	}
 
 	const response = await fetch(`${provider.baseUrl}/models`, { headers })
@@ -260,7 +260,7 @@ export async function chatCompletion(
 		headers['X-Cashu'] = cashuToken
 	}
 	if (provider.apiKey) {
-		headers['Authorization'] = `Bearer ${provider.apiKey}`
+		headers.Authorization = `Bearer ${provider.apiKey}`
 	}
 
 	const response = await fetch(`${provider.baseUrl}/chat/completions`, {
@@ -310,6 +310,7 @@ export async function streamChatCompletion(
 	callbacks: StreamCallbacks,
 	provider: ProviderConfig,
 	cashuToken?: string,
+	signal?: AbortSignal,
 ): Promise<void> {
 	const requestBody = {
 		...request,
@@ -332,13 +333,14 @@ export async function streamChatCompletion(
 		headers['X-Cashu'] = cashuToken
 	}
 	if (provider.apiKey) {
-		headers['Authorization'] = `Bearer ${provider.apiKey}`
+		headers.Authorization = `Bearer ${provider.apiKey}`
 	}
 
 	const response = await fetch(`${provider.baseUrl}/chat/completions`, {
 		method: 'POST',
 		headers,
 		body: JSON.stringify(requestBody),
+		signal,
 	})
 
 	if (!response.ok) {
@@ -453,31 +455,41 @@ export async function streamChatCompletion(
 		return 'continue'
 	}
 
+	const processSseEventBlock = (eventBlock: string): 'done' | 'continue' => {
+		const normalized = eventBlock.replace(/\r/g, '')
+		if (!normalized.trim()) return 'continue'
+
+		const dataLines = normalized
+			.split('\n')
+			.filter((line) => line.startsWith('data:'))
+			.map((line) => line.slice(5).trimStart())
+
+		if (dataLines.length === 0) return 'continue'
+		const data = dataLines.join('\n').trim()
+		if (!data) return 'continue'
+		return processSseDataLine(data)
+	}
+
 	try {
 		while (true) {
 			const { done, value } = await reader.read()
 			if (done) break
 
 			buffer += decoder.decode(value, { stream: true })
-			const lines = buffer.split('\n')
-			buffer = lines.pop() || ''
+			buffer = buffer.replace(/\r\n/g, '\n')
 
-			for (const line of lines) {
-				if (line.startsWith('data: ')) {
-					const data = line.slice(6).trim()
-					if (processSseDataLine(data) === 'done') {
-						return
-					}
-				}
+			let boundaryIndex = buffer.indexOf('\n\n')
+			while (boundaryIndex !== -1) {
+				const eventBlock = buffer.slice(0, boundaryIndex)
+				buffer = buffer.slice(boundaryIndex + 2)
+				if (processSseEventBlock(eventBlock) === 'done') return
+				boundaryIndex = buffer.indexOf('\n\n')
 			}
 		}
 
-		const trailingLine = buffer.trim()
-		if (trailingLine.startsWith('data: ')) {
-			const data = trailingLine.slice(6).trim()
-			if (processSseDataLine(data) === 'done') {
-				return
-			}
+		const trailingEvent = buffer.trim()
+		if (trailingEvent) {
+			if (processSseEventBlock(trailingEvent) === 'done') return
 		}
 
 		// If we accumulated tool calls, emit them

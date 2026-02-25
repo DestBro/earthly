@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useChatStore } from './store'
 import { useNip60Store } from '@/lib/stores/nip60'
 import { Button } from '@/components/ui/button'
@@ -23,8 +23,10 @@ import {
 	ToggleLeft,
 	ToggleRight,
 	Server,
+	Check,
+	Copy,
 } from 'lucide-react'
-import type { ChatMessage, ToolCall, ProviderType } from './routstr'
+import { estimateTokens, type ChatMessage, type ToolCall, type ProviderType } from './routstr'
 import { cn } from '@/lib/utils'
 
 export function ChatPanel() {
@@ -37,9 +39,13 @@ export function ChatPanel() {
 		isStreaming,
 		streamingContent,
 		executingTools,
+		streamPhase,
+		streamWarning,
+		lastProgressAt,
 		toolsEnabled,
 		error,
 		totalSpent,
+		diagnostics,
 		provider,
 		customEndpoint,
 		customApiKey,
@@ -57,6 +63,7 @@ export function ChatPanel() {
 	const { status: walletStatus, balance: walletBalance } = useNip60Store()
 
 	const [input, setInput] = useState('')
+	const [nowMs, setNowMs] = useState(Date.now())
 	const messagesEndRef = useRef<HTMLDivElement>(null)
 	const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -68,17 +75,27 @@ export function ChatPanel() {
 	}, [models.length, modelsLoading, modelsError, loadModels])
 
 	// Auto-scroll to bottom when messages change
+	const scrollTrigger = `${messages.length}:${streamingContent.length}:${executingTools ? 1 : 0}:${streamWarning ? 1 : 0}`
 	useEffect(() => {
+		if (!scrollTrigger) return
 		messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-	}, [messages, streamingContent])
+	}, [scrollTrigger])
 
 	// Auto-resize textarea
+	const inputLength = input.length
 	useEffect(() => {
+		if (inputLength < 0) return
 		if (textareaRef.current) {
 			textareaRef.current.style.height = 'auto'
 			textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`
 		}
-	}, [input])
+	}, [inputLength])
+
+	useEffect(() => {
+		if (!isStreaming) return
+		const interval = window.setInterval(() => setNowMs(Date.now()), 1000)
+		return () => window.clearInterval(interval)
+	}, [isStreaming])
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault()
@@ -99,6 +116,40 @@ export function ChatPanel() {
 	const selectedModelData = models.find((m) => m.id === selectedModel)
 	const isWalletRequired = provider === 'routstr'
 	const canSend = !!selectedModel && (!isWalletRequired || walletStatus === 'ready')
+	const stalledSeconds =
+		isStreaming && lastProgressAt ? Math.max(0, Math.floor((nowMs - lastProgressAt) / 1000)) : 0
+	const phaseLabel = useMemo(() => {
+		switch (streamPhase) {
+			case 'requesting':
+				return 'Requesting model'
+			case 'streaming':
+				return 'Streaming response'
+			case 'executing_tools':
+				return 'Executing tools'
+			case 'recovering_context':
+				return 'Recovering context'
+			case 'finalizing':
+				return 'Finalizing'
+			default:
+				return 'Idle'
+		}
+	}, [streamPhase])
+	const contextTokenDisplay =
+		diagnostics.effectiveContextTokens ?? selectedModelData?.contextLength ?? null
+	const renderedMessages = useMemo(() => {
+		const seen = new Map<string, number>()
+		return messages.map((message) => {
+			const contentPreview = contentToDisplayText(message.content).slice(0, 80)
+			const toolCallKey = message.tool_calls?.map((call) => call.id).join(',') ?? ''
+			const baseKey = `${message.role}|${message.tool_call_id ?? ''}|${toolCallKey}|${contentPreview}`
+			const nextCount = (seen.get(baseKey) ?? 0) + 1
+			seen.set(baseKey, nextCount)
+			return {
+				message,
+				key: `${baseKey}|${nextCount}`,
+			}
+		})
+	}, [messages])
 
 	return (
 		<div className="flex flex-col h-full">
@@ -241,6 +292,43 @@ export function ChatPanel() {
 					</div>
 				</div>
 
+				{/* Diagnostics */}
+				<div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+					{contextTokenDisplay ? (
+						<span className="rounded border px-1.5 py-0.5">
+							{diagnostics.effectiveContextTokens ? 'ctx' : 'ctx(model)'}{' '}
+							{contextTokenDisplay.toLocaleString()}
+						</span>
+					) : null}
+					{diagnostics.promptBudgetTokens ? (
+						<span className="rounded border px-1.5 py-0.5">
+							prompt budget {diagnostics.promptBudgetTokens.toLocaleString()}
+						</span>
+					) : null}
+					{diagnostics.estimatedPromptTokens ? (
+						<span className="rounded border px-1.5 py-0.5">
+							~prompt {diagnostics.estimatedPromptTokens.toLocaleString()} tok
+						</span>
+					) : null}
+					{diagnostics.estimatedCompletionTokens ? (
+						<span className="rounded border px-1.5 py-0.5">
+							~completion {diagnostics.estimatedCompletionTokens.toLocaleString()} tok
+						</span>
+					) : null}
+					{diagnostics.finishReason ? (
+						<span className="rounded border px-1.5 py-0.5">finish {diagnostics.finishReason}</span>
+					) : null}
+					{diagnostics.toolCallCount > 0 ? (
+						<span className="rounded border px-1.5 py-0.5">tools {diagnostics.toolCallCount}</span>
+					) : null}
+					{isStreaming ? (
+						<span className="rounded border px-1.5 py-0.5">
+							{phaseLabel}
+							{stalledSeconds > 0 ? ` · ${stalledSeconds}s` : ''}
+						</span>
+					) : null}
+				</div>
+
 				{/* Errors */}
 				{modelsError && (
 					<div className="flex items-center gap-1.5 text-xs text-destructive">
@@ -274,8 +362,8 @@ export function ChatPanel() {
 					</div>
 				) : (
 					<>
-						{messages.map((message, index) => (
-							<MessageBubble key={index} message={message} />
+						{renderedMessages.map(({ message, key }) => (
+							<MessageBubble key={key} message={message} />
 						))}
 
 						{/* Streaming message */}
@@ -309,10 +397,25 @@ export function ChatPanel() {
 											: 'bg-muted',
 									)}
 								>
-									<span className="animate-pulse">
-										{executingTools ? 'Executing map tools...' : 'Thinking...'}
-									</span>
+									<span className="animate-pulse">{phaseLabel}...</span>
 									<Loader2 className="h-4 w-4 animate-spin" />
+								</div>
+							</div>
+						)}
+
+						{isStreaming && streamWarning && (
+							<div className="flex gap-2">
+								<div className="flex-shrink-0 h-6 w-6 rounded-full flex items-center justify-center bg-amber-100 dark:bg-amber-900">
+									<AlertCircle className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" />
+								</div>
+								<div className="rounded-lg px-3 py-2 text-xs bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
+									<div>{streamWarning}</div>
+									<div className="mt-1 flex items-center gap-2">
+										<span className="opacity-80">last update {stalledSeconds}s ago</span>
+										<Button type="button" size="sm" variant="outline" onClick={cancelStream}>
+											Stop
+										</Button>
+									</div>
 								</div>
 							</div>
 						)}
@@ -398,9 +501,23 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 	const hasToolCalls =
 		message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0
 	const contentText = contentToDisplayText(message.content)
-	const parsedAssistantContent: ParsedAssistantContent = isAssistant
-		? parseAssistantContent(contentText)
-		: { answerText: contentText, reasoningBlocks: [] }
+	const parsedAssistantContent: ParsedAssistantContent = useMemo(() => {
+		if (!isAssistant) {
+			return { answerText: contentText, reasoningBlocks: [] }
+		}
+		const parsed = parseAssistantContent(contentText)
+		const explicitReasoning =
+			typeof message.reasoning_content === 'string' ? message.reasoning_content.trim() : ''
+		if (
+			explicitReasoning &&
+			!parsed.reasoningBlocks.some((block) => block.trim() === explicitReasoning)
+		) {
+			parsed.reasoningBlocks.push(explicitReasoning)
+		}
+		return parsed
+	}, [isAssistant, contentText, message.reasoning_content])
+	const tokenEstimate = estimateTokens(contentText || ' ')
+	const bubbleCopyText = buildBubbleCopyText(message, parsedAssistantContent, contentText)
 
 	// Tool result message
 	if (isTool) {
@@ -409,11 +526,8 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 				<div className="flex-shrink-0 h-5 w-5 rounded flex items-center justify-center bg-blue-100 dark:bg-blue-900">
 					<MapPin className="h-3 w-3 text-blue-600 dark:text-blue-400" />
 				</div>
-				<div className="rounded-lg px-3 py-2 max-w-[85%] text-xs bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
-					<p className="font-medium text-blue-700 dark:text-blue-300 mb-1">Tool Result</p>
-					<pre className="whitespace-pre-wrap break-words text-muted-foreground overflow-x-auto max-h-32 overflow-y-auto">
-						{truncateToolResult(contentText)}
-					</pre>
+				<div className="max-w-[85%]">
+					<ToolResultDisclosure content={contentText} tokenEstimate={tokenEstimate} />
 				</div>
 			</div>
 		)
@@ -431,10 +545,18 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 						</div>
 						<div className="max-w-[85%] space-y-2">
 							{parsedAssistantContent.answerText && (
-								<div className="rounded-lg px-3 py-2 text-sm bg-muted">
+								<div className="relative rounded-lg px-3 py-2 text-sm bg-muted">
+									<CopyBubbleButton
+										text={bubbleCopyText}
+										className="absolute right-1.5 top-1.5"
+										title="Copy assistant message"
+									/>
 									<p className="whitespace-pre-wrap break-words">
 										{parsedAssistantContent.answerText}
 									</p>
+									<div className="mt-2 text-[10px] text-muted-foreground">
+										~{tokenEstimate.toLocaleString()} tok
+									</div>
 								</div>
 							)}
 							{parsedAssistantContent.reasoningBlocks.length > 0 && (
@@ -447,7 +569,12 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 					<div className="flex-shrink-0 h-5 w-5 rounded flex items-center justify-center bg-orange-100 dark:bg-orange-900">
 						<Wrench className="h-3 w-3 text-orange-600 dark:text-orange-400" />
 					</div>
-					<div className="text-xs text-muted-foreground">
+					<div className="relative rounded-lg px-2 py-1.5 text-xs text-muted-foreground bg-orange-50/70 dark:bg-orange-950/40 border border-orange-200/80 dark:border-orange-800/70">
+						<CopyBubbleButton
+							text={JSON.stringify(message.tool_calls, null, 2)}
+							className="absolute right-1 top-1"
+							title="Copy tool calls JSON"
+						/>
 						{message.tool_calls?.map((tc: ToolCall) => (
 							<span
 								key={tc.id}
@@ -457,6 +584,9 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 								{tc.function.name}
 							</span>
 						))}
+						<div className="mt-1 text-[10px] text-muted-foreground">
+							{message.tool_calls?.length ?? 0} tool call(s)
+						</div>
 					</div>
 				</div>
 			</div>
@@ -472,11 +602,19 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 				</div>
 				<div
 					className={cn(
-						'rounded-lg px-3 py-2 max-w-[85%] text-sm bg-primary text-primary-foreground',
+						'relative rounded-lg px-3 py-2 max-w-[85%] text-sm bg-primary text-primary-foreground',
 						isStreaming && 'animate-pulse',
 					)}
 				>
+					<CopyBubbleButton
+						text={bubbleCopyText}
+						className="absolute right-1.5 top-1.5"
+						title="Copy user message"
+					/>
 					<p className="whitespace-pre-wrap break-words">{contentText}</p>
+					<div className="mt-2 text-[10px] text-primary-foreground/80">
+						~{tokenEstimate.toLocaleString()} tok
+					</div>
 				</div>
 			</div>
 		)
@@ -491,9 +629,20 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 			<div className="max-w-[85%] space-y-2">
 				{parsedAssistantContent.answerText && (
 					<div
-						className={cn('rounded-lg px-3 py-2 text-sm bg-muted', isStreaming && 'animate-pulse')}
+						className={cn(
+							'relative rounded-lg px-3 py-2 text-sm bg-muted',
+							isStreaming && 'animate-pulse',
+						)}
 					>
+						<CopyBubbleButton
+							text={bubbleCopyText}
+							className="absolute right-1.5 top-1.5"
+							title="Copy assistant message"
+						/>
 						<p className="whitespace-pre-wrap break-words">{parsedAssistantContent.answerText}</p>
+						<div className="mt-2 text-[10px] text-muted-foreground">
+							~{tokenEstimate.toLocaleString()} tok
+						</div>
 					</div>
 				)}
 				{parsedAssistantContent.reasoningBlocks.length > 0 && (
@@ -522,16 +671,17 @@ function ReasoningDisclosure({ blocks }: { blocks: string[] }) {
 			key: `${line}:${nextCount}`,
 		}
 	})
+	const lineCount = keyedLines.length
 
 	useEffect(() => {
-		if (!isOpen || !autoScrollEnabled || !scrollRef.current) return
+		if (!isOpen || !autoScrollEnabled || !scrollRef.current || lineCount === 0) return
 		scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-	}, [isOpen, autoScrollEnabled, keyedLines.length])
+	}, [isOpen, autoScrollEnabled, lineCount])
 
 	useEffect(() => {
-		if (isOpen || !collapsedScrollRef.current) return
+		if (isOpen || !collapsedScrollRef.current || lineCount === 0) return
 		collapsedScrollRef.current.scrollTop = collapsedScrollRef.current.scrollHeight
-	}, [isOpen, keyedLines.length])
+	}, [isOpen, lineCount])
 
 	if (lines.length === 0) return null
 
@@ -546,30 +696,35 @@ function ReasoningDisclosure({ blocks }: { blocks: string[] }) {
 	return (
 		<div className="rounded-md border border-orange-200/80 dark:border-orange-900/60 bg-orange-50/50 dark:bg-orange-950/20">
 			<div className="flex items-center justify-between gap-2 px-2 py-1.5">
-				<button
-					type="button"
-					onClick={() => setIsOpen((prev) => !prev)}
-					className="cursor-pointer select-none text-xs font-medium text-orange-700 dark:text-orange-300"
-					aria-expanded={isOpen}
-				>
-					<span className="mr-1">{isOpen ? '▾' : '▸'}</span>
-					Reasoning ({lines.length} lines)
-				</button>
-				{isOpen && (
+				<div className="flex items-center gap-2">
 					<button
 						type="button"
-						onClick={toggleAutoScroll}
-						className={cn(
-							'text-[10px] px-2 py-0.5 rounded border',
-							autoScrollEnabled
-								? 'border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300 bg-orange-100/70 dark:bg-orange-900/30'
-								: 'border-muted-foreground/30 text-muted-foreground bg-background/70',
-						)}
-						title="Keep view pinned to the latest reasoning line"
+						onClick={() => setIsOpen((prev) => !prev)}
+						className="cursor-pointer select-none text-xs font-medium text-orange-700 dark:text-orange-300"
+						aria-expanded={isOpen}
 					>
-						Auto-scroll: {autoScrollEnabled ? 'On' : 'Off'}
+						<span className="mr-1">{isOpen ? '▾' : '▸'}</span>
+						Reasoning ({lines.length} lines)
 					</button>
-				)}
+					<CopyBubbleButton text={blocks.join('\n\n')} title="Copy reasoning" compact />
+				</div>
+				<div className="flex items-center gap-1.5">
+					{isOpen && (
+						<button
+							type="button"
+							onClick={toggleAutoScroll}
+							className={cn(
+								'text-[10px] px-2 py-0.5 rounded border',
+								autoScrollEnabled
+									? 'border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300 bg-orange-100/70 dark:bg-orange-900/30'
+									: 'border-muted-foreground/30 text-muted-foreground bg-background/70',
+							)}
+							title="Keep view pinned to the latest reasoning line"
+						>
+							Auto-scroll: {autoScrollEnabled ? 'On' : 'Off'}
+						</button>
+					)}
+				</div>
 			</div>
 			{!isOpen ? (
 				<div className="px-2 pb-2">
@@ -614,6 +769,126 @@ function ReasoningDisclosure({ blocks }: { blocks: string[] }) {
 			)}
 		</div>
 	)
+}
+
+function ToolResultDisclosure({
+	content,
+	tokenEstimate,
+}: {
+	content: string
+	tokenEstimate: number
+}) {
+	const [isOpen, setIsOpen] = useState(false)
+	const displayContent = useMemo(() => {
+		try {
+			const parsed = JSON.parse(content)
+			return JSON.stringify(parsed, null, 2)
+		} catch {
+			return content
+		}
+	}, [content])
+	const lines = displayContent.split(/\r?\n/)
+	const previewLines = lines.slice(0, 2)
+	const hasMore = lines.length > previewLines.length
+
+	return (
+		<div className="rounded-lg px-3 py-2 text-xs bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
+			<div className="flex items-center justify-between gap-2 mb-1">
+				<button
+					type="button"
+					onClick={() => setIsOpen((prev) => !prev)}
+					className="text-left font-medium text-blue-700 dark:text-blue-300"
+					aria-expanded={isOpen}
+				>
+					<span className="mr-1">{isOpen ? '▾' : '▸'}</span>
+					Tool Result ({lines.length} lines)
+				</button>
+				<div className="flex items-center gap-1.5">
+					<span className="text-[10px] text-blue-700/80 dark:text-blue-300/80">
+						~{tokenEstimate.toLocaleString()} tok
+					</span>
+					<CopyBubbleButton text={content} title="Copy tool result" compact />
+				</div>
+			</div>
+			{!isOpen ? (
+				<div className="rounded border border-blue-200/70 dark:border-blue-800/60 bg-background/70 p-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
+					<pre className="whitespace-pre-wrap break-words">
+						{previewLines.join('\n')}
+						{hasMore ? '\n...' : ''}
+					</pre>
+				</div>
+			) : (
+				<div className="max-h-56 overflow-y-auto rounded border border-blue-200/70 dark:border-blue-800/60 bg-background/70 p-2">
+					<pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground">
+						{displayContent}
+					</pre>
+				</div>
+			)}
+		</div>
+	)
+}
+
+function CopyBubbleButton({
+	text,
+	className,
+	title,
+	compact = false,
+}: {
+	text: string
+	className?: string
+	title: string
+	compact?: boolean
+}) {
+	const [copied, setCopied] = useState(false)
+	const canCopy = text.trim().length > 0
+	if (!canCopy) return null
+
+	const onCopy = async () => {
+		try {
+			await navigator.clipboard.writeText(text)
+			setCopied(true)
+			window.setTimeout(() => setCopied(false), 1500)
+		} catch (error) {
+			console.error('Failed to copy bubble content', error)
+		}
+	}
+
+	return (
+		<button
+			type="button"
+			onClick={onCopy}
+			title={title}
+			className={cn(
+				'inline-flex items-center justify-center rounded border text-[10px] transition-colors',
+				compact ? 'h-5 w-5' : 'h-5 w-5 bg-background/80',
+				'border-border/70 hover:bg-muted',
+				className,
+			)}
+		>
+			{copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+		</button>
+	)
+}
+
+function buildBubbleCopyText(
+	message: ChatMessage,
+	parsed: ParsedAssistantContent,
+	contentText: string,
+): string {
+	if (message.role === 'assistant') {
+		const parts: string[] = []
+		if (parsed.answerText) {
+			parts.push(parsed.answerText)
+		}
+		if (parsed.reasoningBlocks.length > 0) {
+			parts.push(`[REASONING]\n${parsed.reasoningBlocks.join('\n\n')}`)
+		}
+		if (message.tool_calls?.length) {
+			parts.push(`[TOOL_CALLS]\n${JSON.stringify(message.tool_calls, null, 2)}`)
+		}
+		return parts.join('\n\n').trim()
+	}
+	return contentText
 }
 
 function parseAssistantContent(content: string): ParsedAssistantContent {
@@ -689,9 +964,4 @@ function extractTrailingReasoning(content: string): {
 		answerText: content.slice(0, selected.index),
 		reasoning,
 	}
-}
-
-function truncateToolResult(content: string, maxLength = 500): string {
-	if (content.length <= maxLength) return content
-	return `${content.slice(0, maxLength)}\n... (truncated)`
 }
