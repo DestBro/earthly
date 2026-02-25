@@ -11,6 +11,7 @@ import {
 	User,
 	Wallet,
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import type { FeatureCollection } from 'geojson'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
@@ -41,34 +42,49 @@ import { useRouting, type SidebarViewMode } from '../features/geo-editor/hooks/u
 import type { GeoFeatureItem } from './editor/GeoRichTextEditor'
 import type { EditorFeature } from '../features/geo-editor/core'
 
-/** Navigation items for main view modes (shown in the main icon list) */
-const mainNavItems: {
+type SidebarContentMode = Exclude<SidebarViewMode, 'combined'>
+
+const META_VIEW_MODES: SidebarContentMode[] = ['posts', 'wallet', 'settings']
+const SPLIT_COMPANION_ALLOWED_MODES = new Set<SidebarContentMode>([
+	'datasets',
+	'collections',
+	'chat',
+	'user',
+	'help',
+])
+
+/** Navigation items for primary view modes (top icon list) */
+const editorNavItem: {
+	mode: SidebarViewMode
+	title: string
+	icon: typeof Database
+} = { mode: 'edit', title: 'Editor', icon: Pencil }
+
+const primaryNavItems: {
 	mode: SidebarViewMode
 	title: string
 	icon: typeof Database
 }[] = [
 	{ mode: 'datasets', title: 'Datasets', icon: Database },
 	{ mode: 'collections', title: 'Collections', icon: FolderOpen },
-	{ mode: 'combined', title: 'List & Editor', icon: PanelTop },
-	{ mode: 'edit', title: 'Editor', icon: Pencil },
+	{ mode: 'chat', title: 'AI Chat', icon: MessageCircle },
 	{ mode: 'user', title: 'Profile', icon: User },
 ]
 
-/** Navigation items for footer (settings and help) */
-const footerNavItems: {
+/** Navigation items for utility/meta modes (footer icon list) */
+const metaNavItems: {
 	mode: SidebarViewMode
 	title: string
 	icon: typeof Settings2
 }[] = [
 	{ mode: 'posts', title: 'City Posts', icon: Newspaper },
-	{ mode: 'chat', title: 'AI Chat', icon: MessageCircle },
 	{ mode: 'wallet', title: 'Wallet', icon: Wallet },
 	{ mode: 'settings', title: 'Settings', icon: Settings2 },
 	{ mode: 'help', title: 'Help', icon: HelpCircle },
 ]
 
 /** All view mode items for header title lookup */
-const allViewModeItems = [...mainNavItems, ...footerNavItems]
+const allViewModeItems = [editorNavItem, ...primaryNavItems, ...metaNavItems]
 
 interface AppSidebarProps {
 	geoEvents: NDKGeoEvent[]
@@ -177,6 +193,25 @@ export function AppSidebar({
 	const { setOpen } = useSidebar()
 	const viewMode = useEditorStore((state) => state.sidebarViewMode)
 	const { navigateToView } = useRouting()
+	const [splitWithEditor, setSplitWithEditor] = useState(viewMode === 'combined')
+
+	useEffect(() => {
+		if (viewMode === 'combined') {
+			setSplitWithEditor(true)
+		}
+	}, [viewMode])
+
+	const resolveContentMode = (mode: SidebarViewMode): SidebarContentMode =>
+		mode === 'combined' ? 'datasets' : mode
+
+	const contentMode = resolveContentMode(viewMode)
+	const canUseSplitCompanion =
+		SPLIT_COMPANION_ALLOWED_MODES.has(contentMode) && !META_VIEW_MODES.includes(contentMode)
+	const showSplitCompanion = canUseSplitCompanion && splitWithEditor && contentMode !== 'edit'
+	const currentTitle =
+		viewMode === 'combined'
+			? 'Datasets + Editor'
+			: allViewModeItems.find((i) => i.mode === viewMode)?.title
 
 	/** Common props for GeoDatasetsPanelContent */
 	const datasetsPanelProps = {
@@ -263,34 +298,14 @@ export function AppSidebar({
 		ndk,
 	}
 
-	/** Render the main content based on view mode */
-	const renderContent = () => {
-		switch (viewMode) {
+	/** Render non-editor panel content based on active mode */
+	const renderPrimaryContent = (mode: SidebarContentMode) => {
+		switch (mode) {
 			case 'datasets':
 				return <GeoDatasetsPanelContent mode="datasets" {...datasetsPanelProps} />
 
 			case 'collections':
 				return <GeoDatasetsPanelContent mode="collections" {...datasetsPanelProps} />
-
-			case 'combined':
-				return (
-					<ResizablePanelGroup direction="vertical" className="h-full">
-						<ResizablePanel id="datasets-panel" defaultSize={50} minSize={20}>
-							<div className="h-full overflow-y-auto">
-								<GeoDatasetsPanelContent mode="datasets" {...datasetsPanelProps} />
-							</div>
-						</ResizablePanel>
-						<ResizableHandle withHandle />
-						<ResizablePanel id="editor-panel" defaultSize={50} minSize={20}>
-							<div className="h-full overflow-y-auto">
-								<GeoEditorInfoPanelContent {...editorPanelProps} />
-							</div>
-						</ResizablePanel>
-					</ResizablePanelGroup>
-				)
-
-			case 'edit':
-				return <GeoEditorInfoPanelContent {...editorPanelProps} />
 
 			case 'posts':
 				return <ShoutboxPanel />
@@ -333,6 +348,31 @@ export function AppSidebar({
 		}
 	}
 
+	/** Render full content area, optionally with editor companion split */
+	const renderContent = () => {
+		if (contentMode === 'edit') {
+			return <GeoEditorInfoPanelContent {...editorPanelProps} />
+		}
+
+		if (showSplitCompanion) {
+			return (
+				<ResizablePanelGroup direction="vertical" className="h-full">
+					<ResizablePanel id={`${contentMode}-panel`} defaultSize={52} minSize={20}>
+						<div className="h-full overflow-y-auto">{renderPrimaryContent(contentMode)}</div>
+					</ResizablePanel>
+					<ResizableHandle withHandle />
+					<ResizablePanel id="editor-panel" defaultSize={48} minSize={20}>
+						<div className="h-full overflow-y-auto">
+							<GeoEditorInfoPanelContent {...editorPanelProps} />
+						</div>
+					</ResizablePanel>
+				</ResizablePanelGroup>
+			)
+		}
+
+		return renderPrimaryContent(contentMode)
+	}
+
 	return (
 		<Sidebar collapsible="icon" className="overflow-hidden *:data-[sidebar=sidebar]:flex-row">
 			{/* Icon sidebar (first nested sidebar) */}
@@ -359,7 +399,38 @@ export function AppSidebar({
 					<SidebarGroup>
 						<SidebarGroupContent className="px-1.5 md:px-0">
 							<SidebarMenu>
-								{mainNavItems.map((item) => (
+								<SidebarMenuItem key={editorNavItem.mode}>
+									<SidebarMenuButton
+										tooltip={{ children: editorNavItem.title, hidden: false }}
+										onClick={() => {
+											navigateToView(editorNavItem.mode)
+											setOpen(true)
+										}}
+										isActive={viewMode === editorNavItem.mode}
+										className="px-2.5 md:px-2 border border-orange-300 bg-orange-50 text-orange-900 hover:bg-orange-100 data-[active=true]:bg-orange-600 data-[active=true]:text-white data-[active=true]:border-orange-600 font-semibold shadow-sm"
+									>
+										<editorNavItem.icon />
+										<span>{editorNavItem.title}</span>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
+
+								<SidebarMenuItem key="editor-split-toggle">
+									<SidebarMenuButton
+										tooltip={{
+											children:
+												'Toggle split layout with editor for datasets, collections, chat, profile, and help.',
+											hidden: false,
+										}}
+										onClick={() => setSplitWithEditor((prev) => !prev)}
+										isActive={splitWithEditor}
+										className="px-2.5 md:px-2 border border-orange-200 bg-orange-50/70 text-orange-800 hover:bg-orange-100 data-[active=true]:bg-orange-600 data-[active=true]:text-white data-[active=true]:border-orange-600"
+									>
+										<PanelTop />
+										<span>{splitWithEditor ? 'Split On' : 'Split Off'}</span>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
+
+								{primaryNavItems.map((item) => (
 									<SidebarMenuItem key={item.mode}>
 										<SidebarMenuButton
 											tooltip={{ children: item.title, hidden: false }}
@@ -367,7 +438,10 @@ export function AppSidebar({
 												navigateToView(item.mode)
 												setOpen(true)
 											}}
-											isActive={viewMode === item.mode}
+											isActive={
+												viewMode === item.mode ||
+												(viewMode === 'combined' && item.mode === 'datasets')
+											}
 											className="px-2.5 md:px-2"
 										>
 											<item.icon />
@@ -382,7 +456,7 @@ export function AppSidebar({
 
 				<SidebarFooter className="border-t border-sidebar-border">
 					<SidebarMenu>
-						{footerNavItems.map((item) => (
+						{metaNavItems.map((item) => (
 							<SidebarMenuItem key={item.mode}>
 								<SidebarMenuButton
 									tooltip={{ children: item.title, hidden: false }}
@@ -406,8 +480,13 @@ export function AppSidebar({
 			<Sidebar collapsible="none" className="hidden flex-1 md:flex">
 				<SidebarHeader className="gap-3.5 border-b p-4">
 					<div className="flex w-full items-center justify-between">
-						<div className="text-foreground text-base font-medium">
-							{allViewModeItems.find((i) => i.mode === viewMode)?.title}
+						<div className="text-foreground text-base font-medium flex items-center gap-2">
+							<span>{currentTitle}</span>
+							{showSplitCompanion && (
+								<span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-700">
+									Split
+								</span>
+							)}
 						</div>
 						<LoginSessionButtons />
 					</div>
