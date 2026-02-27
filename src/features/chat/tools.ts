@@ -52,6 +52,22 @@ export interface ToolResult {
   content: string;
 }
 
+export interface GeometryBakeAnalysis {
+  canBake: boolean;
+  featureCount: number;
+  geometryTypeCounts: Record<string, number>;
+  reason?: string;
+}
+
+export interface GeometryBakeResult {
+  importedCount: number;
+  skippedDuplicates: number;
+  totalFeaturesInEditor: number;
+  replaceExisting: boolean;
+  extractedFeatureCount: number;
+  geometryTypeCounts: Record<string, number>;
+}
+
 const DEFAULT_QUERY_LIMIT = 50;
 const DEFAULT_IMPORT_LIMIT = 100;
 const DEFAULT_NEARBY_RADIUS_METERS = 500;
@@ -61,6 +77,15 @@ const DEFAULT_SNAPSHOT_MAX_WIDTH = 1024;
 const DEFAULT_SNAPSHOT_MAX_HEIGHT = 768;
 const MAX_SNAPSHOT_CACHE_SIZE = 5;
 const MAX_GEOJSON_TEXT_CHARS = 200000;
+const TO_EDITOR_COMPATIBLE_TOOLS = new Set([
+  "query_osm_by_id",
+  "query_osm_nearby",
+  "query_osm_bbox",
+  "get_osm_relation_geometry",
+  "get_country_boundary",
+  "valhalla_route",
+  "valhalla_isochrone",
+]);
 const NAME_MATCH_KEYS = [
   "name",
   "name:en",
@@ -298,6 +323,16 @@ export const geoTools: Tool[] = [
             type: "number",
             description: "OSM element numeric ID",
           },
+          toEditor: {
+            type: "boolean",
+            description:
+              "If true, import returned geometry directly into editor and return a compact import summary.",
+          },
+          replaceExisting: {
+            type: "boolean",
+            description:
+              "Used when toEditor=true. If true, replaces current editor features.",
+          },
         },
         required: ["osmType", "osmId"],
       },
@@ -337,6 +372,16 @@ export const geoTools: Tool[] = [
             type: "boolean",
             description:
               "If true, include OSM relations in results (heavier but required for many boundaries).",
+          },
+          toEditor: {
+            type: "boolean",
+            description:
+              "If true, import returned geometries directly into editor and return a compact import summary.",
+          },
+          replaceExisting: {
+            type: "boolean",
+            description:
+              "Used when toEditor=true. If true, replaces current editor features.",
           },
         },
         required: ["lat", "lon"],
@@ -380,6 +425,16 @@ export const geoTools: Tool[] = [
             type: "boolean",
             description:
               "If true, include OSM relations (recommended for administrative boundaries).",
+          },
+          toEditor: {
+            type: "boolean",
+            description:
+              "If true, import returned geometries directly into editor and return a compact import summary.",
+          },
+          replaceExisting: {
+            type: "boolean",
+            description:
+              "Used when toEditor=true. If true, replaces current editor features.",
           },
         },
         required: ["west", "south", "east", "north"],
@@ -444,6 +499,16 @@ export const geoTools: Tool[] = [
             type: "number",
             description: "Optional max vertices per ring/path (50-20000).",
           },
+          toEditor: {
+            type: "boolean",
+            description:
+              "If true, import the relation geometry directly into editor and return a compact import summary.",
+          },
+          replaceExisting: {
+            type: "boolean",
+            description:
+              "Used when toEditor=true. If true, replaces current editor features.",
+          },
         },
         required: ["relationId"],
       },
@@ -479,6 +544,16 @@ export const geoTools: Tool[] = [
             type: "number",
             description: "Optional max vertices per ring/path.",
           },
+          toEditor: {
+            type: "boolean",
+            description:
+              "If true, import the boundary geometry directly into editor and return a compact import summary.",
+          },
+          replaceExisting: {
+            type: "boolean",
+            description:
+              "Used when toEditor=true. If true, replaces current editor features.",
+          },
         },
       },
     },
@@ -510,6 +585,16 @@ export const geoTools: Tool[] = [
           baseUrl: {
             type: "string",
             description: "Optional Valhalla base URL override.",
+          },
+          toEditor: {
+            type: "boolean",
+            description:
+              "If true, import route geometry directly into editor and return a compact import summary.",
+          },
+          replaceExisting: {
+            type: "boolean",
+            description:
+              "Used when toEditor=true. If true, replaces current editor features.",
           },
         },
         required: ["locations"],
@@ -545,6 +630,16 @@ export const geoTools: Tool[] = [
           baseUrl: {
             type: "string",
             description: "Optional Valhalla base URL override.",
+          },
+          toEditor: {
+            type: "boolean",
+            description:
+              "If true, import isochrone geometries directly into editor and return a compact import summary.",
+          },
+          replaceExisting: {
+            type: "boolean",
+            description:
+              "Used when toEditor=true. If true, replaces current editor features.",
           },
         },
         required: ["location"],
@@ -860,6 +955,7 @@ export function createMapContextSystemMessage(): ChatMessage | null {
       "For many OSM features in an area (e.g. all military bases in viewport), prefer import_osm_to_editor with filters and bbox/point instead of embedding large GeoJSON argument strings.",
       "For boundaries, prefer resolve_osm_entity -> get_osm_relation_geometry/get_country_boundary, then import using relationId or returned feature.",
       "For routing and travel-time polygons, use valhalla_route and valhalla_isochrone.",
+      "When a geometry-producing tool supports it, set toEditor=true to import directly and keep tool results compact.",
       "For toolbar-like operations (undo/redo/mode/selection ops), use editor_* tools.",
       "For add_feature_to_editor, send one feature per call with compact JSON.",
       "Do not ask the user for intermediate geometry parameters unless they explicitly want to customize shape details.",
@@ -1129,6 +1225,147 @@ function importFeaturesToEditor(
     skippedDuplicates,
     totalFeaturesInEditor: editor.getAllFeatures().length,
   };
+}
+
+function countGeometryTypes(
+  features: GeoJSON.Feature[],
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const feature of features) {
+    const geometryType = feature.geometry?.type ?? "Unknown";
+    counts[geometryType] = (counts[geometryType] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function extractGeoJsonFeaturesFromUnknown(value: unknown): GeoJSON.Feature[] {
+  const features: GeoJSON.Feature[] = [];
+
+  const visit = (candidate: unknown): void => {
+    if (!candidate) return;
+
+    if (Array.isArray(candidate)) {
+      for (const item of candidate) visit(item);
+      return;
+    }
+
+    if (typeof candidate !== "object") return;
+    const objectValue = candidate as Record<string, unknown>;
+    const objectType = objectValue.type;
+
+    if (objectType === "FeatureCollection" && Array.isArray(objectValue.features)) {
+      visit(objectValue.features);
+      return;
+    }
+
+    if (objectType === "Feature") {
+      const feature = asFeatureObject(objectValue);
+      if (feature) features.push(feature);
+      return;
+    }
+
+    if (isGeoJsonGeometryType(objectType)) {
+      features.push({
+        type: "Feature",
+        geometry: objectValue as unknown as GeoJSON.Geometry,
+        properties: {},
+      });
+      return;
+    }
+
+    if ("feature" in objectValue) {
+      visit(objectValue.feature);
+    }
+    if ("features" in objectValue) {
+      visit(objectValue.features);
+    }
+    if ("featureCollection" in objectValue) {
+      visit(objectValue.featureCollection);
+    }
+  };
+
+  visit(value);
+  return features;
+}
+
+function parseToolResultContent(content: string): unknown {
+  const trimmed = content.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function toEditorFromToolResultValue(
+  resultValue: unknown,
+  replaceExisting: boolean,
+): GeometryBakeResult {
+  const features = extractGeoJsonFeaturesFromUnknown(resultValue);
+  if (features.length === 0) {
+    throw new Error("No geometry found in tool result to import.");
+  }
+
+  const importResult = importFeaturesToEditor(features, replaceExisting);
+  return {
+    importedCount: importResult.importedCount,
+    skippedDuplicates: importResult.skippedDuplicates,
+    totalFeaturesInEditor: importResult.totalFeaturesInEditor,
+    replaceExisting,
+    extractedFeatureCount: features.length,
+    geometryTypeCounts: countGeometryTypes(features),
+  };
+}
+
+export function analyzeToolResultGeometryContent(
+  content: string,
+): GeometryBakeAnalysis {
+  const parsed = parseToolResultContent(content);
+  if (parsed === null) {
+    return {
+      canBake: false,
+      featureCount: 0,
+      geometryTypeCounts: {},
+      reason: "Tool result is not JSON.",
+    };
+  }
+  const features = extractGeoJsonFeaturesFromUnknown(parsed);
+  return {
+    canBake: features.length > 0,
+    featureCount: features.length,
+    geometryTypeCounts: countGeometryTypes(features),
+    reason:
+      features.length > 0 ? undefined : "No GeoJSON geometry found in result.",
+  };
+}
+
+export function bakeToolResultContentToEditor(
+  content: string,
+  replaceExisting = false,
+): GeometryBakeResult {
+  const parsed = parseToolResultContent(content);
+  if (parsed === null) {
+    throw new Error("Tool result is not valid JSON.");
+  }
+  return toEditorFromToolResultValue(parsed, replaceExisting);
+}
+
+function compactToolResultAfterBake(resultValue: unknown): Record<string, unknown> {
+  const base =
+    resultValue && typeof resultValue === "object"
+      ? { ...(resultValue as Record<string, unknown>) }
+      : { value: resultValue };
+
+  delete base.feature;
+  delete base.features;
+  delete base.featureCollection;
+
+  if (typeof base.preview === "string" && base.preview.length > 280) {
+    base.preview = `${base.preview.slice(0, 280)}...`;
+  }
+
+  return base;
 }
 
 function ensureBbox(value: unknown): [number, number, number, number] | null {
@@ -1969,6 +2206,21 @@ export async function executeToolCall(toolCall: ToolCall): Promise<ToolResult> {
         }
         throw new Error(`Unknown tool: ${toolCall.function.name}`);
       }
+    }
+
+    if (
+      Boolean(args.toEditor) &&
+      TO_EDITOR_COMPATIBLE_TOOLS.has(toolCall.function.name)
+    ) {
+      const bakeResult = toEditorFromToolResultValue(
+        result,
+        Boolean(args.replaceExisting),
+      );
+      result = {
+        ...compactToolResultAfterBake(result),
+        editorImport: bakeResult,
+        toEditor: true,
+      };
     }
 
     console.log("tool result", result);

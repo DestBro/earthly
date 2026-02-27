@@ -25,9 +25,23 @@ import {
 	Server,
 	Check,
 	Copy,
+	ArrowDownToLine,
 } from 'lucide-react'
 import { estimateTokens, type ChatMessage, type ToolCall, type ProviderType } from './routstr'
+import { analyzeToolResultGeometryContent, bakeToolResultContentToEditor } from './tools'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
+
+const EMPTY_STATE_PROMPTS = [
+	'Get me the route from Linz to Vienna and bring it to the editor.',
+	'Generate a 20-minute bicycle isochrone from the current map center and add it to the editor.',
+	'Find military bases in the current viewport and add them as points with useful metadata in properties.',
+	'Resolve Vienna as an OSM relation, fetch clean boundary geometry, and import it into the editor.',
+	'Import all rivers in my current viewport and label the major ones.',
+	'Capture a map snapshot and tell me what notable places are visible right now.',
+	'Use web search + Wikipedia to find historically significant places in this viewport and import matching OSM features.',
+	'Set editor mode to draw_polygon, then explain the next 2 user actions to complete a polygon.',
+] as const
 
 export function ChatPanel() {
 	const {
@@ -111,6 +125,13 @@ export function ChatPanel() {
 			e.preventDefault()
 			handleSubmit(e)
 		}
+	}
+
+	const handleExamplePromptClick = (prompt: string) => {
+		setInput(prompt)
+		window.requestAnimationFrame(() => {
+			textareaRef.current?.focus()
+		})
 	}
 
 	const selectedModelData = models.find((m) => m.id === selectedModel)
@@ -359,6 +380,23 @@ export function ChatPanel() {
 								Tools enabled (geo search, OSM queries, web search, and Wikipedia)
 							</p>
 						)}
+						<div className="mt-4 w-full max-w-xl rounded-lg border bg-muted/30 p-3 text-left">
+							<p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+								Try an example prompt
+							</p>
+							<div className="grid gap-2 sm:grid-cols-2">
+								{EMPTY_STATE_PROMPTS.map((prompt) => (
+									<button
+										key={prompt}
+										type="button"
+										onClick={() => handleExamplePromptClick(prompt)}
+										className="rounded-md border bg-background px-2.5 py-2 text-left text-xs text-foreground transition-colors hover:bg-muted"
+									>
+										{prompt}
+									</button>
+								))}
+							</div>
+						</div>
 					</div>
 				) : (
 					<>
@@ -779,6 +817,7 @@ function ToolResultDisclosure({
 	tokenEstimate: number
 }) {
 	const [isOpen, setIsOpen] = useState(false)
+	const [isBaking, setIsBaking] = useState(false)
 	const displayContent = useMemo(() => {
 		try {
 			const parsed = JSON.parse(content)
@@ -787,9 +826,25 @@ function ToolResultDisclosure({
 			return content
 		}
 	}, [content])
+	const geometryAnalysis = useMemo(() => analyzeToolResultGeometryContent(content), [content])
 	const lines = displayContent.split(/\r?\n/)
 	const previewLines = lines.slice(0, 2)
 	const hasMore = lines.length > previewLines.length
+	const canBake = geometryAnalysis.canBake && !isBaking
+
+	const handleBakeToEditor = () => {
+		setIsBaking(true)
+		try {
+			const outcome = bakeToolResultContentToEditor(content, false)
+			toast.success(
+				`Baked ${outcome.importedCount}/${outcome.extractedFeatureCount} feature(s) to editor`,
+			)
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Failed to bake geometry to editor')
+		} finally {
+			setIsBaking(false)
+		}
+	}
 
 	return (
 		<div className="rounded-lg px-3 py-2 text-xs bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
@@ -804,6 +859,24 @@ function ToolResultDisclosure({
 					Tool Result ({lines.length} lines)
 				</button>
 				<div className="flex items-center gap-1.5">
+					{geometryAnalysis.canBake && (
+						<button
+							type="button"
+							onClick={handleBakeToEditor}
+							disabled={!canBake}
+							title={`Bake ${geometryAnalysis.featureCount} geometry feature(s) to editor`}
+							className={cn(
+								'inline-flex h-5 w-5 items-center justify-center rounded border border-border/70 bg-background/80 text-[10px] transition-colors',
+								canBake ? 'hover:bg-muted' : 'opacity-60 cursor-not-allowed',
+							)}
+						>
+							{isBaking ? (
+								<Loader2 className="h-3 w-3 animate-spin" />
+							) : (
+								<ArrowDownToLine className="h-3 w-3" />
+							)}
+						</button>
+					)}
 					<span className="text-[10px] text-blue-700/80 dark:text-blue-300/80">
 						~{tokenEstimate.toLocaleString()} tok
 					</span>
