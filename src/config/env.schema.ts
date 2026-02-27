@@ -23,9 +23,7 @@ export const envSchema = z.object({
 	RELAY_URL: z
 		.string()
 		.default(
-			process.env.NODE_ENV === 'production'
-				? 'wss://relay.wavefunc.live'
-				: 'ws://localhost:3334',
+			process.env.NODE_ENV === 'production' ? 'wss://relay.wavefunc.live' : 'ws://localhost:3334',
 		),
 
 	// ─────────────────────────────────────────────────────────────────────────
@@ -69,6 +67,9 @@ export const envSchema = z.object({
 
 	/** SearXNG instance base URL for web search tool (backend only) */
 	SEARXNG_URL: z.string().url().optional(),
+
+	/** Valhalla API base URL for routing/isochrone tools (backend only) */
+	VALHALLA_URL: z.string().url().optional(),
 
 	/** Runtime environment */
 	NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

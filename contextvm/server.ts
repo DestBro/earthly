@@ -15,6 +15,16 @@ import {
   queryNearbyInputSchema,
   queryBboxInputSchema,
   queryFeaturesOutputSchema,
+  resolveOsmEntityInputSchema,
+  resolveOsmEntityOutputSchema,
+  getOsmRelationGeometryInputSchema,
+  getOsmRelationGeometryOutputSchema,
+  getCountryBoundaryInputSchema,
+  getCountryBoundaryOutputSchema,
+  valhallaRouteInputSchema,
+  valhallaRouteOutputSchema,
+  valhallaIsochroneInputSchema,
+  valhallaIsochroneOutputSchema,
   createMapExtractInputSchema,
   createMapExtractOutputSchema,
   createMapUploadInputSchema,
@@ -29,7 +39,13 @@ import {
   wikipediaLookupOutputSchema,
 } from "./web-schemas.ts";
 import { reverseLookup, searchLocation } from "./tools/nominatim.ts";
-import { queryById, queryNearby, queryBbox } from "./tools/overpass.ts";
+import {
+  queryById,
+  queryNearby,
+  queryBbox,
+  findAdministrativeBoundaryRelation,
+  queryRelationGeometry,
+} from "./tools/overpass.ts";
 import {
   extractPmtiles,
   getPendingExtraction,
@@ -43,6 +59,7 @@ import {
 import { webSearch } from "./tools/web-search.ts";
 import { fetchUrl } from "./tools/fetch-url.ts";
 import { wikipediaLookup } from "./tools/wikipedia.ts";
+import { valhallaIsochrone, valhallaRoute } from "./tools/valhalla.ts";
 
 // Configuration from validated environment
 const SERVER_PRIVATE_KEY =
@@ -420,7 +437,9 @@ async function main() {
     async ({ osmType, osmId }) => {
       try {
         console.log(`🗺️ Querying OSM ${osmType}/${osmId}`);
-        const result = fitQueryByIdForTransport(await queryById(osmType, osmId));
+        const result = fitQueryByIdForTransport(
+          await queryById(osmType, osmId),
+        );
 
         return {
           content: [],
@@ -447,11 +466,18 @@ async function main() {
       inputSchema: queryNearbyInputSchema,
       outputSchema: queryFeaturesOutputSchema,
     },
-    async ({ lat, lon, radius, filters, limit }) => {
+    async ({ lat, lon, radius, filters, limit, includeRelations }) => {
       try {
         console.log(`🗺️ Querying OSM nearby: ${lat},${lon} radius=${radius}m`);
         const result = fitQueryFeaturesForTransport(
-          await queryNearby(lat, lon, radius, filters, limit),
+          await queryNearby(
+            lat,
+            lon,
+            radius,
+            filters,
+            limit,
+            Boolean(includeRelations),
+          ),
           "query_osm_nearby",
         );
 
@@ -486,13 +512,21 @@ async function main() {
       inputSchema: queryBboxInputSchema,
       outputSchema: queryFeaturesOutputSchema,
     },
-    async ({ west, south, east, north, filters, limit }) => {
+    async ({ west, south, east, north, filters, limit, includeRelations }) => {
       try {
         console.log(
           `🗺️ Querying OSM bbox: [${west},${south},${east},${north}]`,
         );
         const result = fitQueryFeaturesForTransport(
-          await queryBbox(west, south, east, north, filters, limit),
+          await queryBbox(
+            west,
+            south,
+            east,
+            north,
+            filters,
+            limit,
+            Boolean(includeRelations),
+          ),
           "query_osm_bbox",
         );
 
@@ -517,7 +551,317 @@ async function main() {
     },
   );
 
-  // 14. Register Tool: Create Map Extract (PMTiles)
+  // 14. Register Tool: Resolve OSM Entity
+  mcpServer.registerTool(
+    "resolve_osm_entity",
+    {
+      title: "Resolve OSM Entity",
+      description:
+        "Resolve a place/entity name to concrete OSM ids (relation/way/node) using Nominatim. Useful before boundary imports.",
+      inputSchema: resolveOsmEntityInputSchema,
+      outputSchema: resolveOsmEntityOutputSchema,
+    },
+    async ({ query, limit, preferredOsmType, adminLevel, countryCode }) => {
+      try {
+        const response = await searchLocation(query, limit ?? 5);
+        const normalizedCountryCode = countryCode?.trim().toLowerCase();
+
+        const candidates = response.results
+          .filter((candidate) => {
+            if (preferredOsmType && candidate.osmType !== preferredOsmType) {
+              return false;
+            }
+            if (normalizedCountryCode) {
+              const candidateCountry = candidate.address?.country_code?.toLowerCase();
+              if (candidateCountry && candidateCountry !== normalizedCountryCode) {
+                return false;
+              }
+            }
+            if (typeof adminLevel === "number") {
+              const raw = candidate.extratags?.admin_level;
+              if (!raw) return false;
+              const parsed = Number(raw);
+              if (!Number.isFinite(parsed) || parsed !== adminLevel) {
+                return false;
+              }
+            }
+            return true;
+          })
+          .map((candidate) => ({
+            placeId: candidate.placeId,
+            displayName: candidate.displayName,
+            osmType: candidate.osmType,
+            osmId: candidate.osmId,
+            class: candidate.class,
+            type: candidate.type,
+            importance: candidate.importance,
+            coordinates: candidate.coordinates,
+            boundingbox: candidate.boundingbox,
+            extratags: candidate.extratags,
+          }));
+
+        return {
+          content: [],
+          structuredContent: {
+            result: {
+              query,
+              count: candidates.length,
+              candidates,
+            },
+          },
+        };
+      } catch (error: any) {
+        console.error(`❌ resolve_osm_entity failed: ${error.message}`);
+        return {
+          content: [],
+          structuredContent: { error: error.message },
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // 15. Register Tool: Get OSM Relation Geometry
+  mcpServer.registerTool(
+    "get_osm_relation_geometry",
+    {
+      title: "Get OSM Relation Geometry",
+      description:
+        "Fetch and assemble OSM relation geometry (especially boundaries) into clean GeoJSON.",
+      inputSchema: getOsmRelationGeometryInputSchema,
+      outputSchema: getOsmRelationGeometryOutputSchema,
+    },
+    async ({ relationId, coordinatePrecision, maxPointsPerRing }) => {
+      try {
+        const base = await queryRelationGeometry(relationId);
+        let feature = base.feature;
+        if (
+          feature &&
+          typeof coordinatePrecision === "number" &&
+          typeof maxPointsPerRing === "number"
+        ) {
+          feature = simplifyFeatureGeometry(
+            feature,
+            coordinatePrecision,
+            maxPointsPerRing,
+          ) as typeof feature;
+        }
+
+        const fitted = fitQueryByIdForTransport({
+          feature,
+          osmType: "relation",
+          osmId: relationId,
+        });
+
+        return {
+          content: [],
+          structuredContent: {
+            result: {
+              relationId,
+              feature: fitted.feature ?? null,
+              tags: base.tags,
+              transport: fitted.transport,
+            },
+          },
+        };
+      } catch (error: any) {
+        console.error(`❌ get_osm_relation_geometry failed: ${error.message}`);
+        return {
+          content: [],
+          structuredContent: { error: error.message },
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // 16. Register Tool: Get Country Boundary
+  mcpServer.registerTool(
+    "get_country_boundary",
+    {
+      title: "Get Country Boundary",
+      description:
+        "Resolve and fetch a country administrative boundary relation (admin_level=2 by default).",
+      inputSchema: getCountryBoundaryInputSchema,
+      outputSchema: getCountryBoundaryOutputSchema,
+    },
+    async ({ countryCode, name, adminLevel, coordinatePrecision, maxPointsPerRing }) => {
+      try {
+        if (!countryCode && !name) {
+          throw new Error("countryCode or name is required.");
+        }
+
+        let relationLookup:
+          | Awaited<ReturnType<typeof findAdministrativeBoundaryRelation>>
+          | null = null;
+        let queryLabel = "";
+
+        if (countryCode) {
+          try {
+            relationLookup = await findAdministrativeBoundaryRelation({
+              countryCode,
+              adminLevel,
+            });
+            queryLabel = `countryCode=${countryCode.toUpperCase()}`;
+          } catch (error) {
+            if (!name) throw error;
+          }
+        }
+
+        if (!relationLookup && name) {
+          relationLookup = await findAdministrativeBoundaryRelation({
+            name,
+            adminLevel,
+          });
+          queryLabel = `name=${name}`;
+        }
+
+        if (!relationLookup) {
+          throw new Error("Country boundary relation not found.");
+        }
+
+        const relationGeometry = await queryRelationGeometry(
+          relationLookup.relationId,
+        );
+
+        let feature = relationGeometry.feature;
+        if (
+          feature &&
+          typeof coordinatePrecision === "number" &&
+          typeof maxPointsPerRing === "number"
+        ) {
+          feature = simplifyFeatureGeometry(
+            feature,
+            coordinatePrecision,
+            maxPointsPerRing,
+          ) as typeof feature;
+        }
+
+        const fitted = fitQueryByIdForTransport({
+          feature,
+          osmType: "relation",
+          osmId: relationLookup.relationId,
+        });
+
+        return {
+          content: [],
+          structuredContent: {
+            result: {
+              query: queryLabel,
+              relationId: relationLookup.relationId,
+              candidateCount: relationLookup.candidates.length,
+              feature: fitted.feature ?? null,
+              tags: relationGeometry.tags,
+              transport: fitted.transport,
+            },
+          },
+        };
+      } catch (error: any) {
+        console.error(`❌ get_country_boundary failed: ${error.message}`);
+        return {
+          content: [],
+          structuredContent: { error: error.message },
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // 17. Register Tool: Valhalla Route
+  mcpServer.registerTool(
+    "valhalla_route",
+    {
+      title: "Valhalla Route",
+      description:
+        "Compute a route between waypoints using Valhalla and return GeoJSON line geometry.",
+      inputSchema: valhallaRouteInputSchema,
+      outputSchema: valhallaRouteOutputSchema,
+    },
+    async ({ locations, profile, units, baseUrl }) => {
+      try {
+        const result = await valhallaRoute({
+          locations,
+          profile,
+          units,
+          baseUrl,
+        });
+        const fitted = fitQueryByIdForTransport({
+          feature: result.feature,
+          osmType: "way",
+          osmId: 0,
+        });
+        return {
+          content: [],
+          structuredContent: {
+            result: {
+              feature: fitted.feature ?? null,
+              summary: result.summary,
+            },
+          },
+        };
+      } catch (error: any) {
+        console.error(`❌ valhalla_route failed: ${error.message}`);
+        return {
+          content: [],
+          structuredContent: { error: error.message },
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // 18. Register Tool: Valhalla Isochrone
+  mcpServer.registerTool(
+    "valhalla_isochrone",
+    {
+      title: "Valhalla Isochrone",
+      description:
+        "Compute isochrone contours around a location using Valhalla.",
+      inputSchema: valhallaIsochroneInputSchema,
+      outputSchema: valhallaIsochroneOutputSchema,
+    },
+    async ({ location, contoursMinutes, profile, polygons, baseUrl }) => {
+      try {
+        const result = await valhallaIsochrone({
+          location,
+          contoursMinutes,
+          profile,
+          polygons,
+          baseUrl,
+        });
+        const fitted = fitQueryFeaturesForTransport(
+          {
+            features: result.featureCollection.features ?? [],
+            count: result.featureCollection.features?.length ?? 0,
+          },
+          "valhalla_isochrone",
+        );
+        return {
+          content: [],
+          structuredContent: {
+            result: {
+              featureCollection: {
+                type: "FeatureCollection",
+                features: fitted.features,
+              },
+              count: fitted.count,
+              profile: result.profile,
+              contoursMinutes: result.contoursMinutes,
+            },
+          },
+        };
+      } catch (error: any) {
+        console.error(`❌ valhalla_isochrone failed: ${error.message}`);
+        return {
+          content: [],
+          structuredContent: { error: error.message },
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // 19. Register Tool: Create Map Extract (PMTiles)
   mcpServer.registerTool(
     "create_map_extract",
     {
@@ -740,7 +1084,7 @@ async function main() {
       name: "Earthly Geo Server",
       website: "https://earthly.city",
       about:
-        "Geocoding, reverse geocoding, OSM queries, web search, URL fetching, and Wikipedia lookups.",
+        "Geocoding, OSM entity/boundary queries, Valhalla routing, web search, URL fetching, and Wikipedia lookups.",
       picture: "https://openmaptiles.org/img/home-banner-map.png",
     },
   });
@@ -756,6 +1100,11 @@ async function main() {
   console.log("   - query_osm_by_id");
   console.log("   - query_osm_nearby");
   console.log("   - query_osm_bbox");
+  console.log("   - resolve_osm_entity");
+  console.log("   - get_osm_relation_geometry");
+  console.log("   - get_country_boundary");
+  console.log("   - valhalla_route");
+  console.log("   - valhalla_isochrone");
   console.log("   - create_map_extract");
   console.log("   - create_map_upload");
   console.log("   - web_search");

@@ -25,6 +25,8 @@ export interface SearchLocationOutput {
     results: {
       placeId: number;
       displayName: string;
+      osmType: ("node" | "way" | "relation") | null;
+      osmId: number | null;
       coordinates: {
         lat: number;
         lon: number;
@@ -32,11 +34,20 @@ export interface SearchLocationOutput {
       /**
        * Bounding box in [west, south, east, north] order
        */
-      boundingbox: [number, number, number, number] | null;
+      boundingbox:
+        | []
+        | [number]
+        | [number, number]
+        | [number, number, number]
+        | [number, number, number, number]
+        | null;
       type: string;
       class: string;
       importance?: number;
       address?: {
+        [k: string]: string;
+      };
+      extratags?: {
         [k: string]: string;
       };
       geojson?: unknown;
@@ -69,6 +80,8 @@ export interface ReverseLookupOutput {
     result: {
       placeId: number;
       displayName: string;
+      osmType: ("node" | "way" | "relation") | null;
+      osmId: number | null;
       coordinates: {
         lat: number;
         lon: number;
@@ -76,11 +89,20 @@ export interface ReverseLookupOutput {
       /**
        * Bounding box in [west, south, east, north] order
        */
-      boundingbox: [number, number, number, number] | null;
+      boundingbox:
+        | []
+        | [number]
+        | [number, number]
+        | [number, number, number]
+        | [number, number, number, number]
+        | null;
       type: string;
       class: string;
       importance?: number;
       address?: {
+        [k: string]: string;
+      };
+      extratags?: {
         [k: string]: string;
       };
       geojson?: unknown;
@@ -101,7 +123,7 @@ export interface QueryOsmByIdInput {
 
 export interface QueryOsmByIdOutput {
   result: {
-    feature?: unknown;
+    feature: unknown;
     osmType: "node" | "way" | "relation";
     osmId: number;
   };
@@ -130,6 +152,10 @@ export interface QueryOsmNearbyInput {
    * Maximum results to return
    */
   limit?: number;
+  /**
+   * Include relation features (administrative boundaries, routes). Default false.
+   */
+  includeRelations?: boolean;
 }
 
 export interface QueryOsmNearbyOutput {
@@ -172,6 +198,10 @@ export interface QueryOsmBboxInput {
    * Maximum results to return
    */
   limit?: number;
+  /**
+   * Include relation features (administrative boundaries, routes). Default false.
+   */
+  includeRelations?: boolean;
 }
 
 export interface QueryOsmBboxOutput {
@@ -184,6 +214,214 @@ export interface QueryOsmBboxOutput {
      * Number of features returned
      */
     count: number;
+  };
+}
+
+export interface ResolveOsmEntityInput {
+  /**
+   * Entity name, e.g. 'Vienna' or 'Germany'.
+   */
+  query: string;
+  /**
+   * Maximum candidate results (default 5).
+   */
+  limit?: number;
+  /**
+   * Prefer results with this OSM type (relation recommended for boundaries).
+   */
+  preferredOsmType?: "node" | "way" | "relation";
+  /**
+   * Optional administrative level filter (2=country, 4=state, etc).
+   */
+  adminLevel?: number;
+  /**
+   * Optional ISO alpha-2 country code to constrain results (e.g., 'AT').
+   */
+  countryCode?: string;
+}
+
+export interface ResolveOsmEntityOutput {
+  result: {
+    query: string;
+    count: number;
+    candidates: {
+      placeId: number;
+      displayName: string;
+      osmType: ("node" | "way" | "relation") | null;
+      osmId: number | null;
+      class: string;
+      type: string;
+      importance?: number;
+      coordinates: {
+        lat: number;
+        lon: number;
+      };
+      boundingbox:
+        | []
+        | [number]
+        | [number, number]
+        | [number, number, number]
+        | [number, number, number, number]
+        | null;
+      extratags?: {
+        [k: string]: string;
+      };
+    }[];
+  };
+}
+
+export interface GetOsmRelationGeometryInput {
+  /**
+   * OSM relation ID.
+   */
+  relationId: number;
+  /**
+   * Optional coordinate precision (decimals) for output simplification.
+   */
+  coordinatePrecision?: number;
+  /**
+   * Optional cap for vertices per ring/path.
+   */
+  maxPointsPerRing?: number;
+}
+
+export interface GetOsmRelationGeometryOutput {
+  result: {
+    relationId: number;
+    feature: unknown;
+    tags?: {
+      [k: string]: string;
+    };
+    transport?: {
+      [k: string]: unknown;
+    };
+  };
+}
+
+export interface GetCountryBoundaryInput {
+  /**
+   * ISO alpha-2 country code (recommended).
+   */
+  countryCode?: string;
+  /**
+   * Fallback country name if countryCode is unavailable.
+   */
+  name?: string;
+  /**
+   * Boundary admin level (default 2).
+   */
+  adminLevel?: number;
+  coordinatePrecision?: number;
+  maxPointsPerRing?: number;
+}
+
+export interface GetCountryBoundaryOutput {
+  result: {
+    query: string;
+    relationId: number;
+    candidateCount: number;
+    feature: unknown;
+    tags?: {
+      [k: string]: string;
+    };
+    transport?: {
+      [k: string]: unknown;
+    };
+  };
+}
+
+export interface ValhallaRouteInput {
+  /**
+   * Route waypoints in traversal order.
+   *
+   * @minItems 2
+   * @maxItems 25
+   */
+  locations: [
+    {
+      lat: number;
+      lon: number;
+    },
+    {
+      lat: number;
+      lon: number;
+    },
+    ...{
+      lat: number;
+      lon: number;
+    }[]
+  ];
+  /**
+   * Valhalla costing profile (default auto).
+   */
+  profile?: "auto" | "bicycle" | "pedestrian" | "bus" | "truck";
+  /**
+   * Narrative units (default kilometers).
+   */
+  units?: "kilometers" | "miles";
+  /**
+   * Optional Valhalla base URL override.
+   */
+  baseUrl?: string;
+}
+
+export interface ValhallaRouteOutput {
+  result: {
+    feature: unknown;
+    summary: {
+      lengthKm: number;
+      durationMin: number;
+      profile: string;
+    };
+  };
+}
+
+export interface ValhallaIsochroneInput {
+  /**
+   * Center point for isochrone computation.
+   */
+  location: {
+    lat: number;
+    lon: number;
+  };
+  /**
+   * Isochrone minute contours, e.g. [10, 20, 30].
+   *
+   * @minItems 1
+   * @maxItems 6
+   */
+  contoursMinutes?:
+    | [number]
+    | [number, number]
+    | [number, number, number]
+    | [number, number, number, number]
+    | [number, number, number, number, number]
+    | [number, number, number, number, number, number];
+  /**
+   * Valhalla costing profile (default auto).
+   */
+  profile?: "auto" | "bicycle" | "pedestrian";
+  /**
+   * Return polygons instead of lines (default true).
+   */
+  polygons?: boolean;
+  /**
+   * Optional Valhalla base URL override.
+   */
+  baseUrl?: string;
+}
+
+export interface ValhallaIsochroneOutput {
+  result: {
+    /**
+     * GeoJSON FeatureCollection containing contour features.
+     */
+    featureCollection: {
+      [k: string]: unknown;
+    };
+    count: number;
+    profile: string;
+    contoursMinutes: number[];
   };
 }
 
@@ -406,75 +644,31 @@ export interface WikipediaLookupOutput {
 }
 
 export type EarthlyGeoServer = {
-  SearchLocation: (
-    query: string,
-    limit?: number,
-  ) => Promise<SearchLocationOutput>;
-  ReverseLookup: (
-    lat: number,
-    lon: number,
-    zoom?: number,
-  ) => Promise<ReverseLookupOutput>;
+  SearchLocation: (query: string, limit?: number) => Promise<SearchLocationOutput>;
+  ReverseLookup: (lat: number, lon: number, zoom?: number) => Promise<ReverseLookupOutput>;
   QueryOsmById: (osmType: string, osmId: number) => Promise<QueryOsmByIdOutput>;
-  QueryOsmNearby: (
-    lat: number,
-    lon: number,
-    radius?: number,
-    filters?: object,
-    limit?: number,
-  ) => Promise<QueryOsmNearbyOutput>;
-  QueryOsmBbox: (
-    west: number,
-    south: number,
-    east: number,
-    north: number,
-    filters?: object,
-    limit?: number,
-  ) => Promise<QueryOsmBboxOutput>;
-  CreateMapExtract: (
-    west: number,
-    south: number,
-    east: number,
-    north: number,
-    maxZoom?: number,
-    blossomServer: string,
-  ) => Promise<CreateMapExtractOutput>;
-  CreateMapUpload: (
-    requestId: string,
-    signedEvent: object,
-  ) => Promise<CreateMapUploadOutput>;
-  WebSearch: (
-    query: string,
-    limit?: number,
-    categories?: string,
-    language?: string,
-  ) => Promise<WebSearchOutput>;
+  QueryOsmNearby: (lat: number, lon: number, radius?: number, filters?: object, limit?: number, includeRelations?: boolean) => Promise<QueryOsmNearbyOutput>;
+  QueryOsmBbox: (west: number, south: number, east: number, north: number, filters?: object, limit?: number, includeRelations?: boolean) => Promise<QueryOsmBboxOutput>;
+  ResolveOsmEntity: (query: string, limit?: number, preferredOsmType?: string, adminLevel?: number, countryCode?: string) => Promise<ResolveOsmEntityOutput>;
+  GetOsmRelationGeometry: (relationId: number, coordinatePrecision?: number, maxPointsPerRing?: number) => Promise<GetOsmRelationGeometryOutput>;
+  GetCountryBoundary: (countryCode?: string, name?: string, adminLevel?: number, coordinatePrecision?: number, maxPointsPerRing?: number) => Promise<GetCountryBoundaryOutput>;
+  ValhallaRoute: (locations: object[], profile?: string, units?: string, baseUrl?: string) => Promise<ValhallaRouteOutput>;
+  ValhallaIsochrone: (location: object, contoursMinutes?: number[], profile?: string, polygons?: boolean, baseUrl?: string) => Promise<ValhallaIsochroneOutput>;
+  CreateMapExtract: (west: number, south: number, east: number, north: number, maxZoom?: number, blossomServer: string) => Promise<CreateMapExtractOutput>;
+  CreateMapUpload: (requestId: string, signedEvent: object) => Promise<CreateMapUploadOutput>;
+  WebSearch: (query: string, limit?: number, categories?: string, language?: string) => Promise<WebSearchOutput>;
   FetchUrl: (url: string, maxLength?: number) => Promise<FetchUrlOutput>;
-  WikipediaLookup: (
-    title?: string,
-    lat?: number,
-    lon?: number,
-    radius?: number,
-    limit?: number,
-    language?: string,
-  ) => Promise<WikipediaLookupOutput>;
+  WikipediaLookup: (title?: string, lat?: number, lon?: number, radius?: number, limit?: number, language?: string) => Promise<WikipediaLookupOutput>;
 };
 
 export class EarthlyGeoServerClient implements EarthlyGeoServer {
-  static readonly SERVER_PUBKEY =
-    "ceadb7d5b739189fb3ecb7023a0c3f55d8995404d7750f5068865decf8b304cc";
-  static readonly DEFAULT_RELAYS =
-    typeof window !== "undefined" && window.location.hostname === "localhost"
-      ? ["wss://relay.wavefunc.live", "ws://localhost:3334"]
-      : ["wss://relay.wavefunc.live"];
+  static readonly SERVER_PUBKEY = "ceadb7d5b739189fb3ecb7023a0c3f55d8995404d7750f5068865decf8b304cc";
+  static readonly DEFAULT_RELAYS = ["ws://localhost:3334"];
   private client: Client;
   private transport: Transport;
 
   constructor(
-    options: Partial<NostrTransportOptions> & {
-      privateKey?: string;
-      relays?: string[];
-    } = {},
+    options: Partial<NostrTransportOptions> & { privateKey?: string; relays?: string[] } = {}
   ) {
     this.client = new Client({
       name: "EarthlyGeoServerClient",
@@ -482,15 +676,15 @@ export class EarthlyGeoServerClient implements EarthlyGeoServer {
     });
 
     // Private key precedence: constructor options > config file
-    const resolvedPrivateKey = options.privateKey || "";
+    const resolvedPrivateKey = options.privateKey ||
+      "";
 
     // Use options.signer if provided, otherwise create from resolved private key
     const signer = options.signer || new PrivateKeySigner(resolvedPrivateKey);
     // Use options.relays if provided, otherwise use class DEFAULT_RELAYS
     const relays = options.relays || EarthlyGeoServerClient.DEFAULT_RELAYS;
     // Use options.relayHandler if provided, otherwise create from relays
-    const relayHandler =
-      options.relayHandler || new ApplesauceRelayPool(relays);
+    const relayHandler = options.relayHandler || new ApplesauceRelayPool(relays);
     const serverPubkey = options.serverPubkey;
     const { privateKey: _, ...rest } = options;
 
@@ -514,49 +708,28 @@ export class EarthlyGeoServerClient implements EarthlyGeoServer {
 
   private async call<T = unknown>(
     name: string,
-    args: Record<string, unknown>,
+    args: Record<string, unknown>
   ): Promise<T> {
     const result = await this.client.callTool({
       name,
       arguments: { ...args },
     });
-
-    if (result.isError) {
-      // biome-ignore lint/suspicious/noExplicitAny: MCP content type varies
-      const errorFromContent = (result.content as any[])
-        ?.filter((c) => c.type === "text")
-        .map((c) => c.text)
-        .join("\n");
-      // biome-ignore lint/suspicious/noExplicitAny: structuredContent shape varies on error
-      const errorFromStructured = (result.structuredContent as any)?.error;
-      throw new Error(
-        errorFromStructured ||
-          errorFromContent ||
-          `Tool '${name}' returned an error`,
-      );
-    }
-
-    if (!result.structuredContent) {
-      throw new Error(`Tool '${name}' returned no structured content`);
-    }
-
     return result.structuredContent as T;
   }
 
-  /**
+    /**
    * Search for locations using OpenStreetMap Nominatim API. Returns coordinates, bounding boxes, and geojson outlines.
    * @param {string} query The location query (e.g., "New York City")
    * @param {number} limit [optional] Maximum number of results (default: 10, max: 50)
    * @returns {Promise<SearchLocationOutput>} The result of the search_location operation
    */
   async SearchLocation(
-    query: string,
-    limit?: number,
+    query: string, limit?: number
   ): Promise<SearchLocationOutput> {
     return this.call("search_location", { query, limit });
   }
 
-  /**
+    /**
    * Reverse geocode coordinates using OpenStreetMap Nominatim API. Returns address information for a point.
    * @param {number} lat Latitude coordinate in WGS84
    * @param {number} lon Longitude coordinate in WGS84
@@ -564,46 +737,40 @@ export class EarthlyGeoServerClient implements EarthlyGeoServer {
    * @returns {Promise<ReverseLookupOutput>} The result of the reverse_lookup operation
    */
   async ReverseLookup(
-    lat: number,
-    lon: number,
-    zoom?: number,
+    lat: number, lon: number, zoom?: number
   ): Promise<ReverseLookupOutput> {
     return this.call("reverse_lookup", { lat, lon, zoom });
   }
 
-  /**
+    /**
    * Query a single OpenStreetMap element by type and ID. Returns full geometry as GeoJSON.
    * @param {string} osmType OSM element type
    * @param {number} osmId OSM element ID
    * @returns {Promise<QueryOsmByIdOutput>} The result of the query_osm_by_id operation
    */
   async QueryOsmById(
-    osmType: string,
-    osmId: number,
+    osmType: string, osmId: number
   ): Promise<QueryOsmByIdOutput> {
     return this.call("query_osm_by_id", { osmType, osmId });
   }
 
-  /**
+    /**
    * Query OpenStreetMap elements near a point. Supports filtering by OSM tags. Returns GeoJSON features.
    * @param {number} lat Latitude coordinate
    * @param {number} lon Longitude coordinate
    * @param {number} radius [optional] Search radius in meters (1-5000)
    * @param {object} filters [optional] OSM tag filters
    * @param {number} limit [optional] Maximum results to return
+   * @param {boolean} includeRelations [optional] Include relation features (administrative boundaries, routes). Default false.
    * @returns {Promise<QueryOsmNearbyOutput>} The result of the query_osm_nearby operation
    */
   async QueryOsmNearby(
-    lat: number,
-    lon: number,
-    radius?: number,
-    filters?: object,
-    limit?: number,
+    lat: number, lon: number, radius?: number, filters?: object, limit?: number, includeRelations?: boolean
   ): Promise<QueryOsmNearbyOutput> {
-    return this.call("query_osm_nearby", { lat, lon, radius, filters, limit });
+    return this.call("query_osm_nearby", { lat, lon, radius, filters, limit, includeRelations });
   }
 
-  /**
+    /**
    * Query OpenStreetMap elements within a bounding box. Supports filtering by OSM tags. Returns GeoJSON features.
    * @param {number} west Western longitude
    * @param {number} south Southern latitude
@@ -611,27 +778,88 @@ export class EarthlyGeoServerClient implements EarthlyGeoServer {
    * @param {number} north Northern latitude
    * @param {object} filters [optional] OSM tag filters
    * @param {number} limit [optional] Maximum results to return
+   * @param {boolean} includeRelations [optional] Include relation features (administrative boundaries, routes). Default false.
    * @returns {Promise<QueryOsmBboxOutput>} The result of the query_osm_bbox operation
    */
   async QueryOsmBbox(
-    west: number,
-    south: number,
-    east: number,
-    north: number,
-    filters?: object,
-    limit?: number,
+    west: number, south: number, east: number, north: number, filters?: object, limit?: number, includeRelations?: boolean
   ): Promise<QueryOsmBboxOutput> {
-    return this.call("query_osm_bbox", {
-      west,
-      south,
-      east,
-      north,
-      filters,
-      limit,
-    });
+    return this.call("query_osm_bbox", { west, south, east, north, filters, limit, includeRelations });
   }
 
-  /**
+    /**
+   * Resolve a place/entity name to concrete OSM ids (relation/way/node) using Nominatim. Useful before boundary imports.
+   * @param {string} query Entity name, e.g. 'Vienna' or 'Germany'.
+   * @param {number} limit [optional] Maximum candidate results (default 5).
+   * @param {string} preferredOsmType [optional] Prefer results with this OSM type (relation recommended for boundaries).
+   * @param {number} adminLevel [optional] Optional administrative level filter (2=country, 4=state, etc).
+   * @param {string} countryCode [optional] Optional ISO alpha-2 country code to constrain results (e.g., 'AT').
+   * @returns {Promise<ResolveOsmEntityOutput>} The result of the resolve_osm_entity operation
+   */
+  async ResolveOsmEntity(
+    query: string, limit?: number, preferredOsmType?: string, adminLevel?: number, countryCode?: string
+  ): Promise<ResolveOsmEntityOutput> {
+    return this.call("resolve_osm_entity", { query, limit, preferredOsmType, adminLevel, countryCode });
+  }
+
+    /**
+   * Fetch and assemble OSM relation geometry (especially boundaries) into clean GeoJSON.
+   * @param {number} relationId OSM relation ID.
+   * @param {number} coordinatePrecision [optional] Optional coordinate precision (decimals) for output simplification.
+   * @param {number} maxPointsPerRing [optional] Optional cap for vertices per ring/path.
+   * @returns {Promise<GetOsmRelationGeometryOutput>} The result of the get_osm_relation_geometry operation
+   */
+  async GetOsmRelationGeometry(
+    relationId: number, coordinatePrecision?: number, maxPointsPerRing?: number
+  ): Promise<GetOsmRelationGeometryOutput> {
+    return this.call("get_osm_relation_geometry", { relationId, coordinatePrecision, maxPointsPerRing });
+  }
+
+    /**
+   * Resolve and fetch a country administrative boundary relation (admin_level=2 by default).
+   * @param {string} countryCode [optional] ISO alpha-2 country code (recommended).
+   * @param {string} name [optional] Fallback country name if countryCode is unavailable.
+   * @param {number} adminLevel [optional] Boundary admin level (default 2).
+   * @param {number} coordinatePrecision [optional] The coordinate precision parameter
+   * @param {number} maxPointsPerRing [optional] The max points per ring parameter
+   * @returns {Promise<GetCountryBoundaryOutput>} The result of the get_country_boundary operation
+   */
+  async GetCountryBoundary(
+    countryCode?: string, name?: string, adminLevel?: number, coordinatePrecision?: number, maxPointsPerRing?: number
+  ): Promise<GetCountryBoundaryOutput> {
+    return this.call("get_country_boundary", { countryCode, name, adminLevel, coordinatePrecision, maxPointsPerRing });
+  }
+
+    /**
+   * Compute a route between waypoints using Valhalla and return GeoJSON line geometry.
+   * @param {object[]} locations Route waypoints in traversal order.
+   * @param {string} profile [optional] Valhalla costing profile (default auto).
+   * @param {string} units [optional] Narrative units (default kilometers).
+   * @param {string} baseUrl [optional] Optional Valhalla base URL override.
+   * @returns {Promise<ValhallaRouteOutput>} The result of the valhalla_route operation
+   */
+  async ValhallaRoute(
+    locations: object[], profile?: string, units?: string, baseUrl?: string
+  ): Promise<ValhallaRouteOutput> {
+    return this.call("valhalla_route", { locations, profile, units, baseUrl });
+  }
+
+    /**
+   * Compute isochrone contours around a location using Valhalla.
+   * @param {object} location Center point for isochrone computation.
+   * @param {number[]} contoursMinutes [optional] Isochrone minute contours, e.g. [10, 20, 30].
+   * @param {string} profile [optional] Valhalla costing profile (default auto).
+   * @param {boolean} polygons [optional] Return polygons instead of lines (default true).
+   * @param {string} baseUrl [optional] Optional Valhalla base URL override.
+   * @returns {Promise<ValhallaIsochroneOutput>} The result of the valhalla_isochrone operation
+   */
+  async ValhallaIsochrone(
+    location: object, contoursMinutes?: number[], profile?: string, polygons?: boolean, baseUrl?: string
+  ): Promise<ValhallaIsochroneOutput> {
+    return this.call("valhalla_isochrone", { location, contoursMinutes, profile, polygons, baseUrl });
+  }
+
+    /**
    * Extract a PMTiles map excerpt for a bounding box. Returns an unsigned Blossom auth event for the client to sign, then call create_map_upload with the signed event.
    * @param {number} west Western longitude of bounding box
    * @param {number} south Southern latitude of bounding box
@@ -642,37 +870,24 @@ export class EarthlyGeoServerClient implements EarthlyGeoServer {
    * @returns {Promise<CreateMapExtractOutput>} The result of the create_map_extract operation
    */
   async CreateMapExtract(
-    west: number,
-    south: number,
-    east: number,
-    north: number,
-    maxZoom?: number,
-    blossomServer: string,
+    west: number, south: number, east: number, north: number, maxZoom?: number, blossomServer: string
   ): Promise<CreateMapExtractOutput> {
-    return this.call("create_map_extract", {
-      west,
-      south,
-      east,
-      north,
-      maxZoom,
-      blossomServer,
-    });
+    return this.call("create_map_extract", { west, south, east, north, maxZoom, blossomServer });
   }
 
-  /**
+    /**
    * Upload the extracted PMTiles file to Blossom using a signed auth event. Call create_map_extract first to get the unsigned event.
    * @param {string} requestId Request ID from create_map_extract
    * @param {object} signedEvent Signed Blossom auth event from client
    * @returns {Promise<CreateMapUploadOutput>} The result of the create_map_upload operation
    */
   async CreateMapUpload(
-    requestId: string,
-    signedEvent: object,
+    requestId: string, signedEvent: object
   ): Promise<CreateMapUploadOutput> {
     return this.call("create_map_upload", { requestId, signedEvent });
   }
 
-  /**
+    /**
    * Search the web using SearXNG. Returns titles, URLs, and content snippets from multiple search engines.
    * @param {string} query Search query string
    * @param {number} limit [optional] Maximum number of results to return (default: 5, max: 20)
@@ -681,25 +896,24 @@ export class EarthlyGeoServerClient implements EarthlyGeoServer {
    * @returns {Promise<WebSearchOutput>} The result of the web_search operation
    */
   async WebSearch(
-    query: string,
-    limit?: number,
-    categories?: string,
-    language?: string,
+    query: string, limit?: number, categories?: string, language?: string
   ): Promise<WebSearchOutput> {
     return this.call("web_search", { query, limit, categories, language });
   }
 
-  /**
+    /**
    * Fetch a URL and extract readable text content using Mozilla Readability. Returns title, description, and cleaned article text.
    * @param {string} url The URL to fetch and extract content from
    * @param {number} maxLength [optional] Maximum character length of extracted text content (default: 10000)
    * @returns {Promise<FetchUrlOutput>} The result of the fetch_url operation
    */
-  async FetchUrl(url: string, maxLength?: number): Promise<FetchUrlOutput> {
+  async FetchUrl(
+    url: string, maxLength?: number
+  ): Promise<FetchUrlOutput> {
     return this.call("fetch_url", { url, maxLength });
   }
 
-  /**
+    /**
    * Look up Wikipedia articles by title or by geographic coordinates. Returns article summaries and coordinates.
    * @param {string} title [optional] Wikipedia article title (e.g., "Mount Everest"). Either title or lat+lon is required.
    * @param {number} lat [optional] Latitude for geographic article search. Must be paired with lon.
@@ -710,20 +924,8 @@ export class EarthlyGeoServerClient implements EarthlyGeoServer {
    * @returns {Promise<WikipediaLookupOutput>} The result of the wikipedia_lookup operation
    */
   async WikipediaLookup(
-    title?: string,
-    lat?: number,
-    lon?: number,
-    radius?: number,
-    limit?: number,
-    language?: string,
+    title?: string, lat?: number, lon?: number, radius?: number, limit?: number, language?: string
   ): Promise<WikipediaLookupOutput> {
-    return this.call("wikipedia_lookup", {
-      title,
-      lat,
-      lon,
-      radius,
-      limit,
-      language,
-    });
+    return this.call("wikipedia_lookup", { title, lat, lon, radius, limit, language });
   }
 }

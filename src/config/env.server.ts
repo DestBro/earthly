@@ -38,6 +38,9 @@ export const serverConfig = {
 	/** SearXNG base URL for web search */
 	searxngUrl: serverEnv.SEARXNG_URL,
 
+	/** Valhalla API base URL for routing/isochrone tools */
+	valhallaUrl: serverEnv.VALHALLA_URL,
+
 	/** Whether running in production mode */
 	isProduction: serverEnv.NODE_ENV === 'production',
 

@@ -207,38 +207,166 @@ function wayToFeature(way: OverpassWay): Feature | null {
 	};
 }
 
-/**
- * Convert Overpass relation to GeoJSON Feature (MultiPolygon or GeometryCollection)
- */
-function relationToFeature(relation: OverpassRelation): Feature | null {
+function coordsEqual(a: Position, b: Position): boolean {
+	return a[0] === b[0] && a[1] === b[1];
+}
+
+function closeRing(ring: Position[]): Position[] {
+	if (ring.length < 2) return ring;
+	const first = ring[0];
+	const last = ring[ring.length - 1];
+	if (!first || !last) return ring;
+	if (coordsEqual(first, last)) return ring;
+	return [...ring, first];
+}
+
+function assembleRings(segments: Position[][]): Position[][] {
+	const pending = segments
+		.map((segment) => [...segment])
+		.filter((segment) => segment.length >= 2);
+	const rings: Position[][] = [];
+
+	while (pending.length > 0) {
+		const current = pending.shift();
+		if (!current || current.length < 2) continue;
+		let chain = [...current];
+
+		for (let guard = 0; guard < 10000; guard += 1) {
+			const start = chain[0];
+			const end = chain[chain.length - 1];
+			if (!start || !end) break;
+			if (coordsEqual(start, end)) break;
+
+			let matchIndex = -1;
+			let reverse = false;
+
+			for (let i = 0; i < pending.length; i += 1) {
+				const candidate = pending[i];
+				if (!candidate || candidate.length < 2) continue;
+				const candidateStart = candidate[0];
+				const candidateEnd = candidate[candidate.length - 1];
+				if (!candidateStart || !candidateEnd) continue;
+
+				if (coordsEqual(candidateStart, end)) {
+					matchIndex = i;
+					reverse = false;
+					break;
+				}
+				if (coordsEqual(candidateEnd, end)) {
+					matchIndex = i;
+					reverse = true;
+					break;
+				}
+			}
+
+			if (matchIndex === -1) break;
+			const matched = pending.splice(matchIndex, 1)[0];
+			if (!matched) break;
+			const append = reverse ? [...matched].reverse() : matched;
+			chain = [...chain, ...append.slice(1)];
+		}
+
+		const ring = closeRing(chain);
+		if (ring.length >= 4) {
+			rings.push(ring);
+		}
+	}
+
+	return rings;
+}
+
+function pointInRing(point: Position, ring: Position[]): boolean {
+	let inside = false;
+	const [x, y] = point;
+	if (x === undefined || y === undefined) return false;
+	for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+		const pi = ring[i];
+		const pj = ring[j];
+		if (!pi || !pj) continue;
+		const xi = pi[0];
+		const yi = pi[1];
+		const xj = pj[0];
+		const yj = pj[1];
+		if (
+			xi === undefined ||
+			yi === undefined ||
+			xj === undefined ||
+			yj === undefined
+		) {
+			continue;
+		}
+		const intersects =
+			yi > y !== yj > y &&
+			x < ((xj - xi) * (y - yi)) / ((yj - yi) || Number.EPSILON) + xi;
+		if (intersects) inside = !inside;
+	}
+	return inside;
+}
+
+function relationBoundaryToGeometry(
+	segmentsByRole: { outer: Position[][]; inner: Position[][] },
+): Geometry | null {
+	const outerRings = assembleRings(segmentsByRole.outer);
+	const innerRings = assembleRings(segmentsByRole.inner);
+
+	if (outerRings.length === 0) return null;
+
+	const polygons: Position[][][] = outerRings.map((outer) => [outer]);
+
+	for (const hole of innerRings) {
+		const probe = hole[0];
+		if (!probe) continue;
+		const polygonIndex = outerRings.findIndex((outer) => pointInRing(probe, outer));
+		if (polygonIndex >= 0) {
+			polygons[polygonIndex]?.push(hole);
+		}
+	}
+
+	if (polygons.length === 1) {
+		return {
+			type: "Polygon",
+			coordinates: polygons[0] as Position[][],
+		};
+	}
+
+	return {
+		type: "MultiPolygon",
+		coordinates: polygons as Position[][][],
+	};
+}
+
+function buildRelationFeature(
+	relation: OverpassRelation,
+	waysById?: Map<number, OverpassWay>,
+): Feature | null {
 	if (!relation.members || relation.members.length === 0) {
 		return null;
 	}
 
-	const isMultipolygon = relation.tags?.type === "multipolygon" || relation.tags?.type === "boundary";
+	const isMultipolygon =
+		relation.tags?.type === "multipolygon" || relation.tags?.type === "boundary";
 
 	if (isMultipolygon) {
-		// Collect outer and inner rings
-		const outers: Position[][] = [];
-		const inners: Position[][] = [];
+		const segmentsByRole: { outer: Position[][]; inner: Position[][] } = {
+			outer: [],
+			inner: [],
+		};
 
 		for (const member of relation.members) {
-			if (!member.geometry || member.geometry.length < 2) continue;
-			
-			const ring: Position[] = member.geometry.map((p) => [p.lon, p.lat]);
-			
-			if (member.role === "outer") {
-				outers.push(ring);
-			} else if (member.role === "inner") {
-				inners.push(ring);
+			if (member.type !== "way") continue;
+			const sourceGeometry =
+				waysById?.get(member.ref)?.geometry ?? member.geometry ?? undefined;
+			if (!sourceGeometry || sourceGeometry.length < 2) continue;
+			const segment: Position[] = sourceGeometry.map((p) => [p.lon, p.lat]);
+			if (member.role === "inner") {
+				segmentsByRole.inner.push(segment);
+			} else if (member.role === "outer" || !member.role) {
+				segmentsByRole.outer.push(segment);
 			}
 		}
 
-		if (outers.length === 0) return null;
-
-		// Simple case: single outer with potential inners
-		if (outers.length === 1 && outers[0]) {
-			const polygonRings: Position[][] = [outers[0], ...inners];
+		const geometry = relationBoundaryToGeometry(segmentsByRole);
+		if (geometry) {
 			return {
 				type: "Feature",
 				id: `relation/${relation.id}`,
@@ -247,53 +375,28 @@ function relationToFeature(relation: OverpassRelation): Feature | null {
 					"@type": "relation",
 					...relation.tags,
 				},
-				geometry: {
-					type: "Polygon",
-					coordinates: polygonRings,
-				},
+				geometry,
 			};
 		}
-
-		// Multiple outers: MultiPolygon (simplified - not matching inners to outers)
-		return {
-			type: "Feature",
-			id: `relation/${relation.id}`,
-			properties: {
-				"@id": `relation/${relation.id}`,
-				"@type": "relation",
-				...relation.tags,
-			},
-			geometry: {
-				type: "MultiPolygon",
-				coordinates: outers.map((outer) => [outer]),
-			},
-		};
 	}
 
-	// For route relations and other linear relations, create a MultiLineString
+	// Fallback for non-boundary or unresolved relation geometry.
 	const lines: Position[][] = [];
 	for (const member of relation.members) {
-		if (!member.geometry || member.geometry.length < 2) continue;
-		lines.push(member.geometry.map((p) => [p.lon, p.lat]));
+		const sourceGeometry =
+			member.type === "way"
+				? waysById?.get(member.ref)?.geometry ?? member.geometry
+				: member.geometry;
+		if (!sourceGeometry || sourceGeometry.length < 2) continue;
+		lines.push(sourceGeometry.map((p) => [p.lon, p.lat]));
 	}
 
 	if (lines.length === 0) return null;
 
-	if (lines.length === 1 && lines[0]) {
-		return {
-			type: "Feature",
-			id: `relation/${relation.id}`,
-			properties: {
-				"@id": `relation/${relation.id}`,
-				"@type": "relation",
-				...relation.tags,
-			},
-			geometry: {
-				type: "LineString",
-				coordinates: lines[0],
-			},
-		};
-	}
+	const geometry: Geometry =
+		lines.length === 1
+			? { type: "LineString", coordinates: lines[0] as Position[] }
+			: { type: "MultiLineString", coordinates: lines as Position[][] };
 
 	return {
 		type: "Feature",
@@ -303,24 +406,31 @@ function relationToFeature(relation: OverpassRelation): Feature | null {
 			"@type": "relation",
 			...relation.tags,
 		},
-		geometry: {
-			type: "MultiLineString",
-			coordinates: lines,
-		},
+		geometry,
 	};
+}
+
+/**
+ * Convert Overpass relation to GeoJSON Feature (MultiPolygon or GeometryCollection)
+ */
+function relationToFeature(relation: OverpassRelation): Feature | null {
+	return buildRelationFeature(relation);
 }
 
 /**
  * Convert Overpass element to GeoJSON Feature
  */
-function elementToFeature(element: OverpassElement): Feature | null {
+function elementToFeature(
+	element: OverpassElement,
+	waysById?: Map<number, OverpassWay>,
+): Feature | null {
 	switch (element.type) {
 		case "node":
 			return nodeToFeature(element);
 		case "way":
 			return wayToFeature(element);
 		case "relation":
-			return relationToFeature(element);
+			return buildRelationFeature(element, waysById);
 		default:
 			return null;
 	}
@@ -359,6 +469,7 @@ export async function queryNearby(
 	radius: number = 100,
 	filters?: OsmFilters,
 	limit?: number,
+	includeRelations: boolean = false,
 ): Promise<QueryFeaturesResult> {
 	if (lat < -90 || lat > 90) {
 		throw new Error("Latitude must be between -90 and 90");
@@ -373,20 +484,43 @@ export async function queryNearby(
 	const filterStr = filters ? buildFilterString(filters) : "";
 	const around = `(around:${radius},${lat},${lon})`;
 
-	// Query only nodes and ways (relations are heavy and slow)
+	const queryBody = includeRelations
+		? `
+  node${filterStr}${around};
+  way${filterStr}${around};
+  relation${filterStr}${around};
+`
+		: `
+  node${filterStr}${around};
+  way${filterStr}${around};
+`;
+
 	// Use shorter timeout to fail fast and allow retry
 	const query = `[out:json][timeout:15];
 (
-  node${filterStr}${around};
-  way${filterStr}${around};
+${queryBody}
 );
 out geom;`;
 
 	const response = await executeQuery(query);
+	const waysById = new Map<number, OverpassWay>();
+	for (const element of response.elements) {
+		if (element.type === "way") {
+			waysById.set(element.id, element);
+		}
+	}
 
 	let features = response.elements
-		.map(elementToFeature)
+		.map((element) => elementToFeature(element, waysById))
 		.filter((f): f is Feature => f !== null);
+
+	const seen = new Set<string>();
+	features = features.filter((feature) => {
+		const id = typeof feature.id === "string" ? feature.id : String(feature.id ?? "");
+		if (!id || seen.has(id)) return false;
+		seen.add(id);
+		return true;
+	});
 
 	// Apply limit if specified
 	if (limit && limit > 0) {
@@ -409,6 +543,7 @@ export async function queryBbox(
 	north: number,
 	filters?: OsmFilters,
 	limit?: number,
+	includeRelations: boolean = false,
 ): Promise<QueryFeaturesResult> {
 	if (south < -90 || south > 90 || north < -90 || north > 90) {
 		throw new Error("Latitude must be between -90 and 90");
@@ -423,19 +558,42 @@ export async function queryBbox(
 	const filterStr = filters ? buildFilterString(filters) : "";
 	const bbox = `(${south},${west},${north},${east})`;
 
-	// Query only nodes and ways (relations are heavy and slow)
-	const query = `[out:json][timeout:15];
-(
+	const queryBody = includeRelations
+		? `
   node${filterStr}${bbox};
   way${filterStr}${bbox};
+  relation${filterStr}${bbox};
+`
+		: `
+  node${filterStr}${bbox};
+  way${filterStr}${bbox};
+`;
+
+	const query = `[out:json][timeout:15];
+(
+${queryBody}
 );
 out geom;`;
 
 	const response = await executeQuery(query);
+	const waysById = new Map<number, OverpassWay>();
+	for (const element of response.elements) {
+		if (element.type === "way") {
+			waysById.set(element.id, element);
+		}
+	}
 
 	let features = response.elements
-		.map(elementToFeature)
+		.map((element) => elementToFeature(element, waysById))
 		.filter((f): f is Feature => f !== null);
+
+	const seen = new Set<string>();
+	features = features.filter((feature) => {
+		const id = typeof feature.id === "string" ? feature.id : String(feature.id ?? "");
+		if (!id || seen.has(id)) return false;
+		seen.add(id);
+		return true;
+	});
 
 	// Apply limit if specified
 	if (limit && limit > 0) {
@@ -445,5 +603,109 @@ out geom;`;
 	return {
 		features,
 		count: features.length,
+	};
+}
+
+function escapeOverpassRegex(input: string): string {
+	return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function pickBestBoundaryRelation(
+	relations: OverpassRelation[],
+	name?: string,
+): OverpassRelation | null {
+	if (relations.length === 0) return null;
+	if (!name) return relations[0] ?? null;
+	const normalized = name.trim().toLowerCase();
+	const scored = relations.map((relation) => {
+		const tags = relation.tags ?? {};
+		const candidates = [tags.name, tags["name:en"], tags.int_name, tags.official_name]
+			.filter((value): value is string => typeof value === "string")
+			.map((value) => value.toLowerCase());
+		const exact = candidates.includes(normalized) ? 1 : 0;
+		const contains = candidates.some((value) => value.includes(normalized)) ? 1 : 0;
+		const maritime = tags.maritime === "yes" || tags.maritime === "1" ? 1 : 0;
+		return {
+			relation,
+			score: exact * 100 + contains * 20 + maritime,
+		};
+	});
+	scored.sort((a, b) => b.score - a.score);
+	return scored[0]?.relation ?? null;
+}
+
+export async function findAdministrativeBoundaryRelation(
+	params: {
+		countryCode?: string;
+		name?: string;
+		adminLevel?: number;
+	},
+): Promise<{ relationId: number; relation: OverpassRelation; candidates: OverpassRelation[] }> {
+	const adminLevel = Math.max(2, Math.min(12, Math.floor(params.adminLevel ?? 2)));
+	const countryCode = params.countryCode?.trim().toUpperCase();
+	const name = params.name?.trim();
+
+	let filters = `["boundary"="administrative"]["admin_level"="${adminLevel}"]`;
+	if (countryCode) {
+		const cc = countryCode.replace(/"/g, '\\"');
+		filters += `["ISO3166-1:alpha2"="${cc}"]`;
+	}
+	if (name) {
+		const escaped = escapeOverpassRegex(name);
+		filters += `["name"~"^${escaped}$",i]`;
+	}
+
+	const query = `[out:json][timeout:25];
+rel${filters};
+out tags ids 25;`;
+	const response = await executeQuery(query);
+	const candidates = response.elements.filter(
+		(element): element is OverpassRelation => element.type === "relation",
+	);
+	const relation = pickBestBoundaryRelation(candidates, name);
+	if (!relation) {
+		throw new Error("No administrative boundary relation found.");
+	}
+
+	return {
+		relationId: relation.id,
+		relation,
+		candidates,
+	};
+}
+
+export async function queryRelationGeometry(
+	relationId: number,
+): Promise<{ feature: Feature | null; relation: OverpassRelation | null; tags: Record<string, string> }> {
+	if (!Number.isFinite(relationId) || relationId <= 0) {
+		throw new Error("relationId must be a positive number");
+	}
+
+	const query = `[out:json][timeout:30];
+rel(${Math.floor(relationId)});
+out body;
+>;
+out geom;`;
+	const response = await executeQuery(query);
+	const relation = response.elements.find(
+		(element): element is OverpassRelation =>
+			element.type === "relation" && element.id === Math.floor(relationId),
+	);
+	if (!relation) {
+		return { feature: null, relation: null, tags: {} };
+	}
+
+	const waysById = new Map<number, OverpassWay>();
+	for (const element of response.elements) {
+		if (element.type === "way") {
+			waysById.set(element.id, element);
+		}
+	}
+
+	const feature = buildRelationFeature(relation, waysById);
+	return {
+		feature,
+		relation,
+		tags: relation.tags ?? {},
 	};
 }
