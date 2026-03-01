@@ -1,8 +1,13 @@
 import { useNDK, useNDKCurrentUser } from '@nostr-dev-kit/react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Ajv2020 from 'ajv/dist/2020'
 import addFormats from 'ajv-formats'
-import { NDKMapContextEvent, type MapContextContent } from '../lib/ndk/NDKMapContextEvent'
+import {
+	MAP_CONTEXT_GEOMETRY_TYPES,
+	NDKMapContextEvent,
+	type MapContextContent,
+	type MapContextGeometryType,
+} from '../lib/ndk/NDKMapContextEvent'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
@@ -126,6 +131,87 @@ function hasExternalRef(schema: unknown): boolean {
 	return false
 }
 
+function schemaHasValidationRules(schema: unknown): boolean {
+	if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return false
+	const record = schema as Record<string, unknown>
+	const properties =
+		record.properties && typeof record.properties === 'object' && !Array.isArray(record.properties)
+			? (record.properties as Record<string, unknown>)
+			: null
+	const required = Array.isArray(record.required)
+		? record.required.filter((entry): entry is string => typeof entry === 'string')
+		: []
+
+	if (properties && Object.keys(properties).length > 0) return true
+	if (required.length > 0) return true
+
+	const nonMetadataKeys = Object.keys(record).filter(
+		(key) =>
+			!['$schema', '$id', 'title', 'description', 'type', 'additionalProperties'].includes(key),
+	)
+	return nonMetadataKeys.length > 0
+}
+
+function buildSampleValue(field: SchemaBuilderField): unknown {
+	if (field.type === 'boolean') {
+		return true
+	}
+
+	if (field.type === 'string') {
+		const minLength = Math.max(0, Math.floor(field.minLength ?? 0))
+		const length = Math.max(1, Math.min(minLength, 32))
+		return 'x'.repeat(length)
+	}
+
+	if (field.type === 'integer') {
+		let value =
+			typeof field.min === 'number'
+				? Math.ceil(field.min)
+				: typeof field.max === 'number' && field.max < 0
+					? Math.floor(field.max)
+					: 0
+		if (typeof field.max === 'number' && value > field.max) {
+			value = Math.floor(field.max)
+		}
+		return value
+	}
+
+	let value =
+		typeof field.min === 'number'
+			? field.min
+			: typeof field.max === 'number' && field.max < 0
+				? field.max
+				: 0
+	if (typeof field.max === 'number' && value > field.max) {
+		value = field.max
+	}
+	return value
+}
+
+function samplePropertiesFromBuilder(fields: SchemaBuilderField[]): Record<string, unknown> {
+	const entries = fields.filter((field) => field.key.trim().length > 0)
+	const sample: Record<string, unknown> = {}
+
+	entries
+		.filter((field) => field.required)
+		.forEach((field) => {
+			sample[field.key] = buildSampleValue(field)
+		})
+
+	if (Object.keys(sample).length === 0 && entries.length > 0) {
+		const first = entries[0]
+		if (first) {
+			sample[first.key] = buildSampleValue(first)
+		}
+	}
+
+	return sample
+}
+
+function sampleJsonFromBuilder(fields: SchemaBuilderField[]): string {
+	return JSON.stringify(samplePropertiesFromBuilder(fields), null, 2)
+}
+
 export function MapContextEditorPanel({
 	initialContext,
 	onClose,
@@ -145,17 +231,46 @@ export function MapContextEditorPanel({
 		initial?.validationMode ?? 'none',
 	)
 	const [schemaMode, setSchemaMode] = useState<'builder' | 'json'>('builder')
-	const [fields, setFields] = useState<SchemaBuilderField[]>(builderFromSchema(initial?.schema))
+	const [allowedGeometryTypes, setAllowedGeometryTypes] = useState<MapContextGeometryType[]>(
+		initial?.geometryConstraints?.allowedTypes ?? [],
+	)
+	const [fields, setFields] = useState<SchemaBuilderField[]>(() =>
+		builderFromSchema(initial?.schema),
+	)
 	const [schemaJson, setSchemaJson] = useState(
 		JSON.stringify(initial?.schema ?? DEFAULT_SCHEMA, null, 2),
 	)
-	const [samplePropertiesJson, setSamplePropertiesJson] = useState('{\n  "elevation": 1000\n}')
+	const [samplePropertiesJson, setSamplePropertiesJson] = useState(() =>
+		sampleJsonFromBuilder(builderFromSchema(initial?.schema)),
+	)
 	const [isSaving, setIsSaving] = useState(false)
 	const [saveError, setSaveError] = useState<string | null>(null)
 
 	const builderSchema = useMemo(() => schemaFromBuilder(fields), [fields])
+	const suggestedBuilderSampleJson = useMemo(() => sampleJsonFromBuilder(fields), [fields])
 	const effectiveSchemaJson =
 		schemaMode === 'builder' ? JSON.stringify(builderSchema, null, 2) : schemaJson
+
+	useEffect(() => {
+		const nextInitial = initialContext?.context
+		const nextFields = builderFromSchema(nextInitial?.schema)
+		setName(nextInitial?.name ?? '')
+		setDescription(nextInitial?.description ?? '')
+		setImage(nextInitial?.image ?? '')
+		setContextUse(nextInitial?.contextUse ?? 'taxonomy')
+		setValidationMode(nextInitial?.validationMode ?? 'none')
+		setAllowedGeometryTypes(nextInitial?.geometryConstraints?.allowedTypes ?? [])
+		setSchemaMode('builder')
+		setFields(nextFields)
+		setSchemaJson(JSON.stringify(nextInitial?.schema ?? DEFAULT_SCHEMA, null, 2))
+		setSamplePropertiesJson(sampleJsonFromBuilder(nextFields))
+		setSaveError(null)
+	}, [initialContext])
+
+	useEffect(() => {
+		if (schemaMode !== 'builder') return
+		setSamplePropertiesJson(suggestedBuilderSampleJson)
+	}, [schemaMode, suggestedBuilderSampleJson])
 
 	const parsedSchema = useMemo(() => {
 		try {
@@ -192,7 +307,17 @@ export function MapContextEditorPanel({
 		}
 	}, [parsedSchema, samplePropertiesJson])
 
-	const requiresSchema = contextUse !== 'taxonomy' && validationMode !== 'none'
+	const validationEnabled = contextUse !== 'taxonomy' && validationMode !== 'none'
+
+	const toggleAllowedGeometryType = (type: MapContextGeometryType, checked: boolean) => {
+		const next = new Set(allowedGeometryTypes)
+		if (checked) {
+			next.add(type)
+		} else {
+			next.delete(type)
+		}
+		setAllowedGeometryTypes(Array.from(next.values()))
+	}
 
 	const handleSave = async () => {
 		if (!ndk || !currentUser) return
@@ -203,15 +328,22 @@ export function MapContextEditorPanel({
 			return
 		}
 
-		if (requiresSchema) {
-			if (!parsedSchema.schema) {
-				setSaveError('Schema is invalid.')
-				return
-			}
-			if (hasExternalRef(parsedSchema.schema)) {
-				setSaveError('External $ref is not supported in v1. Use self-contained schema only.')
-				return
-			}
+		const schemaWasProvided = schemaMode === 'json' ? schemaJson.trim().length > 0 : true
+		const schemaHasRules = parsedSchema.schema
+			? schemaHasValidationRules(parsedSchema.schema)
+			: false
+
+		if (validationEnabled && schemaWasProvided && !parsedSchema.schema) {
+			setSaveError('Schema is invalid.')
+			return
+		}
+		if (parsedSchema.schema && hasExternalRef(parsedSchema.schema)) {
+			setSaveError('External $ref is not supported in v1. Use self-contained schema only.')
+			return
+		}
+		if (validationEnabled && !schemaHasRules && allowedGeometryTypes.length === 0) {
+			setSaveError('Add at least one schema rule or one allowed geometry type.')
+			return
 		}
 
 		setIsSaving(true)
@@ -230,8 +362,18 @@ export function MapContextEditorPanel({
 				image: image.trim() || undefined,
 				contextUse,
 				validationMode: effectiveValidationMode,
-				schemaDialect: requiresSchema ? 'https://json-schema.org/draft/2020-12/schema' : undefined,
-				schema: requiresSchema ? (parsedSchema.schema as Record<string, unknown>) : undefined,
+				geometryConstraints:
+					validationEnabled && allowedGeometryTypes.length > 0
+						? { allowedTypes: allowedGeometryTypes }
+						: undefined,
+				schemaDialect:
+					validationEnabled && schemaHasRules
+						? 'https://json-schema.org/draft/2020-12/schema'
+						: undefined,
+				schema:
+					validationEnabled && schemaHasRules
+						? (parsedSchema.schema as Record<string, unknown>)
+						: undefined,
 			}
 
 			await event.publishNew()
@@ -322,6 +464,40 @@ export function MapContextEditorPanel({
 						</SelectContent>
 					</Select>
 				</div>
+			</div>
+
+			<div className="space-y-2 rounded-lg border border-gray-200 p-3">
+				<div className="space-y-1">
+					<Label>Geometry constraints</Label>
+					<p className="text-xs text-gray-500">
+						Restrict which geometry types can be attached to this context.
+					</p>
+				</div>
+				<div className="grid grid-cols-2 gap-2">
+					{MAP_CONTEXT_GEOMETRY_TYPES.map((geometryType) => (
+						<label
+							key={geometryType}
+							className={`flex items-center gap-2 rounded border px-2 py-1 text-xs ${
+								validationEnabled
+									? 'border-gray-200 text-gray-700'
+									: 'border-gray-100 text-gray-400 bg-gray-50'
+							}`}
+						>
+							<input
+								type="checkbox"
+								checked={allowedGeometryTypes.includes(geometryType)}
+								disabled={!validationEnabled}
+								onChange={(event) => toggleAllowedGeometryType(geometryType, event.target.checked)}
+							/>
+							<span>{geometryType}</span>
+						</label>
+					))}
+				</div>
+				{validationEnabled && allowedGeometryTypes.length > 0 && (
+					<p className="text-[11px] text-emerald-700">
+						Enforcing: {allowedGeometryTypes.join(', ')}
+					</p>
+				)}
 			</div>
 
 			<div className="space-y-2 rounded-lg border border-gray-200 p-3">

@@ -2,7 +2,11 @@ import Ajv2020 from 'ajv/dist/2020'
 import addFormats from 'ajv-formats'
 import type { FeatureCollection, Feature } from 'geojson'
 import type { NDKGeoEvent } from '../ndk/NDKGeoEvent'
-import type { NDKMapContextEvent } from '../ndk/NDKMapContextEvent'
+import {
+	MAP_CONTEXT_GEOMETRY_TYPES,
+	type MapContextGeometryType,
+	type NDKMapContextEvent,
+} from '../ndk/NDKMapContextEvent'
 
 export type ContextFilterMode = 'off' | 'warn' | 'strict'
 
@@ -42,6 +46,105 @@ export function contextCanValidateDatasets(context: NDKMapContextEvent): boolean
 	return use === 'validation' || use === 'hybrid'
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+	return value as Record<string, unknown>
+}
+
+function buildDefaultFromSchemaProperty(definition: Record<string, unknown>): unknown {
+	if (definition.default !== undefined) return definition.default
+
+	const type = typeof definition.type === 'string' ? definition.type : undefined
+	if (type === 'boolean') return true
+
+	if (type === 'string') {
+		const minLength =
+			typeof definition.minLength === 'number' && Number.isFinite(definition.minLength)
+				? Math.max(0, Math.floor(definition.minLength))
+				: 0
+		return 'x'.repeat(Math.max(1, Math.min(minLength, 32)))
+	}
+
+	if (type === 'integer') {
+		let value =
+			typeof definition.minimum === 'number'
+				? Math.ceil(definition.minimum)
+				: typeof definition.maximum === 'number' && definition.maximum < 0
+					? Math.floor(definition.maximum)
+					: 0
+		if (typeof definition.maximum === 'number' && value > definition.maximum) {
+			value = Math.floor(definition.maximum)
+		}
+		return value
+	}
+
+	if (type === 'number') {
+		let value =
+			typeof definition.minimum === 'number'
+				? definition.minimum
+				: typeof definition.maximum === 'number' && definition.maximum < 0
+					? definition.maximum
+					: 0
+		if (typeof definition.maximum === 'number' && value > definition.maximum) {
+			value = definition.maximum
+		}
+		return value
+	}
+
+	return ''
+}
+
+function featurePropertiesForValidation(feature: Feature): Record<string, unknown> {
+	const base = asRecord(feature.properties) ?? {}
+	const custom = asRecord(base.customProperties) ?? {}
+	const merged = {
+		...base,
+		...custom,
+	}
+	delete merged.customProperties
+	return merged
+}
+
+export function getContextAllowedGeometryTypes(
+	context: NDKMapContextEvent,
+): MapContextGeometryType[] {
+	const constraints = asRecord(context.context.geometryConstraints)
+	const allowedTypesRaw = Array.isArray(constraints?.allowedTypes) ? constraints.allowedTypes : []
+	const allowedTypeSet = new Set<MapContextGeometryType>()
+	allowedTypesRaw.forEach((entry) => {
+		if (typeof entry !== 'string') return
+		if ((MAP_CONTEXT_GEOMETRY_TYPES as readonly string[]).includes(entry)) {
+			allowedTypeSet.add(entry as MapContextGeometryType)
+		}
+	})
+	return Array.from(allowedTypeSet.values())
+}
+
+export function getContextRequiredPropertyDefaults(
+	context: NDKMapContextEvent,
+): Record<string, unknown> {
+	if (!contextCanValidateDatasets(context)) return {}
+
+	const schema = asRecord(context.context.schema)
+	if (!schema) return {}
+
+	const properties = asRecord(schema.properties)
+	if (!properties) return {}
+
+	const required = Array.isArray(schema.required)
+		? schema.required.filter((entry): entry is string => typeof entry === 'string')
+		: []
+	if (required.length === 0) return {}
+
+	const defaults: Record<string, unknown> = {}
+	required.forEach((propertyName) => {
+		const definition = asRecord(properties[propertyName])
+		if (!definition) return
+		defaults[propertyName] = buildDefaultFromSchemaProperty(definition)
+	})
+	return defaults
+}
+
 function toFeatureId(feature: Feature, index: number): string | undefined {
 	if (typeof feature.id === 'string') return feature.id
 	if (typeof feature.id === 'number') return String(feature.id)
@@ -72,30 +175,34 @@ export function validateDatasetForContext(
 		}
 	}
 
+	const allowedGeometryTypes = getContextAllowedGeometryTypes(context)
+	const hasGeometryConstraints = allowedGeometryTypes.length > 0
 	const schema = context.context.schema
-	if (!schema || typeof schema !== 'object') {
-		return {
-			status: 'unresolved',
-			featureErrorCount: 0,
-			datasetErrorCount: 1,
-			errors: [{ path: '$', message: 'Context schema is missing.' }],
+	const hasSchema = Boolean(schema && typeof schema === 'object')
+	let validate: ReturnType<typeof ajv.compile> | null = null
+	if (hasSchema) {
+		try {
+			validate = ajv.compile(schema as Record<string, unknown>)
+		} catch (error) {
+			return {
+				status: 'unresolved',
+				featureErrorCount: 0,
+				datasetErrorCount: 1,
+				errors: [
+					{
+						path: '$',
+						message: error instanceof Error ? error.message : 'Invalid context schema.',
+					},
+				],
+			}
 		}
 	}
-
-	let validate: ReturnType<typeof ajv.compile>
-	try {
-		validate = ajv.compile(schema)
-	} catch (error) {
+	if (!validate && !hasGeometryConstraints) {
 		return {
 			status: 'unresolved',
 			featureErrorCount: 0,
 			datasetErrorCount: 1,
-			errors: [
-				{
-					path: '$',
-					message: error instanceof Error ? error.message : 'Invalid context schema.',
-				},
-			],
+			errors: [{ path: '$', message: 'Context has no validation constraints.' }],
 		}
 	}
 	const collection = featureCollection ?? dataset.featureCollection
@@ -103,10 +210,10 @@ export function validateDatasetForContext(
 
 	if (features.length === 0) {
 		return {
-			status: 'valid',
+			status: 'unresolved',
 			featureErrorCount: 0,
-			datasetErrorCount: 0,
-			errors: [],
+			datasetErrorCount: 1,
+			errors: [{ path: '$', message: 'Dataset has no geometries to validate.' }],
 		}
 	}
 
@@ -114,21 +221,39 @@ export function validateDatasetForContext(
 	const errors: ContextValidationIssue[] = []
 
 	features.forEach((feature, index) => {
-		const properties =
-			feature.properties && typeof feature.properties === 'object' ? feature.properties : {}
-		const valid = validate(properties)
-		if (valid) return
-
-		invalidFeatureCount += 1
+		let featureInvalid = false
+		const properties = featurePropertiesForValidation(feature)
 		const featureId = toFeatureId(feature, index)
 
-		;(validate.errors ?? []).forEach((error) => {
-			errors.push({
-				featureId,
-				path: error.instancePath || '/',
-				message: error.message ?? 'Schema validation error',
-			})
-		})
+		if (hasGeometryConstraints) {
+			const geometryType = feature.geometry?.type
+			if (!geometryType || !allowedGeometryTypes.includes(geometryType as MapContextGeometryType)) {
+				featureInvalid = true
+				errors.push({
+					featureId,
+					path: '/geometry/type',
+					message: `Geometry type "${geometryType ?? 'unknown'}" is not allowed.`,
+				})
+			}
+		}
+
+		if (validate) {
+			const valid = validate(properties)
+			if (!valid) {
+				featureInvalid = true
+				;(validate.errors ?? []).forEach((error) => {
+					errors.push({
+						featureId,
+						path: error.instancePath || '/',
+						message: error.message ?? 'Schema validation error',
+					})
+				})
+			}
+		}
+
+		if (featureInvalid) {
+			invalidFeatureCount += 1
+		}
 	})
 
 	if (invalidFeatureCount === 0) {

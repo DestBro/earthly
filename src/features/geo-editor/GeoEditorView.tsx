@@ -1937,6 +1937,28 @@ export function GeoEditorView() {
 		navigateToView('contexts')
 	}, [navigateToView])
 
+	const handleOpenGeometryEditor = useCallback(() => {
+		setCollectionEditorMode('none')
+		setEditingCollection(null)
+		setContextEditorMode('none')
+		setEditingContext(null)
+		setViewModeState('edit')
+		setViewDatasetState(null)
+		setViewCollectionState(null)
+		setViewContext(null)
+		setViewContextDatasets([])
+		setViewContextCollections([])
+		clearFocus()
+	}, [
+		setViewModeState,
+		setViewDatasetState,
+		setViewCollectionState,
+		setViewContext,
+		setViewContextDatasets,
+		setViewContextCollections,
+		clearFocus,
+	])
+
 	// Get collection key for visibility tracking
 	const getCollectionKey = useCallback((collection: NDKGeoCollectionEvent): string => {
 		return collection.dTag ?? collection.id ?? collection.collectionId ?? ''
@@ -1995,6 +2017,7 @@ export function GeoEditorView() {
 					onDeleteDataset={onDeleteDataset}
 					getDatasetKey={getDatasetKey}
 					getDatasetName={getDatasetName}
+					onOpenGeometryEditor={handleOpenGeometryEditor}
 					onZoomToCollection={zoomToCollection}
 					onInspectDataset={handleInspectDatasetWithModeSwitch}
 					onInspectCollection={handleInspectCollectionWithModeSwitch}
@@ -2170,6 +2193,7 @@ export function GeoEditorView() {
 							onDeleteDataset={onDeleteDataset}
 							getDatasetKey={getDatasetKey}
 							getDatasetName={getDatasetName}
+							onOpenGeometryEditor={handleOpenGeometryEditor}
 							onInspectDataset={handleInspectDatasetWithModeSwitch}
 							onExitFocus={navigateHome}
 							onToggleCollectionVisibility={handleToggleCollectionVisibility}

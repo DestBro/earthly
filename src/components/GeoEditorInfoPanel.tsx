@@ -1,10 +1,16 @@
 import { Eye, Plus, Trash2 } from 'lucide-react'
-import type { FeatureCollection } from 'geojson'
+import type { FeatureCollection, Geometry } from 'geojson'
 import { cn } from '@/lib/utils'
 import { useCallback, useEffect, useMemo } from 'react'
+import {
+	getContextRequiredPropertyDefaults,
+	validateDatasetForContext,
+	type ContextValidationResult,
+} from '../lib/context/validation'
 import { useEditorStore } from '../features/geo-editor/store'
+import { sanitizeEditorProperties } from '../features/geo-editor/utils'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
-import type { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
+import { NDKGeoEvent as NDKGeoEventClass, type NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
 import type { MapContextValidationMode, NDKMapContextEvent } from '../lib/ndk/NDKMapContextEvent'
 import {
 	BlobReferencesSection,
@@ -129,6 +135,7 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 	const viewContext = useEditorStore((state) => state.viewContext)
 	const activeDatasetContextRefs = useEditorStore((state) => state.activeDatasetContextRefs)
 	const setActiveDatasetContextRefs = useEditorStore((state) => state.setActiveDatasetContextRefs)
+	const setFeatures = useEditorStore((state) => state.setFeatures)
 	const geoEditDrafts = useEditorStore((state) => state.geoEditDrafts)
 	const activeGeoEditDraftId = useEditorStore((state) => state.activeGeoEditDraftId)
 	const createGeoEditDraft = useEditorStore((state) => state.createGeoEditDraft)
@@ -263,6 +270,8 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 						coordinate,
 						name: context.context.name || context.contextId || context.id || 'Untitled context',
 						validationMode: context.context.validationMode,
+						contextUse: context.context.contextUse,
+						contextEvent: context,
 					}
 				})
 				.filter(
@@ -272,9 +281,76 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 						coordinate: string
 						name: string
 						validationMode: MapContextValidationMode
+						contextUse: 'taxonomy' | 'validation' | 'hybrid'
+						contextEvent: NDKMapContextEvent
 					} => entry !== null,
 				),
 		[mapContextEvents],
+	)
+	const datasetForValidation = useMemo(
+		() => activeDataset ?? new NDKGeoEventClass(undefined),
+		[activeDataset],
+	)
+	const editorFeatureCollection = useMemo<FeatureCollection>(
+		() => ({
+			type: 'FeatureCollection',
+			features: features.map((feature) => {
+				const sanitized = sanitizeEditorProperties(
+					feature.properties as Record<string, unknown> | undefined,
+				)
+				return {
+					type: 'Feature' as const,
+					id: feature.id,
+					geometry: feature.geometry as Geometry,
+					properties: sanitized ?? {},
+				}
+			}),
+		}),
+		[features],
+	)
+	const attachableContextByCoordinate = useMemo(() => {
+		const byCoordinate = new Map<
+			string,
+			{
+				coordinate: string
+				name: string
+				validationMode: MapContextValidationMode
+				contextUse: 'taxonomy' | 'validation' | 'hybrid'
+				contextEvent: NDKMapContextEvent
+			}
+		>()
+		attachableContexts.forEach((context) => {
+			byCoordinate.set(context.coordinate, context)
+		})
+		return byCoordinate
+	}, [attachableContexts])
+	const contextValidationByCoordinate = useMemo(() => {
+		const results = new Map<string, ContextValidationResult>()
+		activeDatasetContextRefs.forEach((coordinate) => {
+			const context = attachableContextByCoordinate.get(coordinate)
+			if (!context) return
+			const result = validateDatasetForContext(
+				datasetForValidation,
+				context.contextEvent,
+				editorFeatureCollection,
+				'strict',
+			)
+			results.set(coordinate, result)
+		})
+		return results
+	}, [
+		activeDatasetContextRefs,
+		attachableContextByCoordinate,
+		datasetForValidation,
+		editorFeatureCollection,
+	])
+	const invalidAttachedContextCount = useMemo(
+		() =>
+			activeDatasetContextRefs.reduce((count, coordinate) => {
+				const result = contextValidationByCoordinate.get(coordinate)
+				return result?.status === 'invalid' ? count + 1 : count
+			}, 0),
+		[activeDatasetContextRefs, contextValidationByCoordinate],
 	)
 
 	const toggleContextAttachment = (coordinate: string, checked: boolean) => {
@@ -285,6 +361,51 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 			next.delete(coordinate)
 		}
 		setActiveDatasetContextRefs(Array.from(next))
+
+		if (!checked) return
+		const context = attachableContextByCoordinate.get(coordinate)
+		if (!context) return
+
+		const defaults = getContextRequiredPropertyDefaults(context.contextEvent)
+		if (Object.keys(defaults).length === 0) return
+
+		if (features.length === 0) return
+
+		let changed = false
+		const nextFeatures = features.map((feature) => {
+			const rootProps =
+				feature.properties && typeof feature.properties === 'object' ? feature.properties : {}
+			const currentCustom =
+				rootProps.customProperties &&
+				typeof rootProps.customProperties === 'object' &&
+				!Array.isArray(rootProps.customProperties)
+					? (rootProps.customProperties as Record<string, unknown>)
+					: {}
+
+			const nextCustom = { ...currentCustom }
+			let featureChanged = false
+			for (const [key, value] of Object.entries(defaults)) {
+				const hasRootValue = (rootProps as Record<string, unknown>)[key] !== undefined
+				const hasCustomValue = nextCustom[key] !== undefined
+				if (hasRootValue || hasCustomValue) continue
+				nextCustom[key] = value
+				featureChanged = true
+			}
+
+			if (!featureChanged) return feature
+			changed = true
+			return {
+				...feature,
+				properties: {
+					...rootProps,
+					customProperties: nextCustom,
+				},
+			}
+		})
+
+		if (changed) {
+			setFeatures(nextFeatures)
+		}
 	}
 
 	// Collection Editor mode takes precedence
@@ -475,23 +596,66 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 						<p className="text-[11px] text-gray-500">No map contexts available yet.</p>
 					) : (
 						<div className="space-y-1">
+							{invalidAttachedContextCount > 0 && (
+								<p className="text-[11px] text-amber-700">
+									{invalidAttachedContextCount} attached context
+									{invalidAttachedContextCount === 1 ? '' : 's'} report constraint warnings.
+								</p>
+							)}
 							{attachableContexts.map((context) => (
-								<label
-									key={context.coordinate}
-									className="flex items-center justify-between gap-2 rounded border border-gray-100 px-2 py-1"
-								>
-									<span className="truncate text-xs text-gray-700">{context.name}</span>
-									<div className="flex items-center gap-2 shrink-0">
-										<span className="text-[10px] text-gray-500">{context.validationMode}</span>
-										<input
-											type="checkbox"
-											checked={activeDatasetContextRefs.includes(context.coordinate)}
-											onChange={(event) =>
-												toggleContextAttachment(context.coordinate, event.target.checked)
-											}
-										/>
-									</div>
-								</label>
+								<div key={context.coordinate} className="space-y-1">
+									<label
+										className={`flex items-center justify-between gap-2 rounded border px-2 py-1 ${
+											activeDatasetContextRefs.includes(context.coordinate) &&
+											contextValidationByCoordinate.get(context.coordinate)?.status === 'invalid'
+												? 'border-amber-300 bg-amber-50/40'
+												: 'border-gray-100'
+										}`}
+									>
+										<span className="truncate text-xs text-gray-700">{context.name}</span>
+										<div className="flex items-center gap-2 shrink-0">
+											<span className="text-[10px] text-gray-500">{context.validationMode}</span>
+											{activeDatasetContextRefs.includes(context.coordinate) &&
+												contextValidationByCoordinate.get(context.coordinate)?.status ===
+													'valid' && <span className="text-[10px] text-emerald-700">valid</span>}
+											{activeDatasetContextRefs.includes(context.coordinate) &&
+												contextValidationByCoordinate.get(context.coordinate)?.status ===
+													'invalid' && (
+													<span className="text-[10px] text-amber-700">
+														{
+															contextValidationByCoordinate.get(context.coordinate)
+																?.featureErrorCount
+														}{' '}
+														invalid
+													</span>
+												)}
+											<input
+												type="checkbox"
+												checked={activeDatasetContextRefs.includes(context.coordinate)}
+												onChange={(event) =>
+													toggleContextAttachment(context.coordinate, event.target.checked)
+												}
+											/>
+										</div>
+									</label>
+									{activeDatasetContextRefs.includes(context.coordinate) &&
+										contextValidationByCoordinate.get(context.coordinate)?.status === 'invalid' && (
+											<p className="px-2 text-[10px] text-amber-700">
+												{contextValidationByCoordinate.get(context.coordinate)?.errors[0]?.path ||
+													'/'}{' '}
+												{contextValidationByCoordinate.get(context.coordinate)?.errors[0]
+													?.message || 'Context validation failed.'}
+											</p>
+										)}
+									{activeDatasetContextRefs.includes(context.coordinate) &&
+										contextValidationByCoordinate.get(context.coordinate)?.status ===
+											'unresolved' &&
+										context.contextUse !== 'taxonomy' && (
+											<p className="px-2 text-[10px] text-gray-500">
+												Constraint check unresolved for this context.
+											</p>
+										)}
+								</div>
 							))}
 						</div>
 					)}

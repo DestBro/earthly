@@ -62,6 +62,7 @@ export interface MobilePanelProps {
 	onDeleteDataset: (event: NDKGeoEvent) => void
 	getDatasetKey: (event: NDKGeoEvent) => string
 	getDatasetName: (event: NDKGeoEvent) => string
+	onOpenGeometryEditor?: () => void
 	onInspectDataset?: (event: NDKGeoEvent) => void
 	onExitFocus?: () => void
 
@@ -149,6 +150,7 @@ export function MobilePanel(props: MobilePanelProps) {
 		onDeleteDataset,
 		getDatasetKey,
 		getDatasetName,
+		onOpenGeometryEditor,
 		onInspectDataset,
 		onExitFocus,
 		onToggleCollectionVisibility,
@@ -285,7 +287,12 @@ export function MobilePanel(props: MobilePanelProps) {
 								<button
 									key={tab.id}
 									type="button"
-									onClick={() => setMobilePanelTab(tab.id)}
+									onClick={() => {
+										if (tab.id === 'edit') {
+											onOpenGeometryEditor?.()
+										}
+										setMobilePanelTab(tab.id)
+									}}
 									className={cn(
 										'flex items-center justify-center gap-1 px-3 py-2.5 text-xs font-medium transition-colors whitespace-nowrap',
 										isActive

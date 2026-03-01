@@ -69,6 +69,7 @@ export function MapContextViewPanel({
 	}
 
 	const contextContent = viewContext.context
+	const allowedGeometryTypes = contextContent.geometryConstraints?.allowedTypes ?? []
 
 	return (
 		<div className="space-y-4 text-sm">
@@ -86,6 +87,11 @@ export function MapContextViewPanel({
 					<span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-700">
 						validation: {contextContent.validationMode}
 					</span>
+					{allowedGeometryTypes.length > 0 && (
+						<span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">
+							geometry: {allowedGeometryTypes.join(', ')}
+						</span>
+					)}
 				</div>
 			</div>
 

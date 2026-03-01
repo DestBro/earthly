@@ -157,7 +157,7 @@ Map contexts provide shared taxonomy and optional schema validation envelopes fo
 
 Field Purpose
 kind 37518 identifies a map context definition.
-content JSON with { version?, name, description?, image?, contextUse, validationMode, schemaDialect?, schema? }.
+content JSON with { version?, name, description?, image?, contextUse, validationMode, geometryConstraints?, schemaDialect?, schema? }.
 tags Addressing and optional metadata.
 
 Tag Example Notes
@@ -172,8 +172,12 @@ parent ["parent", "37518:<pubkey>:<d>"] Optional hierarchy edge.
 Content fields:
 1. contextUse: taxonomy | validation | hybrid
 2. validationMode: none | optional | required
-3. schemaDialect: optional JSON Schema dialect URI (recommended 2020-12)
-4. schema: optional self-contained JSON Schema object (no external $ref in v1)
+3. geometryConstraints: optional object with `allowedTypes: GeoJSONGeometryType[]`
+4. schemaDialect: optional JSON Schema dialect URI (recommended 2020-12)
+5. schema: optional self-contained JSON Schema object (no external $ref in v1)
+
+Supported geometry types in v1:
+`Point | MultiPoint | LineString | MultiLineString | Polygon | MultiPolygon | GeometryCollection`
 
 Deterministic v1 interpretation (no attachment role field):
 1. Dataset + taxonomy context: taxonomy only, no schema validation.
@@ -187,12 +191,13 @@ Context attachment tag semantics (`c`):
 
 Validation behavior:
 1. `none`: no schema enforcement.
-2. `optional`: schema can validate and surface warnings.
+2. `optional`: schema/geometry constraints can validate and surface warnings.
 3. `required`: invalid datasets may be filtered in strict context views.
 4. Consumers can choose filter mode `off | warn | strict`; required contexts default to strict but can still be viewer-overridden.
+5. A validation/hybrid context SHOULD define at least one effective constraint (schema rule or allowed geometry type).
 
 Two-lane context view behavior:
-1. Map lane: dataset candidates attached by `c`; strict mode includes only schema-valid entries.
+1. Map lane: dataset candidates attached by `c`; strict mode includes only constraint-valid entries.
 2. Reference lane: attached collections (and similar references) shown for navigation/isolation, not for direct map-lane validation.
 
 ⸻

@@ -48,7 +48,49 @@ export function useMapContexts(additionalFilters: Omit<NDKFilter, 'kinds'>[] = [
 	}))
 
 	const { events, eose } = useSubscribe(filters)
-	const contexts = events.map((event) => wrapEvent(event) as NDKMapContextEvent)
+	const contexts = useMemo(() => {
+		const latestByCoordinate = new Map<string, NDKMapContextEvent>()
+
+		for (const event of events) {
+			const maybeWrapped = wrapEvent(event)
+			if (maybeWrapped instanceof Promise) continue
+			const wrapped =
+				maybeWrapped instanceof NDKMapContextEvent
+					? maybeWrapped
+					: NDKMapContextEvent.from(maybeWrapped)
+
+			const contextId = wrapped.contextId ?? wrapped.dTag
+			const coordinate =
+				contextId && wrapped.pubkey
+					? `${wrapped.kind ?? NDKMapContextEvent.kinds[0]}:${wrapped.pubkey}:${contextId}`
+					: `${wrapped.kind ?? NDKMapContextEvent.kinds[0]}:${wrapped.pubkey ?? ''}:${
+							wrapped.id ?? wrapped.created_at ?? ''
+						}`
+
+			const existing = latestByCoordinate.get(coordinate)
+			if (!existing) {
+				latestByCoordinate.set(coordinate, wrapped)
+				continue
+			}
+
+			const existingCreatedAt = existing.created_at ?? 0
+			const wrappedCreatedAt = wrapped.created_at ?? 0
+			if (wrappedCreatedAt > existingCreatedAt) {
+				latestByCoordinate.set(coordinate, wrapped)
+				continue
+			}
+
+			if (wrappedCreatedAt === existingCreatedAt) {
+				const existingId = existing.id ?? ''
+				const wrappedId = wrapped.id ?? ''
+				if (wrappedId > existingId) {
+					latestByCoordinate.set(coordinate, wrapped)
+				}
+			}
+		}
+
+		return Array.from(latestByCoordinate.values())
+	}, [events])
 
 	return {
 		events: contexts,

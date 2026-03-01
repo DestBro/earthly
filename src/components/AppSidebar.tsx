@@ -50,8 +50,6 @@ const META_VIEW_MODES: SidebarContentMode[] = ['posts', 'wallet', 'settings']
 const SPLIT_COMPANION_ALLOWED_MODES = new Set<SidebarContentMode>([
 	'datasets',
 	'collections',
-	'contexts',
-	'context-editor',
 	'chat',
 	'user',
 	'help',
@@ -112,6 +110,7 @@ interface AppSidebarProps {
 	onDeleteDataset: (event: NDKGeoEvent) => void
 	getDatasetKey: (event: NDKGeoEvent) => string
 	getDatasetName: (event: NDKGeoEvent) => string
+	onOpenGeometryEditor?: () => void
 	onZoomToCollection: (collection: NDKGeoCollectionEvent, events: NDKGeoEvent[]) => void
 	onInspectDataset: (event: NDKGeoEvent) => void
 	onInspectCollection: (collection: NDKGeoCollectionEvent, datasets: NDKGeoEvent[]) => void
@@ -175,6 +174,7 @@ export function AppSidebar({
 	onDeleteDataset,
 	getDatasetKey,
 	getDatasetName,
+	onOpenGeometryEditor,
 	onZoomToCollection,
 	onInspectDataset,
 	onInspectCollection,
@@ -334,6 +334,13 @@ export function AppSidebar({
 		onBlossomUploadComplete,
 		ndk,
 	}
+	const splitCompanionEditorPanelProps = {
+		...editorPanelProps,
+		collectionEditorMode: 'none' as const,
+		editingCollection: null,
+		contextEditorMode: 'none' as const,
+		editingContext: null,
+	}
 
 	/** Render non-editor panel content based on active mode */
 	const renderPrimaryContent = (mode: SidebarContentMode) => {
@@ -411,7 +418,7 @@ export function AppSidebar({
 					<ResizableHandle withHandle />
 					<ResizablePanel id="editor-panel" defaultSize={48} minSize={20}>
 						<div className="h-full overflow-y-auto">
-							<GeoEditorInfoPanelContent {...editorPanelProps} />
+							<GeoEditorInfoPanelContent {...splitCompanionEditorPanelProps} />
 						</div>
 					</ResizablePanel>
 				</ResizablePanelGroup>
@@ -451,6 +458,7 @@ export function AppSidebar({
 									<SidebarMenuButton
 										tooltip={{ children: editorNavItem.title, hidden: false }}
 										onClick={() => {
+											onOpenGeometryEditor?.()
 											navigateToView(editorNavItem.mode)
 											setOpen(true)
 										}}

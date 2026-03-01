@@ -4,6 +4,20 @@ import type { GeoBoundingBox } from './NDKGeoEvent'
 
 export type MapContextUse = 'taxonomy' | 'validation' | 'hybrid'
 export type MapContextValidationMode = 'none' | 'optional' | 'required'
+export const MAP_CONTEXT_GEOMETRY_TYPES = [
+	'Point',
+	'MultiPoint',
+	'LineString',
+	'MultiLineString',
+	'Polygon',
+	'MultiPolygon',
+	'GeometryCollection',
+] as const
+export type MapContextGeometryType = (typeof MAP_CONTEXT_GEOMETRY_TYPES)[number]
+
+export interface MapContextGeometryConstraints {
+	allowedTypes: MapContextGeometryType[]
+}
 
 export interface MapContextContent {
 	version?: 1
@@ -12,6 +26,7 @@ export interface MapContextContent {
 	image?: string
 	contextUse: MapContextUse
 	validationMode: MapContextValidationMode
+	geometryConstraints?: MapContextGeometryConstraints
 	schemaDialect?: string
 	schema?: Record<string, unknown>
 }

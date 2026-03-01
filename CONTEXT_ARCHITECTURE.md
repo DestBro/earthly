@@ -89,6 +89,9 @@ Content JSON:
   "image": "https://...",
   "contextUse": "hybrid",
   "validationMode": "required",
+  "geometryConstraints": {
+    "allowedTypes": ["LineString", "MultiLineString"]
+  },
   "schemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "schema": {
     "type": "object",
@@ -115,7 +118,8 @@ Field semantics:
 
 1. `contextUse`: `taxonomy | validation | hybrid`
 2. `validationMode` only matters when `contextUse` includes validation.
-3. For `taxonomy` contexts, schema SHOULD be omitted and validation mode SHOULD be `none`.
+3. `geometryConstraints.allowedTypes` optionally restricts allowed GeoJSON geometry types per feature.
+4. For `taxonomy` contexts, schema/geometry constraints SHOULD be omitted and validation mode SHOULD be `none`.
 
 ## 4.3 Attachment Model (MVP)
 
@@ -155,8 +159,8 @@ Validation always happens client-side. Context cannot force network-wide enforce
 Context `validationMode` meaning:
 
 1. `none`: no schema in context; all attached entries pass.
-2. `optional`: schema exists; invalid entries can still be shown unless consumer chooses strict.
-3. `required`: schema exists; invalid entries are filtered out.
+2. `optional`: schema and/or geometry constraints exist; invalid entries can still be shown unless consumer chooses strict.
+3. `required`: schema and/or geometry constraints exist; invalid entries are filtered out.
 
 Consumer filter modes (UI-level):
 
@@ -174,6 +178,7 @@ Collection handling:
 
 1. Collection events are displayed in context UI as references, but are excluded from geometry validation logic.
 2. Dataset visibility in strict mode is based on dataset feature validation.
+3. Feature validation includes both property-schema checks and geometry-type checks when configured.
 
 ## 4.5 Two-Lane Context Model
 
