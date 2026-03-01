@@ -29,6 +29,13 @@ import type { GeoFeatureItem } from './editor/GeoRichTextEditor'
 import type { EditorFeature } from '../features/geo-editor/core'
 import type { BlossomUploadResult } from '../lib/blossom/blossomUpload'
 
+type ContextPropertyTypeHint = 'string' | 'number' | 'integer' | 'boolean'
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+	return value as Record<string, unknown>
+}
+
 export interface GeoEditorInfoPanelProps {
 	currentUserPubkey?: string
 	onLoadDataset: (event: NDKGeoEvent) => void
@@ -352,6 +359,74 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 			}, 0),
 		[activeDatasetContextRefs, contextValidationByCoordinate],
 	)
+	const contextPropertyTypeHints = useMemo(() => {
+		const hints = new Map<string, Set<ContextPropertyTypeHint>>()
+		const supportedTypes = new Set<ContextPropertyTypeHint>([
+			'string',
+			'number',
+			'integer',
+			'boolean',
+		])
+
+		activeDatasetContextRefs.forEach((coordinate) => {
+			const context = attachableContextByCoordinate.get(coordinate)
+			if (!context) return
+			if (context.contextUse === 'taxonomy') return
+
+			const schema = asRecord(context.contextEvent.context.schema)
+			const properties = asRecord(schema?.properties)
+			if (!properties) return
+
+			Object.entries(properties).forEach(([propertyKey, definition]) => {
+				const definitionRecord = asRecord(definition)
+				const type = typeof definitionRecord?.type === 'string' ? definitionRecord.type : null
+				if (!type || !supportedTypes.has(type as ContextPropertyTypeHint)) return
+
+				const currentSet = hints.get(propertyKey) ?? new Set<ContextPropertyTypeHint>()
+				currentSet.add(type as ContextPropertyTypeHint)
+				hints.set(propertyKey, currentSet)
+			})
+		})
+
+		const resolved = new Map<string, ContextPropertyTypeHint>()
+		hints.forEach((typeSet, propertyKey) => {
+			if (typeSet.size !== 1) return
+			const onlyType = Array.from(typeSet.values())[0]
+			if (!onlyType) return
+			resolved.set(propertyKey, onlyType)
+		})
+		return resolved
+	}, [activeDatasetContextRefs, attachableContextByCoordinate])
+	const contextValidationIssuesByFeatureId = useMemo(() => {
+		const issues = new Map<string, Set<string>>()
+		contextValidationByCoordinate.forEach((result) => {
+			if (result.status !== 'invalid') return
+			result.errors.forEach((error) => {
+				if (!error.featureId) return
+				const key = String(error.featureId)
+				const set = issues.get(key) ?? new Set<string>()
+				set.add(`${error.path || '/'} ${error.message}`)
+				issues.set(key, set)
+			})
+		})
+
+		const asArray = new Map<string, string[]>()
+		issues.forEach((set, key) => {
+			asArray.set(key, Array.from(set.values()))
+		})
+		return asArray
+	}, [contextValidationByCoordinate])
+
+	const getPrimaryContextError = useCallback(
+		(coordinate: string) => {
+			const result = contextValidationByCoordinate.get(coordinate)
+			if (!result || result.status !== 'invalid' || result.errors.length === 0) return null
+			return (
+				result.errors.find((error) => error.path === '/geometry/type') ?? result.errors[0] ?? null
+			)
+		},
+		[contextValidationByCoordinate],
+	)
 
 	const toggleContextAttachment = (coordinate: string, checked: boolean) => {
 		const next = new Set(activeDatasetContextRefs)
@@ -639,14 +714,16 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 										</div>
 									</label>
 									{activeDatasetContextRefs.includes(context.coordinate) &&
-										contextValidationByCoordinate.get(context.coordinate)?.status === 'invalid' && (
-											<p className="px-2 text-[10px] text-amber-700">
-												{contextValidationByCoordinate.get(context.coordinate)?.errors[0]?.path ||
-													'/'}{' '}
-												{contextValidationByCoordinate.get(context.coordinate)?.errors[0]
-													?.message || 'Context validation failed.'}
-											</p>
-										)}
+										contextValidationByCoordinate.get(context.coordinate)?.status === 'invalid' &&
+										(() => {
+											const primaryError = getPrimaryContextError(context.coordinate)
+											if (!primaryError) return null
+											return (
+												<p className="px-2 text-[10px] text-amber-700">
+													{primaryError.path || '/'} {primaryError.message}
+												</p>
+											)
+										})()}
 									{activeDatasetContextRefs.includes(context.coordinate) &&
 										contextValidationByCoordinate.get(context.coordinate)?.status ===
 											'unresolved' &&
@@ -678,6 +755,8 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 				<GeometriesTable
 					className="max-h-[50vh] overflow-y-auto"
 					onZoomToFeature={onZoomToFeature}
+					contextValidationIssuesByFeatureId={contextValidationIssuesByFeatureId}
+					contextPropertyTypeHints={contextPropertyTypeHints}
 				/>
 			</div>
 

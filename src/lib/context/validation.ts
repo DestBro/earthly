@@ -97,11 +97,44 @@ function buildDefaultFromSchemaProperty(definition: Record<string, unknown>): un
 function featurePropertiesForValidation(feature: Feature): Record<string, unknown> {
 	const base = asRecord(feature.properties) ?? {}
 	const custom = asRecord(base.customProperties) ?? {}
+	const ignoredFeaturePropertyKeys = new Set([
+		'customProperties',
+		'name',
+		'description',
+		'meta',
+		'featureId',
+		'datasetId',
+		'sourceEventId',
+		'hashtags',
+		'featureType',
+		'text',
+		'textFontSize',
+		'textColor',
+		'textHaloColor',
+		'textHaloWidth',
+		'active',
+		'mode',
+		'parent',
+		'coord_path',
+		'color',
+		'strokeColor',
+		'strokeWidth',
+		'radius',
+		'fillColor',
+		'fillOpacity',
+		'strokeOpacity',
+		'lineDash',
+		'label',
+	])
+	const rootDomainProperties: Record<string, unknown> = {}
+	Object.entries(base).forEach(([key, value]) => {
+		if (ignoredFeaturePropertyKeys.has(key)) return
+		rootDomainProperties[key] = value
+	})
 	const merged = {
-		...base,
+		...rootDomainProperties,
 		...custom,
 	}
-	delete merged.customProperties
 	return merged
 }
 

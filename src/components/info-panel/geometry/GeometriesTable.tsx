@@ -1,18 +1,75 @@
-import { ChevronDown, ChevronRight, Locate, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronRight, Locate, Plus, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { EditorFeature } from '../../../features/geo-editor/core'
 import { useEditorStore } from '../../../features/geo-editor/store'
+import { parseCustomValue } from '../../../features/geo-editor/utils'
 import { cn } from '@/lib/utils'
 import { Button } from '../../ui/button'
 import { Input } from '../../ui/input'
 import { GeometryBadge, GeometryDisplay } from './GeometryDisplay'
 import { StylePropertiesSection } from '../StylePropertiesSection'
 
+type ContextPropertyTypeHint = 'string' | 'number' | 'integer' | 'boolean'
+
+function coercePropertyInput(
+	rawValue: string,
+	hint?: ContextPropertyTypeHint,
+	currentValue?: unknown,
+): string | number | boolean {
+	const trimmed = rawValue.trim()
+	// Force string with single/double quotes, e.g. "true" or '33'
+	if (
+		(trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) ||
+		(trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.length >= 2)
+	) {
+		return trimmed.slice(1, -1)
+	}
+
+	const targetType: ContextPropertyTypeHint | null =
+		hint ??
+		(typeof currentValue === 'number'
+			? 'number'
+			: typeof currentValue === 'boolean'
+				? 'boolean'
+				: null)
+
+	if (targetType === 'string') return rawValue
+	if (targetType === 'boolean') {
+		if (trimmed.toLowerCase() === 'true') return true
+		if (trimmed.toLowerCase() === 'false') return false
+		return rawValue
+	}
+	if (targetType === 'number' || targetType === 'integer') {
+		const parsed = Number(trimmed)
+		if (!Number.isFinite(parsed)) return rawValue
+		if (targetType === 'integer') {
+			if (!Number.isInteger(parsed)) return rawValue
+			return parsed
+		}
+		return parsed
+	}
+
+	return parseCustomValue(rawValue)
+}
+
+function inferDisplayType(
+	value: unknown,
+	hint?: ContextPropertyTypeHint,
+): ContextPropertyTypeHint | 'unknown' {
+	if (hint) return hint
+	if (typeof value === 'boolean') return 'boolean'
+	if (typeof value === 'number') return Number.isInteger(value) ? 'integer' : 'number'
+	if (typeof value === 'string') return 'string'
+	return 'unknown'
+}
+
 interface FeatureRowProps {
 	feature: EditorFeature
 	name: string
 	isSelected: boolean
 	isExpanded: boolean
+	validationIssues?: string[]
+	propertyTypeHints?: Map<string, ContextPropertyTypeHint>
 	onToggleExpand: () => void
 	onSelect: (event: React.MouseEvent) => void
 	onDelete: () => void
@@ -24,6 +81,8 @@ function FeatureRow({
 	name,
 	isSelected,
 	isExpanded,
+	validationIssues,
+	propertyTypeHints,
 	onToggleExpand,
 	onSelect,
 	onDelete,
@@ -46,11 +105,12 @@ function FeatureRow({
 	const onCustomPropertyChange = (key: string, value: string) => {
 		if (!editor) return
 		const currentProps = feature.properties?.customProperties || {}
+		const typedValue = coercePropertyInput(value, propertyTypeHints?.get(key), currentProps[key])
 		editor.updateFeature(feature.id, {
 			...feature,
 			properties: {
 				...feature.properties,
-				customProperties: { ...currentProps, [key]: value },
+				customProperties: { ...currentProps, [key]: typedValue },
 			},
 		})
 	}
@@ -71,13 +131,15 @@ function FeatureRow({
 	const onAddCustomProperty = () => {
 		if (!editor || !newPropKey) return
 		const currentProps = feature.properties?.customProperties || {}
+		const key = newPropKey.trim()
+		const typedValue = coercePropertyInput(newPropValue, propertyTypeHints?.get(key))
 		editor.updateFeature(feature.id, {
 			...feature,
 			properties: {
 				...feature.properties,
 				customProperties: {
 					...currentProps,
-					[newPropKey]: newPropValue,
+					[key]: typedValue,
 				},
 			},
 		})
@@ -113,6 +175,9 @@ function FeatureRow({
 	}
 
 	const customProperties = feature.properties?.customProperties ?? {}
+	const hasValidationIssues = Boolean(validationIssues && validationIssues.length > 0)
+	const validationSummary = validationIssues?.slice(0, 3).join(' | ')
+	const newPropertyTypeHint = propertyTypeHints?.get(newPropKey.trim())
 
 	return (
 		<div
@@ -141,8 +206,15 @@ function FeatureRow({
 					{name}
 				</button>
 
+				{hasValidationIssues && (
+					<div className="flex items-center gap-1 text-amber-600" title={validationSummary}>
+						<AlertTriangle className="h-3 w-3" />
+						<span className="text-[10px]">{validationIssues?.length}</span>
+					</div>
+				)}
+
 				<Button
-					size="icon-xs"
+					size="icon-sm"
 					variant="ghost"
 					className="text-blue-500 hover:text-blue-700"
 					onClick={onZoomTo}
@@ -152,7 +224,7 @@ function FeatureRow({
 				</Button>
 
 				<Button
-					size="icon-xs"
+					size="icon-sm"
 					variant="ghost"
 					className="text-red-500 hover:text-red-700"
 					onClick={onDelete}
@@ -165,6 +237,23 @@ function FeatureRow({
 			{/* Expanded content */}
 			{isExpanded && (
 				<div className="border-t border-gray-100 px-2 py-2 bg-gray-50/50 space-y-2">
+					{hasValidationIssues && (
+						<div className="rounded border border-amber-300 bg-amber-50 px-2 py-1">
+							<div className="mb-1 flex items-center gap-1 text-[10px] font-medium text-amber-800 uppercase tracking-wide">
+								<AlertTriangle className="h-3 w-3" />
+								Context warnings
+							</div>
+							<div className="space-y-0.5 text-[10px] text-amber-800">
+								{validationIssues?.slice(0, 3).map((issue) => (
+									<p key={issue}>{issue}</p>
+								))}
+								{(validationIssues?.length ?? 0) > 3 && (
+									<p>+{(validationIssues?.length ?? 0) - 3} more</p>
+								)}
+							</div>
+						</div>
+					)}
+
 					{/* Annotation-specific: Text input prominently displayed */}
 					{isAnnotation && (
 						<div className="space-y-1.5 p-1.5 bg-amber-50 rounded border border-amber-200">
@@ -238,13 +327,16 @@ function FeatureRow({
 							{Object.entries(customProperties).map(([key, value]) => (
 								<div key={key} className="flex items-center gap-1">
 									<span className="text-[10px] text-gray-500 min-w-[32px] truncate">{key}</span>
+									<span className="rounded bg-gray-100 px-1 py-0.5 text-[9px] text-gray-600 uppercase">
+										{inferDisplayType(value, propertyTypeHints?.get(key))}
+									</span>
 									<Input
 										className="h-5 text-[11px] flex-1"
 										value={String(value)}
 										onChange={(e) => onCustomPropertyChange(key, e.target.value)}
 									/>
 									<Button
-										size="icon-xs"
+										size="icon-sm"
 										variant="ghost"
 										className="text-red-400 hover:text-red-600"
 										onClick={() => onRemoveCustomProperty(key)}
@@ -272,8 +364,13 @@ function FeatureRow({
 							onChange={(e) => setNewPropValue(e.target.value)}
 							onKeyDown={handleKeyDown}
 						/>
+						{newPropertyTypeHint && (
+							<span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] text-blue-700 uppercase">
+								{newPropertyTypeHint}
+							</span>
+						)}
 						<Button
-							size="icon-xs"
+							size="icon-sm"
 							variant="ghost"
 							onClick={onAddCustomProperty}
 							disabled={!newPropKey}
@@ -293,9 +390,16 @@ function FeatureRow({
 interface GeometriesTableProps {
 	className?: string
 	onZoomToFeature?: (feature: EditorFeature) => void
+	contextValidationIssuesByFeatureId?: Map<string, string[]>
+	contextPropertyTypeHints?: Map<string, ContextPropertyTypeHint>
 }
 
-export function GeometriesTable({ className, onZoomToFeature }: GeometriesTableProps) {
+export function GeometriesTable({
+	className,
+	onZoomToFeature,
+	contextValidationIssuesByFeatureId,
+	contextPropertyTypeHints,
+}: GeometriesTableProps) {
 	const features = useEditorStore((state) => state.features)
 	const selectedFeatureIds = useEditorStore((state) => state.selectedFeatureIds)
 	const setSelectedFeatureIds = useEditorStore((state) => state.setSelectedFeatureIds)
@@ -355,9 +459,11 @@ export function GeometriesTable({ className, onZoomToFeature }: GeometriesTableP
 					feature,
 					name,
 					isSelected: selectedFeatureIds.includes(feature.id),
+					validationIssues: contextValidationIssuesByFeatureId?.get(String(feature.id)) ?? [],
+					propertyTypeHints: contextPropertyTypeHints,
 				}
 			}),
-		[features, selectedFeatureIds],
+		[features, selectedFeatureIds, contextValidationIssuesByFeatureId, contextPropertyTypeHints],
 	)
 
 	if (features.length === 0) {
@@ -377,6 +483,8 @@ export function GeometriesTable({ className, onZoomToFeature }: GeometriesTableP
 					name={row.name}
 					isSelected={row.isSelected}
 					isExpanded={expandedIds.has(row.feature.id)}
+					validationIssues={row.validationIssues}
+					propertyTypeHints={row.propertyTypeHints}
 					onToggleExpand={() => toggleExpand(row.feature.id)}
 					onSelect={(e) => handleSelect(row.feature.id, e)}
 					onDelete={() => handleDelete(row.feature.id)}
