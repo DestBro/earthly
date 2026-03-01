@@ -26,6 +26,7 @@ import {
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = "30vw"
+const SIDEBAR_WIDTH_EXPANDED = "45vw"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
@@ -38,6 +39,8 @@ type SidebarContextProps = {
   setOpenMobile: (open: boolean) => void
   isMobile: boolean
   toggleSidebar: () => void
+  sidebarExpanded: boolean
+  setSidebarExpanded: (expanded: boolean) => void
 }
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null)
@@ -55,6 +58,8 @@ function SidebarProvider({
   defaultOpen = true,
   open: openProp,
   onOpenChange: setOpenProp,
+  sidebarExpanded: expandedProp = false,
+  onExpandedChange: setExpandedProp,
   className,
   style,
   children,
@@ -63,6 +68,8 @@ function SidebarProvider({
   defaultOpen?: boolean
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  sidebarExpanded?: boolean
+  onExpandedChange?: (expanded: boolean) => void
 }) {
   const isMobile = useIsMobile()
   const [openMobile, setOpenMobile] = React.useState(false)
@@ -84,6 +91,20 @@ function SidebarProvider({
       document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
     },
     [setOpenProp, open]
+  )
+
+  // Expanded state (controlled from outside or internal fallback)
+  const [_expanded, _setExpanded] = React.useState(false)
+  const sidebarExpanded = expandedProp ?? _expanded
+  const setSidebarExpanded = React.useCallback(
+    (value: boolean) => {
+      if (setExpandedProp) {
+        setExpandedProp(value)
+      } else {
+        _setExpanded(value)
+      }
+    },
+    [setExpandedProp]
   )
 
   // Helper to toggle the sidebar.
@@ -120,8 +141,10 @@ function SidebarProvider({
       openMobile,
       setOpenMobile,
       toggleSidebar,
+      sidebarExpanded,
+      setSidebarExpanded,
     }),
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
+    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar, sidebarExpanded, setSidebarExpanded]
   )
 
   return (
@@ -131,7 +154,7 @@ function SidebarProvider({
           data-slot="sidebar-wrapper"
           style={
             {
-              "--sidebar-width": SIDEBAR_WIDTH,
+              "--sidebar-width": sidebarExpanded ? SIDEBAR_WIDTH_EXPANDED : SIDEBAR_WIDTH,
               "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
               ...style,
             } as React.CSSProperties

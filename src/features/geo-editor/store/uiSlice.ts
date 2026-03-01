@@ -18,6 +18,7 @@ export const createUISlice: StateCreator<EditorState, [], [], UISlice> = (set) =
 	mobilePanelSnap: 'peek',
 	inspectorActive: false,
 	sidebarViewMode: 'datasets',
+	sidebarExpanded: false,
 
 	setNewCollectionProp: (newCollectionProp) => set({ newCollectionProp }),
 	setNewFeatureProp: (newFeatureProp) => set({ newFeatureProp }),
@@ -63,4 +64,6 @@ export const createUISlice: StateCreator<EditorState, [], [], UISlice> = (set) =
 	closeMobilePanel: () => set({ mobilePanelOpen: false }),
 	setInspectorActive: (active) => set({ inspectorActive: active }),
 	setSidebarViewMode: (mode) => set({ sidebarViewMode: mode }),
+	setSidebarExpanded: (sidebarExpanded) => set({ sidebarExpanded }),
+	toggleSidebarExpanded: () => set((state) => ({ sidebarExpanded: !state.sidebarExpanded })),
 })

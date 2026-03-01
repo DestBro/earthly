@@ -1064,9 +1064,11 @@ export function GeoEditorView() {
 	)
 
 	const multiSelectModifierLabel = editor?.getMultiSelectModifierLabel() ?? 'Shift'
+	const sidebarExpanded = useEditorStore((state) => state.sidebarExpanded)
+	const setSidebarExpanded = useEditorStore((state) => state.setSidebarExpanded)
 
 	return (
-		<SidebarProvider>
+		<SidebarProvider sidebarExpanded={sidebarExpanded} onExpandedChange={setSidebarExpanded}>
 			{/* Sidebar - desktop only */}
 			{!isMobile && (
 				<AppSidebar

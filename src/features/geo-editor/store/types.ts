@@ -224,6 +224,7 @@ export interface UISlice {
 	mobilePanelSnap: MobilePanelSnap
 	inspectorActive: boolean
 	sidebarViewMode: SidebarViewMode
+	sidebarExpanded: boolean
 
 	setNewCollectionProp: (prop: { key: string; value: string }) => void
 	setNewFeatureProp: (prop: { key: string; value: string }) => void
@@ -244,6 +245,8 @@ export interface UISlice {
 	closeMobilePanel: () => void
 	setInspectorActive: (active: boolean) => void
 	setSidebarViewMode: (mode: SidebarViewMode) => void
+	setSidebarExpanded: (expanded: boolean) => void
+	toggleSidebarExpanded: () => void
 }
 
 export interface SearchSlice {

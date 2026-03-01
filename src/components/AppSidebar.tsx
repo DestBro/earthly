@@ -7,6 +7,8 @@ import {
 	MessageCircle,
 	Newspaper,
 	PanelTop,
+	PanelLeftClose,
+	PanelLeftOpen,
 	Pencil,
 	Settings2,
 	User,
@@ -212,7 +214,7 @@ export function AppSidebar({
 	// Filter sync
 	onFilteredDatasetKeysChange,
 }: AppSidebarProps) {
-	const { setOpen } = useSidebar()
+	const { setOpen, sidebarExpanded, setSidebarExpanded } = useSidebar()
 	const viewMode = useEditorStore((state) => state.sidebarViewMode)
 	const { navigateToView } = useRouting()
 	const [splitWithEditor, setSplitWithEditor] = useState(viewMode === 'combined')
@@ -544,7 +546,21 @@ export function AppSidebar({
 								</span>
 							)}
 						</div>
-						<LoginSessionButtons />
+						<div className="flex items-center gap-1">
+							<button
+								type="button"
+								onClick={() => setSidebarExpanded(!sidebarExpanded)}
+								title={sidebarExpanded ? 'Shrink sidebar' : 'Expand sidebar'}
+								className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+							>
+								{sidebarExpanded ? (
+									<PanelLeftClose className="h-4 w-4" />
+								) : (
+									<PanelLeftOpen className="h-4 w-4" />
+								)}
+							</button>
+							<LoginSessionButtons />
+						</div>
 					</div>
 				</SidebarHeader>
 
