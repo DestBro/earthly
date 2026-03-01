@@ -563,42 +563,236 @@ async function main() {
     },
     async ({ query, limit, preferredOsmType, adminLevel, countryCode }) => {
       try {
-        const response = await searchLocation(query, limit ?? 5);
+        const requestedLimit = Math.max(1, Math.min(limit ?? 5, 10));
         const normalizedCountryCode = countryCode?.trim().toLowerCase();
+        const normalizedQuery = query.trim();
+        const boundaryMode =
+          preferredOsmType === "relation" || typeof adminLevel === "number";
+        const queryVariants = Array.from(
+          new Set(
+            [
+              normalizedQuery,
+              normalizedCountryCode
+                ? `${normalizedQuery}, ${normalizedCountryCode.toUpperCase()}`
+                : null,
+              normalizedCountryCode === "de"
+                ? `${normalizedQuery}, Germany`
+                : null,
+              normalizedCountryCode === "de"
+                ? `Land ${normalizedQuery}`
+                : null,
+              boundaryMode ? `${normalizedQuery} administrative boundary` : null,
+            ].filter((value): value is string => Boolean(value?.trim())),
+          ),
+        );
+        const searchLimit = Math.min(50, Math.max(requestedLimit * 6, 20));
+        const searchResponses = await Promise.all(
+          queryVariants.map((queryVariant) =>
+            searchLocation(queryVariant, searchLimit, {
+              countryCode: normalizedCountryCode,
+            }),
+          ),
+        );
+        const mergedResults = searchResponses.flatMap((response) => response.results);
+        const dedupedResults = Array.from(
+          new Map(
+            mergedResults.map((candidate) => {
+              const key =
+                candidate.osmType && candidate.osmId
+                  ? `${candidate.osmType}:${candidate.osmId}`
+                  : `place:${candidate.placeId}`;
+              return [key, candidate] as const;
+            }),
+          ).values(),
+        );
+        const queryNeedle = normalizedQuery.toLowerCase();
 
-        const candidates = response.results
-          .filter((candidate) => {
-            if (preferredOsmType && candidate.osmType !== preferredOsmType) {
-              return false;
+        const classifyAdminMatch = (
+          candidate: (typeof dedupedResults)[number],
+        ): "exact" | "boundary" | "none" => {
+          if (typeof adminLevel !== "number") return "exact";
+          const raw = candidate.extratags?.admin_level;
+          if (raw) {
+            const parsed = Number(raw);
+            if (Number.isFinite(parsed) && parsed === adminLevel) {
+              return "exact";
             }
-            if (normalizedCountryCode) {
-              const candidateCountry = candidate.address?.country_code?.toLowerCase();
-              if (candidateCountry && candidateCountry !== normalizedCountryCode) {
-                return false;
-              }
-            }
-            if (typeof adminLevel === "number") {
-              const raw = candidate.extratags?.admin_level;
-              if (!raw) return false;
-              const parsed = Number(raw);
-              if (!Number.isFinite(parsed) || parsed !== adminLevel) {
-                return false;
-              }
-            }
-            return true;
-          })
-          .map((candidate) => ({
-            placeId: candidate.placeId,
-            displayName: candidate.displayName,
-            osmType: candidate.osmType,
-            osmId: candidate.osmId,
-            class: candidate.class,
-            type: candidate.type,
-            importance: candidate.importance,
-            coordinates: candidate.coordinates,
-            boundingbox: candidate.boundingbox,
-            extratags: candidate.extratags,
-          }));
+          }
+          if (
+            candidate.class === "boundary" &&
+            candidate.type === "administrative" &&
+            candidate.osmType === "relation"
+          ) {
+            return "boundary";
+          }
+          return "none";
+        };
+
+        const evaluated = dedupedResults.map((candidate) => {
+          const candidateCountry = candidate.address?.country_code?.toLowerCase() ?? null;
+          const countryMatches = normalizedCountryCode
+            ? candidateCountry
+              ? candidateCountry === normalizedCountryCode
+              : null
+            : true;
+          const typeMatches = preferredOsmType
+            ? candidate.osmType === preferredOsmType
+            : true;
+          const adminMatch = classifyAdminMatch(candidate);
+          const nameMatches = candidate.displayName.toLowerCase().includes(queryNeedle);
+
+          let score = 0;
+          if (preferredOsmType) {
+            score += typeMatches ? 120 : -80;
+          }
+          if (normalizedCountryCode) {
+            if (countryMatches === true) score += 80;
+            else if (countryMatches === false) score -= 140;
+            else score -= 20;
+          }
+          if (typeof adminLevel === "number") {
+            if (adminMatch === "exact") score += 160;
+            else if (adminMatch === "boundary") score += 50;
+            else score -= 160;
+          }
+          if (
+            candidate.class === "boundary" &&
+            candidate.type === "administrative"
+          ) {
+            score += 60;
+          }
+          if (candidate.osmType === "relation") score += 25;
+          if (nameMatches) score += 30;
+          if (typeof candidate.importance === "number") {
+            score += candidate.importance * 15;
+          }
+
+          return {
+            candidate,
+            score,
+            typeMatches,
+            countryMatches,
+            adminMatch,
+          };
+        });
+
+        const strictMatches = evaluated.filter((item) => {
+          const typeOk = preferredOsmType ? item.typeMatches : true;
+          const countryOk = normalizedCountryCode
+            ? item.countryMatches !== false
+            : true;
+          const adminOk =
+            typeof adminLevel === "number" ? item.adminMatch !== "none" : true;
+          return typeOk && countryOk && adminOk;
+        });
+
+        let selected = (strictMatches.length > 0 ? strictMatches : evaluated)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, requestedLimit);
+
+        const collectCoordinatePairs = (
+          input: unknown,
+          pairs: [number, number][],
+        ): void => {
+          if (!Array.isArray(input) || input.length === 0) return;
+          if (
+            input.length >= 2 &&
+            typeof input[0] === "number" &&
+            typeof input[1] === "number" &&
+            Number.isFinite(input[0]) &&
+            Number.isFinite(input[1])
+          ) {
+            pairs.push([input[0], input[1]]);
+            return;
+          }
+          for (const child of input) {
+            collectCoordinatePairs(child, pairs);
+          }
+        };
+
+        const computeFeatureBbox = (
+          feature: any,
+        ): [number, number, number, number] | null => {
+          const geometry = feature?.geometry;
+          if (!geometry || !geometry.coordinates) return null;
+          const pairs: [number, number][] = [];
+          collectCoordinatePairs(geometry.coordinates, pairs);
+          if (pairs.length === 0) return null;
+          let west = Number.POSITIVE_INFINITY;
+          let south = Number.POSITIVE_INFINITY;
+          let east = Number.NEGATIVE_INFINITY;
+          let north = Number.NEGATIVE_INFINITY;
+          for (const [lon, lat] of pairs) {
+            if (lon < west) west = lon;
+            if (lon > east) east = lon;
+            if (lat < south) south = lat;
+            if (lat > north) north = lat;
+          }
+          if (![west, south, east, north].every(Number.isFinite)) return null;
+          return [west, south, east, north];
+        };
+
+        if (selected.length === 0 && boundaryMode) {
+          try {
+            const relationLookup = await findAdministrativeBoundaryRelation({
+              countryCode: countryCode?.trim().toUpperCase(),
+              name: normalizedQuery,
+              adminLevel,
+            });
+            const relationGeometry = await queryRelationGeometry(
+              relationLookup.relationId,
+            );
+            const fallbackBbox = computeFeatureBbox(relationGeometry.feature);
+            const fallbackLon = fallbackBbox
+              ? (fallbackBbox[0] + fallbackBbox[2]) / 2
+              : 0;
+            const fallbackLat = fallbackBbox
+              ? (fallbackBbox[1] + fallbackBbox[3]) / 2
+              : 0;
+            const tags = relationLookup.relation.tags ?? {};
+            const displayName = tags.name
+              ? `${tags.name} (relation ${relationLookup.relationId})`
+              : `relation/${relationLookup.relationId}`;
+
+            selected = [
+              {
+                candidate: {
+                  placeId: relationLookup.relationId,
+                  displayName,
+                  osmType: "relation",
+                  osmId: relationLookup.relationId,
+                  class: "boundary",
+                  type: tags.type ?? "administrative",
+                  importance: 1,
+                  coordinates: { lat: fallbackLat, lon: fallbackLon },
+                  boundingbox: fallbackBbox,
+                  extratags: tags,
+                },
+                score: 1000,
+                typeMatches: true,
+                countryMatches: true,
+                adminMatch: "exact" as const,
+              },
+            ];
+          } catch (fallbackError: any) {
+            console.warn(
+              `resolve_osm_entity fallback relation lookup failed: ${fallbackError?.message ?? "unknown error"}`,
+            );
+          }
+        }
+
+        const candidates = selected.map((item) => ({
+          placeId: item.candidate.placeId,
+          displayName: item.candidate.displayName,
+          osmType: item.candidate.osmType,
+          osmId: item.candidate.osmId,
+          class: item.candidate.class,
+          type: item.candidate.type,
+          importance: item.candidate.importance,
+          coordinates: item.candidate.coordinates,
+          boundingbox: item.candidate.boundingbox,
+          extratags: item.candidate.extratags,
+        }));
 
         return {
           content: [],

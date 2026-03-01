@@ -1,10 +1,10 @@
 import { cn } from '@/lib/utils'
 import { useNDK, useNDKCurrentUser } from '@nostr-dev-kit/react'
 import type { FeatureCollection } from 'geojson'
-import { Eye, EyeOff, FileText, MapPin, Maximize2, MessageCircle } from 'lucide-react'
+import { Eye, EyeOff, FileText, MapPin, Maximize2, MessageCircle, Plus, Trash2 } from 'lucide-react'
 import { nip19 } from 'nostr-tools'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useEditorStore } from '../features/geo-editor/store'
+import { useEditorStore, type GeoCollectionEditDraft } from '../features/geo-editor/store'
 import { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoCommentEvent } from '../lib/ndk/NDKGeoCommentEvent'
 import { CommentsPanel } from './comments'
@@ -16,6 +16,7 @@ import {
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 type EditorTab = 'details' | 'comments'
@@ -64,6 +65,12 @@ export function GeoCollectionEditorPanel({
 	// Form state
 	const selectedFeatureIds = useEditorStore((state) => state.selectedFeatureIds)
 	const features = useEditorStore((state) => state.features)
+	const geoEditDrafts = useEditorStore((state) => state.geoEditDrafts)
+	const activeGeoEditDraftId = useEditorStore((state) => state.activeGeoEditDraftId)
+	const createGeoEditDraft = useEditorStore((state) => state.createGeoEditDraft)
+	const saveGeoEditDraft = useEditorStore((state) => state.saveGeoEditDraft)
+	const loadGeoEditDraft = useEditorStore((state) => state.loadGeoEditDraft)
+	const deleteGeoEditDraft = useEditorStore((state) => state.deleteGeoEditDraft)
 
 	const selectedFeatures = useMemo(() => {
 		if (selectedFeatureIds.length === 0) return []
@@ -75,24 +82,147 @@ export function GeoCollectionEditorPanel({
 	// Initialize form state directly from collection to avoid timing issues
 	const initialName = initialCollection?.metadata.name || ''
 	const initialDescription = initialCollection?.metadata.description || ''
+	const draftSourceId = initialCollection?.id ?? initialCollection?.dTag ?? '__new__'
 
 	const [name, setName] = useState(initialName)
 	const [description, setDescription] = useState(initialDescription)
 	const [isSaving, setIsSaving] = useState(false)
+	const [lastAutoSavedAt, setLastAutoSavedAt] = useState<number | null>(null)
 
-	// Sync state when initialCollection changes
+	const draftsForSource = useMemo(
+		() =>
+			Object.values(geoEditDrafts)
+				.filter((draft) => draft.sourceId === draftSourceId)
+				.sort((a, b) => b.updatedAt - a.updatedAt),
+		[geoEditDrafts, draftSourceId],
+	)
+
+	const activeDraft = useMemo(
+		() => (activeGeoEditDraftId ? (geoEditDrafts[activeGeoEditDraftId] ?? null) : null),
+		[activeGeoEditDraftId, geoEditDrafts],
+	)
+
+	const getDraftLabel = useCallback((draft: GeoCollectionEditDraft, index: number) => {
+		const title = draft.name.trim() || `Untitled draft ${index + 1}`
+		const shortId = draft.id.slice(0, 8)
+		return `${title} (${shortId})`
+	}, [])
+
+	const applyDraft = useCallback(
+		(draftId: string) => {
+			const draft = useEditorStore.getState().geoEditDrafts[draftId]
+			if (!draft) return
+			loadGeoEditDraft(draftId)
+			setName(draft.name)
+			setDescription(draft.description)
+			setLastAutoSavedAt(draft.updatedAt)
+			editorRef.current?.setContent(draft.description)
+		},
+		[loadGeoEditDraft],
+	)
+
+	// Initialize or restore the most recent draft for the selected collection source.
 	useEffect(() => {
-		const newName = initialCollection?.metadata.name || ''
-		const newDesc = initialCollection?.metadata.description || ''
-		setName(newName)
-		setDescription(newDesc)
-		// Also reset editor content if it exists
-		if (initialCollection) {
-			editorRef.current?.setContent(newDesc)
-		} else {
-			editorRef.current?.clear()
+		const store = useEditorStore.getState()
+		const existingDrafts = Object.values(store.geoEditDrafts)
+			.filter((draft) => draft.sourceId === draftSourceId)
+			.sort((a, b) => b.updatedAt - a.updatedAt)
+
+		if (existingDrafts.length > 0) {
+			const preferredDraft =
+				existingDrafts.find((draft) => draft.id === store.activeGeoEditDraftId) ?? existingDrafts[0]
+			applyDraft(preferredDraft.id)
+			return
 		}
-	}, [initialCollection?.id, initialCollection?.dTag])
+
+		const createdDraftId = createGeoEditDraft(draftSourceId, {
+			name: initialName,
+			description: initialDescription,
+			features: store.features,
+			selectedFeatureIds: store.selectedFeatureIds,
+		})
+		applyDraft(createdDraftId)
+	}, [draftSourceId, initialName, initialDescription, createGeoEditDraft, applyDraft])
+
+	// Autosave panel text + geometry state to local drafts.
+	useEffect(() => {
+		if (!activeDraft || activeDraft.sourceId !== draftSourceId) return
+		const timer = window.setTimeout(() => {
+			saveGeoEditDraft(activeDraft.id, {
+				sourceId: draftSourceId,
+				name,
+				description,
+				features,
+				selectedFeatureIds,
+			})
+			setLastAutoSavedAt(Date.now())
+		}, 350)
+
+		return () => window.clearTimeout(timer)
+	}, [
+		activeDraft,
+		draftSourceId,
+		name,
+		description,
+		features,
+		selectedFeatureIds,
+		saveGeoEditDraft,
+	])
+
+	const handleDraftChange = useCallback(
+		(draftId: string) => {
+			applyDraft(draftId)
+		},
+		[applyDraft],
+	)
+
+	const handleCreateDraft = useCallback(() => {
+		const createdDraftId = createGeoEditDraft(draftSourceId, {
+			name,
+			description,
+			features,
+			selectedFeatureIds,
+		})
+		applyDraft(createdDraftId)
+	}, [
+		createGeoEditDraft,
+		draftSourceId,
+		name,
+		description,
+		features,
+		selectedFeatureIds,
+		applyDraft,
+	])
+
+	const handleDeleteDraft = useCallback(() => {
+		if (!activeDraft) return
+		deleteGeoEditDraft(activeDraft.id)
+		const store = useEditorStore.getState()
+		const remainingDrafts = Object.values(store.geoEditDrafts)
+			.filter((draft) => draft.sourceId === draftSourceId)
+			.sort((a, b) => b.updatedAt - a.updatedAt)
+
+		if (remainingDrafts.length > 0) {
+			applyDraft(remainingDrafts[0].id)
+			return
+		}
+
+		const createdDraftId = createGeoEditDraft(draftSourceId, {
+			name: initialName,
+			description: initialDescription,
+			features: store.features,
+			selectedFeatureIds: store.selectedFeatureIds,
+		})
+		applyDraft(createdDraftId)
+	}, [
+		activeDraft,
+		deleteGeoEditDraft,
+		draftSourceId,
+		applyDraft,
+		createGeoEditDraft,
+		initialName,
+		initialDescription,
+	])
 
 	// Extract references from description
 	const referencedAddresses = useMemo(() => {
@@ -138,7 +268,7 @@ export function GeoCollectionEditorPanel({
 						const { kind, pubkey, identifier } = decoded.data
 						aTags.push(`${kind}:${pubkey}:${identifier}`)
 					}
-				} catch (e) {
+				} catch (_e) {
 					console.warn('Invalid naddr in description:', addr)
 				}
 			}
@@ -168,6 +298,8 @@ export function GeoCollectionEditorPanel({
 			}
 		})
 	}, [referencedAddresses, availableFeatures])
+	const selectedDraftId =
+		activeDraft && activeDraft.sourceId === draftSourceId ? activeDraft.id : draftsForSource[0]?.id
 
 	// Comment handlers
 	const handleAttachGeometry = useCallback(() => {
@@ -209,12 +341,13 @@ export function GeoCollectionEditorPanel({
 
 	const handleZoomToCommentGeojson = useCallback(
 		(comment: NDKGeoCommentEvent) => {
+			const commentGeojson = comment.geojson
 			if (comment.boundingBox && onZoomToBounds) {
 				onZoomToBounds(comment.boundingBox)
-			} else if (comment.geojson && onZoomToBounds) {
+			} else if (commentGeojson && onZoomToBounds) {
 				import('@turf/turf')
 					.then((turf) => {
-						const bbox = turf.bbox(comment.geojson!) as [number, number, number, number]
+						const bbox = turf.bbox(commentGeojson) as [number, number, number, number]
 						if (bbox.every((v) => Number.isFinite(v))) {
 							onZoomToBounds(bbox)
 						}
@@ -288,6 +421,54 @@ export function GeoCollectionEditorPanel({
 			<div className="flex-1 overflow-y-auto">
 				{activeTab === 'details' ? (
 					<div className="p-4 space-y-4">
+						<div className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50/40 p-3">
+							<div className="flex items-center justify-between">
+								<Label className="text-xs font-medium text-emerald-900">Local Drafts</Label>
+								<span className="text-[11px] text-emerald-800">
+									{lastAutoSavedAt
+										? `Auto-saved ${new Date(lastAutoSavedAt).toLocaleTimeString()}`
+										: 'Auto-save on'}
+								</span>
+							</div>
+							<div className="flex items-center gap-2">
+								<Select value={selectedDraftId} onValueChange={handleDraftChange}>
+									<SelectTrigger className="w-full bg-white">
+										<SelectValue placeholder="Select draft" />
+									</SelectTrigger>
+									<SelectContent>
+										{draftsForSource.map((draft, index) => (
+											<SelectItem key={draft.id} value={draft.id}>
+												{getDraftLabel(draft, index)}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+								<Button
+									type="button"
+									size="icon-sm"
+									variant="outline"
+									onClick={handleCreateDraft}
+									title="Create new draft"
+								>
+									<Plus className="h-3.5 w-3.5" />
+								</Button>
+								<Button
+									type="button"
+									size="icon-sm"
+									variant="outline"
+									onClick={handleDeleteDraft}
+									disabled={draftsForSource.length <= 1}
+									title="Delete current draft"
+								>
+									<Trash2 className="h-3.5 w-3.5" />
+								</Button>
+							</div>
+							<div className="text-[11px] text-emerald-800">
+								{draftsForSource.length} draft{draftsForSource.length === 1 ? '' : 's'} for this
+								collection
+							</div>
+						</div>
+
 						<div className="space-y-2">
 							<Label htmlFor="collection-name">Name</Label>
 							<Input

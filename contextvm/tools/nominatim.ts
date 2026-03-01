@@ -39,6 +39,10 @@ export interface SearchLocationResult {
 	results: NominatimLocation[];
 }
 
+interface SearchLocationOptions {
+	countryCode?: string;
+}
+
 export interface ReverseLookupResult {
 	coordinates: { lat: number; lon: number };
 	zoom: number;
@@ -71,9 +75,11 @@ function normalizeBoundingBox(
 
 function normalizeResult(result: NominatimResult): NominatimLocation {
 	let osmType: "node" | "way" | "relation" | null = null;
-	if (result.osm_type === "N") osmType = "node";
-	else if (result.osm_type === "W") osmType = "way";
-	else if (result.osm_type === "R") osmType = "relation";
+	const rawOsmType =
+		typeof result.osm_type === "string" ? result.osm_type.trim().toLowerCase() : null;
+	if (rawOsmType === "n" || rawOsmType === "node") osmType = "node";
+	else if (rawOsmType === "w" || rawOsmType === "way") osmType = "way";
+	else if (rawOsmType === "r" || rawOsmType === "relation") osmType = "relation";
 
 	return {
 		placeId: result.place_id,
@@ -116,6 +122,7 @@ async function fetchJson(url: URL) {
 export async function searchLocation(
 	query: string,
 	limit = 10,
+	options?: SearchLocationOptions,
 ): Promise<SearchLocationResult> {
 	const trimmedQuery = query?.trim();
 	if (!trimmedQuery) {
@@ -135,6 +142,10 @@ export async function searchLocation(
 	url.searchParams.set("namedetails", "1");
 	url.searchParams.set("polygon_geojson", "1");
 	url.searchParams.set("polygon_threshold", "0.01");
+	const countryCode = options?.countryCode?.trim().toLowerCase();
+	if (countryCode && /^[a-z]{2}$/.test(countryCode)) {
+		url.searchParams.set("countrycodes", countryCode);
+	}
 
 	const data = (await fetchJson(url)) as NominatimResult[] | null;
 	const results = Array.isArray(data) ? data : [];

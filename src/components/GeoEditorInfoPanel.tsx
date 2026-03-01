@@ -1,6 +1,7 @@
-import { Eye } from 'lucide-react'
+import { Eye, Plus, Trash2 } from 'lucide-react'
 import type { FeatureCollection } from 'geojson'
 import { cn } from '@/lib/utils'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useEditorStore } from '../features/geo-editor/store'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
@@ -14,6 +15,7 @@ import { DatasetSizeIndicator } from './info-panel/DatasetSizeIndicator'
 import { GeoCollectionEditorPanel } from './GeoCollectionEditorPanel'
 import { Button } from './ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import type { GeoFeatureItem } from './editor/GeoRichTextEditor'
 import type { EditorFeature } from '../features/geo-editor/core'
 import type { BlossomUploadResult } from '../lib/blossom/blossomUpload'
@@ -94,13 +96,20 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 	// Store state
 	const stats = useEditorStore((state) => state.stats)
 	const features = useEditorStore((state) => state.features)
+	const selectedFeatureIds = useEditorStore((state) => state.selectedFeatureIds)
 	const activeDataset = useEditorStore((state) => state.activeDataset)
+	const collectionMeta = useEditorStore((state) => state.collectionMeta)
 	const publishMessage = useEditorStore((state) => state.publishMessage)
 	const publishError = useEditorStore((state) => state.publishError)
 	const viewMode = useEditorStore((state) => state.viewMode)
 	const setViewMode = useEditorStore((state) => state.setViewMode)
 	const setViewDataset = useEditorStore((state) => state.setViewDataset)
 	const blobReferences = useEditorStore((state) => state.blobReferences)
+	const geoEditDrafts = useEditorStore((state) => state.geoEditDrafts)
+	const activeGeoEditDraftId = useEditorStore((state) => state.activeGeoEditDraftId)
+	const createGeoEditDraft = useEditorStore((state) => state.createGeoEditDraft)
+	const loadGeoEditDraft = useEditorStore((state) => state.loadGeoEditDraft)
+	const deleteGeoEditDraft = useEditorStore((state) => state.deleteGeoEditDraft)
 
 	const existingCollectionBlob = blobReferences.find(
 		(ref) => ref.scope === 'collection' && Boolean(ref.url),
@@ -112,6 +121,94 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 				isOwner: currentUserPubkey === activeDataset.pubkey,
 			}
 		: null
+
+	const draftSourceId = activeDataset ? `dataset:${getDatasetKey(activeDataset)}` : '__editor__'
+	const draftsForSource = useMemo(
+		() =>
+			Object.values(geoEditDrafts)
+				.filter((draft) => draft.sourceId === draftSourceId)
+				.sort((a, b) => b.updatedAt - a.updatedAt),
+		[draftSourceId, geoEditDrafts],
+	)
+	const activeDraft = useMemo(
+		() => (activeGeoEditDraftId ? (geoEditDrafts[activeGeoEditDraftId] ?? null) : null),
+		[activeGeoEditDraftId, geoEditDrafts],
+	)
+	const selectedDraftId =
+		activeDraft && activeDraft.sourceId === draftSourceId ? activeDraft.id : draftsForSource[0]?.id
+
+	const applyDraft = useCallback(
+		(draftId: string) => {
+			loadGeoEditDraft(draftId)
+		},
+		[loadGeoEditDraft],
+	)
+
+	useEffect(() => {
+		if (collectionEditorMode !== 'none' || viewMode === 'view') return
+
+		const store = useEditorStore.getState()
+		const existingDrafts = Object.values(store.geoEditDrafts)
+			.filter((draft) => draft.sourceId === draftSourceId)
+			.sort((a, b) => b.updatedAt - a.updatedAt)
+
+		if (existingDrafts.length > 0) {
+			const preferredDraft =
+				existingDrafts.find((draft) => draft.id === store.activeGeoEditDraftId) ?? existingDrafts[0]
+			applyDraft(preferredDraft.id)
+			return
+		}
+
+		const createdDraftId = createGeoEditDraft(draftSourceId, {
+			name: store.collectionMeta.name,
+			description: store.collectionMeta.description,
+			collectionMeta: store.collectionMeta,
+			features: store.features,
+			selectedFeatureIds: store.selectedFeatureIds,
+		})
+		applyDraft(createdDraftId)
+	}, [collectionEditorMode, viewMode, draftSourceId, createGeoEditDraft, applyDraft])
+
+	const handleDraftChange = useCallback(
+		(draftId: string) => {
+			applyDraft(draftId)
+		},
+		[applyDraft],
+	)
+
+	const handleCreateDraft = useCallback(() => {
+		const createdDraftId = createGeoEditDraft(draftSourceId, {
+			name: collectionMeta.name,
+			description: collectionMeta.description,
+			collectionMeta,
+			features,
+			selectedFeatureIds,
+		})
+		applyDraft(createdDraftId)
+	}, [createGeoEditDraft, draftSourceId, collectionMeta, features, selectedFeatureIds, applyDraft])
+
+	const handleDeleteDraft = useCallback(() => {
+		if (!activeDraft) return
+		deleteGeoEditDraft(activeDraft.id)
+		const store = useEditorStore.getState()
+		const remainingDrafts = Object.values(store.geoEditDrafts)
+			.filter((draft) => draft.sourceId === draftSourceId)
+			.sort((a, b) => b.updatedAt - a.updatedAt)
+
+		if (remainingDrafts.length > 0) {
+			applyDraft(remainingDrafts[0].id)
+			return
+		}
+
+		const createdDraftId = createGeoEditDraft(draftSourceId, {
+			name: store.collectionMeta.name,
+			description: store.collectionMeta.description,
+			collectionMeta: store.collectionMeta,
+			features: store.features,
+			selectedFeatureIds: store.selectedFeatureIds,
+		})
+		applyDraft(createdDraftId)
+	}, [activeDraft, deleteGeoEditDraft, draftSourceId, applyDraft, createGeoEditDraft])
 
 	// Toggle to view mode - show the active dataset in view mode
 	const handleSwitchToView = () => {
@@ -193,6 +290,52 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 				<span>{stats.points} pts</span>
 				<span>{stats.lines} lines</span>
 				<span>{stats.polygons} polys</span>
+			</div>
+
+			<div className="space-y-1 rounded-md border border-emerald-200 bg-emerald-50/40 p-2">
+				<div className="flex items-center justify-between">
+					<div className="text-[10px] font-medium text-emerald-900 uppercase tracking-wide">
+						Drafts
+					</div>
+					<div className="text-[10px] text-emerald-800">
+						{activeDraft
+							? `Saved ${new Date(activeDraft.updatedAt).toLocaleTimeString()}`
+							: 'Auto-save'}
+					</div>
+				</div>
+				<div className="flex items-center gap-1">
+					<Select value={selectedDraftId} onValueChange={handleDraftChange}>
+						<SelectTrigger className="w-full h-7 bg-white text-xs">
+							<SelectValue placeholder="Select draft" />
+						</SelectTrigger>
+						<SelectContent>
+							{draftsForSource.map((draft, index) => (
+								<SelectItem key={draft.id} value={draft.id}>
+									{(draft.name || `Draft ${index + 1}`).trim()} ({draft.id.slice(0, 8)})
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+					<Button
+						type="button"
+						size="icon-xs"
+						variant="outline"
+						onClick={handleCreateDraft}
+						title="Create draft"
+					>
+						<Plus className="h-3 w-3" />
+					</Button>
+					<Button
+						type="button"
+						size="icon-xs"
+						variant="outline"
+						onClick={handleDeleteDraft}
+						disabled={draftsForSource.length <= 1}
+						title="Delete draft"
+					>
+						<Trash2 className="h-3 w-3" />
+					</Button>
+				</div>
 			</div>
 
 			{/* Dataset size indicator - shows warning when over limit */}
