@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import type maplibregl from 'maplibre-gl'
 import { earthlyGeoServer, type ReverseLookupOutput } from '../../../ctxcn'
 import { useEditorStore } from '../store'
-import type { EditorMode } from '../core'
 
 type ReverseLookupResult = ReverseLookupOutput['result']
 
@@ -10,7 +9,6 @@ export type { ReverseLookupResult }
 
 export function useInspector(
 	mapRef: React.RefObject<maplibregl.Map | null>,
-	previousMode: string | null,
 ) {
 	const [reverseLookupResult, setReverseLookupResult] = useState<ReverseLookupResult | null>(null)
 	const [reverseLookupStatus, setReverseLookupStatus] = useState<'idle' | 'loading' | 'error'>(
@@ -71,10 +69,10 @@ export function useInspector(
 	const disableInspector = useCallback(() => {
 		setInspectorActive(false)
 		if (editor) {
-			editor.setMode((previousMode as EditorMode) || 'select')
-			setCurrentMode((previousMode as EditorMode) || 'select')
+			editor.setMode('select')
+			setCurrentMode('select')
 		}
-	}, [previousMode, editor, setCurrentMode, setInspectorActive])
+	}, [editor, setCurrentMode, setInspectorActive])
 
 	return {
 		reverseLookupResult,

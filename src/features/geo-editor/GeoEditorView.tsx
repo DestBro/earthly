@@ -1,5 +1,4 @@
 import { useNDK, useNDKCurrentUser } from '@nostr-dev-kit/react'
-import type { FeatureCollection } from 'geojson'
 import { Edit3, Layers, Lock, LockOpen, Search, UploadCloud } from 'lucide-react'
 import type maplibregl from 'maplibre-gl'
 import {
@@ -14,13 +13,11 @@ import { BlossomUploadDialog } from '../../components/BlossomUploadDialog'
 import { DebugDialog } from '../../components/DebugDialog'
 import { Button } from '../../components/ui/button'
 import { SidebarInset, SidebarProvider } from '../../components/ui/sidebar'
-import { earthlyGeoServer, type ReverseLookupOutput } from '../../ctxcn'
 import { useAvailableGeoFeatures } from '../../lib/hooks/useAvailableGeoFeatures'
 import { useIsMobile } from '../../lib/hooks/useIsMobile'
 import { useGeoCollections, useMapContexts, useStations } from '../../lib/hooks/useStations'
 import type { NDKGeoCollectionEvent } from '../../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
-import type { NDKMapContextEvent } from '../../lib/ndk/NDKMapContextEvent'
 import { GEO_EVENT_KIND } from '../../lib/ndk/kinds'
 import {
 	defaultContextFilterMode,
@@ -31,7 +28,7 @@ import {
 import { Editor } from './components/Editor'
 import { ImportOsmDialog } from './components/ImportOsmDialog'
 import { LocateButton } from './components/LocateButton'
-import { FeaturePopup, type FeaturePopupData } from './components/FeaturePopup'
+import { FeaturePopup } from './components/FeaturePopup'
 import { LocationInspectorPopup } from './components/LocationInspectorPopup'
 import { Magnifier } from './components/Magnifier'
 import { MobilePanel } from './components/MobilePanel'
@@ -39,32 +36,27 @@ import { UserLocationMarker } from './components/UserLocationMarker'
 import { GeoEditorMap as MapComponent } from './components/Map'
 import { OsmResultsPanel } from './components/OsmResultsPanel'
 import { Toolbar } from './components/Toolbar'
-import type { EditorFeature, EditorMode } from './core'
+import type { EditorFeature } from './core'
 import {
-	CLUSTER_CIRCLE_LAYER,
 	MAGNIFIER_SIZE,
-	REMOTE_ANNOTATION_ANCHOR_LAYER,
-	REMOTE_ANNOTATION_LAYER,
-	REMOTE_FILL_LAYER,
-	REMOTE_LINE_LAYER,
-	REMOTE_POINT_LAYER,
-	UNCLUSTERED_POINT_LAYER,
+	useBlobResolution,
+	useCollectionContextEditor,
 	useCommentGeometry,
 	useDatasetManagement,
+	useFeaturePopup,
 	useInspector,
 	useMagnifier,
+	useMapInteractions,
 	useMapLayers,
 	useMentionActions,
+	useOsmQuery,
 	usePublishing,
 	useRouting,
 	useViewMode,
 } from './hooks'
 import { useEditorStore } from './store'
 import type { GeoSearchResult } from './types'
-import { bboxFromGeometry } from '../../lib/geo/bbox'
 import { ensureFeatureCollection, extractCollectionMeta, toEditorFeature } from './utils'
-
-type ReverseLookupResult = ReverseLookupOutput['result']
 
 export function GeoEditorView() {
 	const map = useRef<maplibregl.Map | null>(null)
@@ -75,8 +67,7 @@ export function GeoEditorView() {
 
 	// Drawing mode state
 	const [isDrawingMode, setIsDrawingMode] = useState(false)
-	const [previousMode, setPreviousMode] = useState<string | null>(null)
-	const [showToolbar, setShowToolbar] = useState(true)
+	const [, setShowToolbar] = useState(true)
 	const mapContainerRef = useRef<HTMLDivElement>(null)
 
 	// Extracted hooks
@@ -107,12 +98,22 @@ export function GeoEditorView() {
 		inspectorClickPosition,
 		setInspectorClickPosition,
 		disableInspector,
-	} = useInspector(map, previousMode)
+	} = useInspector(map)
 
 	const { handleCommentGeometryVisibility } = useCommentGeometry(map)
 
-	// Feature popup state (shown when clicking a feature on the map in view mode)
-	const [featurePopupData, setFeaturePopupData] = useState<FeaturePopupData | null>(null)
+	// Zoom helpers (no deps, defined early so hooks can reference them)
+	const handleZoomToBounds = useCallback((bounds: [number, number, number, number]) => {
+		if (!map.current) return
+		const [west, south, east, north] = bounds
+		map.current.fitBounds(
+			[
+				[west, south],
+				[east, north],
+			],
+			{ padding: 50, duration: 500 },
+		)
+	}, [])
 
 	// Collection visibility state (local to view)
 	const [collectionVisibility, setCollectionVisibility] = useState<Record<string, boolean>>({})
@@ -136,10 +137,6 @@ export function GeoEditorView() {
 	const selectedFeatureIds = useEditorStore((state) => state.selectedFeatureIds)
 	const selectionCount = selectedFeatureIds.length
 	const setSelectedFeatureIds = useEditorStore((state) => state.setSelectedFeatureIds)
-	const setFocusedMapGeometry = useEditorStore((state) => state.setFocusedMapGeometry)
-	const setViewModeState = useEditorStore((state) => state.setViewMode)
-	const setViewDatasetState = useEditorStore((state) => state.setViewDataset)
-	const setViewCollectionState = useEditorStore((state) => state.setViewCollection)
 	const setViewContext = useEditorStore((state) => state.setViewContext)
 	const setViewContextDatasets = useEditorStore((state) => state.setViewContextDatasets)
 	const setViewContextCollections = useEditorStore((state) => state.setViewContextCollections)
@@ -150,9 +147,7 @@ export function GeoEditorView() {
 	const setDatasetVisibility = useEditorStore((state) => state.setDatasetVisibility)
 	const setCollectionMeta = useEditorStore((state) => state.setCollectionMeta)
 	const isPublishing = useEditorStore((state) => state.isPublishing)
-	const showDatasetsPanel = useEditorStore((state) => state.showDatasetsPanel)
 	const setShowDatasetsPanel = useEditorStore((state) => state.setShowDatasetsPanel)
-	const showInfoPanel = useEditorStore((state) => state.showInfoPanel)
 	const setShowInfoPanel = useEditorStore((state) => state.setShowInfoPanel)
 	const setShowTips = useEditorStore((state) => state.setShowTips)
 	// Unified mobile panel state
@@ -170,10 +165,8 @@ export function GeoEditorView() {
 	const setPanLocked = useEditorStore((state) => state.setPanLocked)
 	const canFinishDrawing = useEditorStore((state) => state.canFinishDrawing)
 	const currentMode = useEditorStore((state) => state.mode)
-	const setCurrentMode = useEditorStore((state) => state.setMode)
 	const mapSource = useEditorStore((state) => state.mapSource)
 	const inspectorActive = useEditorStore((state) => state.inspectorActive)
-	const setInspectorActive = useEditorStore((state) => state.setInspectorActive)
 	const mapSourceKey = useMemo(() => {
 		const file = mapSource.file
 		return [
@@ -184,14 +177,6 @@ export function GeoEditorView() {
 			file ? `${file.name}:${file.size}:${file.lastModified}` : '',
 		].join('|')
 	}, [mapSource.type, mapSource.location, mapSource.url, mapSource.blossomServer, mapSource.file])
-
-	// Collection Editor state
-	const [collectionEditorMode, setCollectionEditorMode] = useState<'none' | 'create' | 'edit'>(
-		'none',
-	)
-	const [editingCollection, setEditingCollection] = useState<NDKGeoCollectionEvent | null>(null)
-	const [contextEditorMode, setContextEditorMode] = useState<'none' | 'create' | 'edit'>('none')
-	const [editingContext, setEditingContext] = useState<NDKMapContextEvent | null>(null)
 
 	// External data
 	const { events: geoEvents } = useStations([{ limit: 50 }])
@@ -748,48 +733,13 @@ export function GeoEditorView() {
 		}
 	}, [isMobile])
 
-	// Track which events have been processed for blob resolution to avoid re-processing
-	const processedBlobEventsRef = useRef<Set<string>>(new Set())
-
-	// Preload blob references for datasets - only process new events once
-	useEffect(() => {
-		let cancelled = false
-		const eventsToProcess = geoEvents.filter(
-			(event) =>
-				event.blobReferences.length > 0 &&
-				event.id &&
-				!processedBlobEventsRef.current.has(event.id),
-		)
-
-		if (eventsToProcess.length === 0) return
-
-		;(async () => {
-			let resolvedAny = false
-			for (const event of eventsToProcess) {
-				if (cancelled) break
-				try {
-					await ensureResolvedFeatureCollection(event)
-					if (event.id) {
-						processedBlobEventsRef.current.add(event.id)
-					}
-					resolvedAny = true
-				} catch (error) {
-					console.warn('Failed to resolve external blob for dataset', event.id, error)
-					// Mark as processed even on error to avoid retry loops
-					if (event.id) {
-						processedBlobEventsRef.current.add(event.id)
-					}
-				}
-			}
-			// Only update version once after all events are processed
-			if (resolvedAny && isMountedRef.current && !cancelled) {
-				setResolvedCollectionsVersion((v) => v + 1)
-			}
-		})()
-		return () => {
-			cancelled = true
-		}
-	}, [geoEvents, ensureResolvedFeatureCollection, isMountedRef])
+	// Preload blob references for datasets
+	useBlobResolution({
+		geoEvents,
+		ensureResolvedFeatureCollection,
+		isMountedRef,
+		onResolved: useCallback(() => setResolvedCollectionsVersion((v) => v + 1), []),
+	})
 
 	// Handle paste GeoJSON
 	const handlePaste = useCallback(
@@ -917,118 +867,60 @@ export function GeoEditorView() {
 		[editor, setCollectionMeta],
 	)
 
-	// OSM Query state from store
-	const osmQueryMode = useEditorStore((state) => state.osmQueryMode)
-	const osmQueryFilter = useEditorStore((state) => state.osmQueryFilter)
-	const setOsmQueryMode = useEditorStore((state) => state.setOsmQueryMode)
-	const setOsmQueryPosition = useEditorStore((state) => state.setOsmQueryPosition)
-	const setOsmQueryResults = useEditorStore((state) => state.setOsmQueryResults)
-	const setOsmQueryError = useEditorStore((state) => state.setOsmQueryError)
-	const clearOsmQuery = useEditorStore((state) => state.clearOsmQuery)
-
-	// OSM Query handlers
-	const handleOsmQueryClick = useCallback(() => {
-		// Enter click mode - next map click will query OSM
-		setOsmQueryMode('click')
-	}, [setOsmQueryMode])
-
-	const executeOsmQuery = useCallback(
-		async (lat: number, lon: number, screenX: number, screenY: number) => {
-			setOsmQueryMode('loading')
-			setOsmQueryPosition({ x: screenX, y: screenY, lat, lon })
-			setOsmQueryError(null)
-			setOsmQueryResults([])
-
-			try {
-				const filters = osmQueryFilter === 'all' ? undefined : { [osmQueryFilter]: '*' }
-				const response = await earthlyGeoServer.QueryOsmNearby(lat, lon, 200, filters, 30)
-
-				if (!response?.result) {
-					setOsmQueryError('Failed to query OSM - no response')
-					setOsmQueryMode('idle')
-					return
-				}
-
-				setOsmQueryResults((response.result.features ?? []) as GeoJSON.Feature[])
-				setOsmQueryMode('idle')
-			} catch (err: any) {
-				setOsmQueryError(err.message || 'Failed to query OSM')
-				setOsmQueryMode('idle')
-			}
-		},
-		[osmQueryFilter, setOsmQueryMode, setOsmQueryPosition, setOsmQueryError, setOsmQueryResults],
+	// OSM Query hook
+	const { handleOsmQueryClick, handleOsmQueryView, handleOsmImport, clearOsmQuery } = useOsmQuery(
+		map,
+		editor,
 	)
 
-	const handleOsmQueryView = useCallback(async () => {
-		if (!map.current) return
-		const bounds = map.current.getBounds()
-		const center = map.current.getCenter()
-		const container = map.current.getContainer()
+	// Collection & Context Editor hooks
+	const {
+		collectionEditorMode,
+		editingCollection,
+		contextEditorMode,
+		editingContext,
+		clearEditorModes,
+		handleCreateCollection,
+		handleEditCollection,
+		handleSaveCollection,
+		handleCloseCollectionEditor,
+		handleLoadDatasetForEditing,
+		handleInspectContext,
+		handleCreateContext,
+		handleEditContext,
+		handleSaveContext,
+		handleCloseContextEditor,
+		handleOpenGeometryEditor,
+		handleInspectDatasetWithModeSwitch,
+		handleInspectCollectionWithModeSwitch,
+	} = useCollectionContextEditor({
+		isMobile,
+		isFocused,
+		exitViewMode,
+		ensureInfoPanelVisible,
+		encodeContextNaddr,
+		navigateToView,
+		clearFocus,
+		navigateHome,
+		loadDatasetForEditing,
+		handleInspectDataset,
+		handleInspectCollection,
+	})
 
-		setOsmQueryMode('loading')
-		setOsmQueryPosition({
-			x: container.clientWidth / 2,
-			y: container.clientHeight / 2,
-			lat: center.lat,
-			lon: center.lng,
-		})
-		setOsmQueryError(null)
-		setOsmQueryResults([])
-
-		try {
-			const filters = osmQueryFilter === 'all' ? undefined : { [osmQueryFilter]: '*' }
-			const response = await earthlyGeoServer.QueryOsmBbox(
-				bounds.getWest(),
-				bounds.getSouth(),
-				bounds.getEast(),
-				bounds.getNorth(),
-				filters,
-				30,
-			)
-
-			if (!response?.result) {
-				setOsmQueryError('Failed to query OSM - no response')
-				setOsmQueryMode('idle')
-				return
-			}
-
-			setOsmQueryResults((response.result.features ?? []) as GeoJSON.Feature[])
-			setOsmQueryMode('idle')
-		} catch (err: any) {
-			setOsmQueryError(err.message || 'Failed to query OSM')
-			setOsmQueryMode('idle')
-		}
-	}, [osmQueryFilter, setOsmQueryMode, setOsmQueryPosition, setOsmQueryError, setOsmQueryResults])
-
-	const handleOsmImport = useCallback(
-		(features: GeoJSON.Feature[]) => {
-			if (!editor) return
-			features.forEach((feature) => {
-				editor.addFeature(toEditorFeature(feature))
-			})
-		},
-		[editor],
-	)
-
-	// Handle map click for OSM query
-	useEffect(() => {
-		if (!map.current || osmQueryMode !== 'click') return
-		const mapInstance = map.current
-
-		const handleMapClick = (e: maplibregl.MapMouseEvent) => {
-			const { lng, lat } = e.lngLat
-			executeOsmQuery(lat, lng, e.point.x, e.point.y)
-		}
-
-		// Change cursor to crosshair when in click mode
-		mapInstance.getCanvas().style.cursor = 'crosshair'
-		mapInstance.once('click', handleMapClick)
-
-		return () => {
-			mapInstance.getCanvas().style.cursor = ''
-			mapInstance.off('click', handleMapClick)
-		}
-	}, [osmQueryMode, executeOsmQuery])
+	// Feature popup handlers
+	const {
+		featurePopupData,
+		setFeaturePopupData,
+		handleFeaturePopupClose,
+		handleFeaturePopupZoom,
+		handleFeaturePopupEdit,
+		handleFeaturePopupInspect,
+	} = useFeaturePopup({
+		handleZoomToBounds,
+		handleLoadDatasetForEditing,
+		handleInspectDataset,
+		clearEditorModes,
+	})
 
 	// Pan lock and magnifier
 	const togglePanLock = useCallback(() => {
@@ -1040,157 +932,17 @@ export function GeoEditorView() {
 	}, [editor, isDrawingMode, panLocked, setPanLocked])
 
 	// Remote dataset click and hover handling
-	useEffect(() => {
-		if (!map.current || !remoteLayersReady) return
-		const mapInstance = map.current
-
-		// Check if we are in a drawing mode
-		const isInDrawingMode = currentMode.startsWith('draw_')
-
-		const remoteLayers = [
-			REMOTE_FILL_LAYER,
-			REMOTE_LINE_LAYER,
-			REMOTE_POINT_LAYER,
-			REMOTE_ANNOTATION_ANCHOR_LAYER,
-			REMOTE_ANNOTATION_LAYER,
-			UNCLUSTERED_POINT_LAYER,
-		]
-
-		// Cluster click handler - zoom to expand cluster
-		const handleClusterClick = async (event: maplibregl.MapLayerMouseEvent) => {
-			const features = mapInstance.queryRenderedFeatures(event.point, {
-				layers: [CLUSTER_CIRCLE_LAYER],
-			})
-			if (!features.length) return
-
-			const feature = features[0]
-			if (!feature) return
-
-			const clusterId = feature.properties?.cluster_id as number | undefined
-			if (clusterId === undefined) return
-
-			const source = mapInstance.getSource(CLUSTERED_SOURCE_ID) as maplibregl.GeoJSONSource
-			if (!source) return
-
-			try {
-				const zoom = await source.getClusterExpansionZoom(clusterId)
-				const geometry = feature.geometry
-				if (geometry.type !== 'Point') return
-
-				mapInstance.easeTo({
-					center: geometry.coordinates as [number, number],
-					zoom: zoom ?? mapInstance.getZoom() + 2,
-					duration: 500,
-				})
-			} catch {
-				// Cluster may have been removed
-			}
-		}
-
-		const handleMapDatasetClick = (event: maplibregl.MapLayerMouseEvent & any) => {
-			const feature = event.features?.[0]
-			if (!feature) return
-
-			const bbox = bboxFromGeometry(feature.geometry)
-			if (bbox) {
-				const props = (feature.properties ?? {}) as Record<string, unknown>
-				const featureId = props.featureId ?? props.id ?? feature.id
-				setFocusedMapGeometry({
-					bbox,
-					datasetId: props.datasetId != null ? String(props.datasetId) : undefined,
-					sourceEventId: props.sourceEventId != null ? String(props.sourceEventId) : undefined,
-					featureId: featureId != null ? String(featureId) : undefined,
-				})
-			}
-
-			// Do not inspect other datasets while in edit mode
-			if (viewMode === 'edit') {
-				setFeaturePopupData(null)
-				return
-			}
-
-			if (!feature?.properties) return
-			const sourceEventId = feature.properties.sourceEventId as string | undefined
-			const datasetId = feature.properties.datasetId as string | undefined
-
-			const dataset =
-				geoEventsRef.current.find((ev) => ev.id === sourceEventId) ??
-				geoEventsRef.current.find((ev) => (ev.datasetId ?? ev.id) === datasetId)
-
-			if (!dataset) return
-
-			// Show feature popup with click position
-			const isOwner = currentUser?.pubkey === dataset.pubkey
-			const datasetName = getDatasetName(dataset)
-			setFeaturePopupData({
-				dataset,
-				feature: feature as any,
-				clickPosition: { x: event.point.x, y: event.point.y },
-				isOwner,
-				datasetName,
-			})
-
-			ensureResolvedFeatureCollection(dataset).catch(() => undefined)
-			// Just inspect the dataset without triggering focus mode (no URL change)
-			handleInspectDatasetWithoutFocus(dataset)
-		}
-
-		const handleMouseEnter = () => {
-			// Keep default cursor in drawing mode
-			if (isInDrawingMode) return
-			mapInstance.getCanvas().style.cursor = 'pointer'
-		}
-
-		const handleMouseLeave = () => {
-			if (isInDrawingMode) return
-			mapInstance.getCanvas().style.cursor = ''
-		}
-
-		for (const layer of remoteLayers) {
-			if (mapInstance.getLayer(layer)) {
-				mapInstance.on('click', layer, handleMapDatasetClick)
-				mapInstance.on('mouseenter', layer, handleMouseEnter)
-				mapInstance.on('mouseleave', layer, handleMouseLeave)
-			}
-		}
-
-		// Add cluster layer handlers
-		if (mapInstance.getLayer(CLUSTER_CIRCLE_LAYER)) {
-			mapInstance.on('click', CLUSTER_CIRCLE_LAYER, handleClusterClick)
-			mapInstance.on('mouseenter', CLUSTER_CIRCLE_LAYER, handleMouseEnter)
-			mapInstance.on('mouseleave', CLUSTER_CIRCLE_LAYER, handleMouseLeave)
-		}
-
-		return () => {
-			for (const layer of remoteLayers) {
-				try {
-					mapInstance.off('click', layer, handleMapDatasetClick)
-					mapInstance.off('mouseenter', layer, handleMouseEnter)
-					mapInstance.off('mouseleave', layer, handleMouseLeave)
-				} catch {
-					// Layer may have been removed
-				}
-			}
-			// Remove cluster layer handlers
-			try {
-				mapInstance.off('click', CLUSTER_CIRCLE_LAYER, handleClusterClick)
-				mapInstance.off('mouseenter', CLUSTER_CIRCLE_LAYER, handleMouseEnter)
-				mapInstance.off('mouseleave', CLUSTER_CIRCLE_LAYER, handleMouseLeave)
-			} catch {
-				// Layer may have been removed
-			}
-		}
-	}, [
+	useMapInteractions({
+		mapRef: map,
+		remoteLayersReady,
+		CLUSTERED_SOURCE_ID,
+		geoEventsRef,
+		currentUserPubkey: currentUser?.pubkey,
+		getDatasetName,
 		handleInspectDatasetWithoutFocus,
 		ensureResolvedFeatureCollection,
-		geoEventsRef,
-		remoteLayersReady,
-		setFocusedMapGeometry,
-		CLUSTERED_SOURCE_ID,
-		viewMode,
-		currentUser?.pubkey,
-		getDatasetName,
-	])
+		setFeaturePopupData,
+	})
 
 	// Search result handling
 	const zoomToSearchResult = useCallback((result: GeoSearchResult) => {
@@ -1243,19 +995,6 @@ export function GeoEditorView() {
 		[zoomToSearchResult],
 	)
 
-	// Zoom to bounds handler
-	const handleZoomToBounds = useCallback((bounds: [number, number, number, number]) => {
-		if (!map.current) return
-		const [west, south, east, north] = bounds
-		map.current.fitBounds(
-			[
-				[west, south],
-				[east, north],
-			],
-			{ padding: 50, duration: 500 },
-		)
-	}, [])
-
 	// Zoom to a single editor feature
 	const handleZoomToFeature = useCallback(
 		(feature: EditorFeature) => {
@@ -1291,239 +1030,6 @@ export function GeoEditorView() {
 		toggleDatasetVisibility,
 		toggleAllDatasetVisibility,
 	})
-
-	// Collection Editor Handlers
-	const handleCreateCollection = useCallback(() => {
-		setCollectionEditorMode('create')
-		setEditingCollection(null)
-		setContextEditorMode('none')
-		setEditingContext(null)
-		// Exit view mode if active
-		exitViewMode()
-		if (!isMobile) setShowInfoPanel(true)
-	}, [isMobile, setShowInfoPanel, exitViewMode])
-
-	const handleEditCollection = useCallback(
-		(collection: NDKGeoCollectionEvent) => {
-			setCollectionEditorMode('edit')
-			setEditingCollection(collection)
-			setContextEditorMode('none')
-			setEditingContext(null)
-			// Exit view mode if active
-			exitViewMode()
-			if (!isMobile) setShowInfoPanel(true)
-		},
-		[isMobile, setShowInfoPanel, exitViewMode],
-	)
-
-	const handleSaveCollection = useCallback((collection: NDKGeoCollectionEvent) => {
-		setCollectionEditorMode('none')
-		setEditingCollection(null)
-	}, [])
-
-	const handleCloseCollectionEditor = useCallback(() => {
-		setCollectionEditorMode('none')
-		setEditingCollection(null)
-	}, [])
-
-	// Wrapper that clears collection editor mode when loading a dataset for editing
-	const handleLoadDatasetForEditing = useCallback(
-		(event: NDKGeoEvent) => {
-			setCollectionEditorMode('none')
-			setEditingCollection(null)
-			setContextEditorMode('none')
-			setEditingContext(null)
-			loadDatasetForEditing(event)
-		},
-		[loadDatasetForEditing],
-	)
-
-	// Feature popup handlers
-	const handleFeaturePopupClose = useCallback(() => {
-		setFeaturePopupData(null)
-	}, [])
-
-	const handleFeaturePopupZoom = useCallback(
-		(feature: GeoJSON.Feature) => {
-			if (!feature?.geometry || !map.current) return
-			import('@turf/turf')
-				.then((turf) => {
-					const bbox = turf.bbox(feature) as [number, number, number, number]
-					if (bbox.every((v) => Number.isFinite(v))) {
-						handleZoomToBounds(bbox)
-					}
-				})
-				.catch((err) => {
-					console.warn('Failed to zoom to feature:', err)
-				})
-		},
-		[handleZoomToBounds],
-	)
-
-	const handleFeaturePopupEdit = useCallback(
-		(dataset: NDKGeoEvent) => {
-			handleLoadDatasetForEditing(dataset)
-			setFeaturePopupData(null)
-		},
-		[handleLoadDatasetForEditing],
-	)
-
-	const handleFeaturePopupInspect = useCallback(
-		(dataset: NDKGeoEvent) => {
-			setCollectionEditorMode('none')
-			setEditingCollection(null)
-			setContextEditorMode('none')
-			setEditingContext(null)
-			handleInspectDataset(dataset)
-			setFeaturePopupData(null)
-		},
-		[handleInspectDataset],
-	)
-
-	// Wrapper that clears collection editor mode when inspecting a dataset
-	const handleInspectDatasetWithModeSwitch = useCallback(
-		(event: NDKGeoEvent) => {
-			setCollectionEditorMode('none')
-			setEditingCollection(null)
-			setContextEditorMode('none')
-			setEditingContext(null)
-			handleInspectDataset(event)
-		},
-		[handleInspectDataset],
-	)
-
-	// Wrapper that clears collection editor mode when inspecting a collection
-	const handleInspectCollectionWithModeSwitch = useCallback(
-		(collection: NDKGeoCollectionEvent, events: NDKGeoEvent[]) => {
-			setCollectionEditorMode('none')
-			setEditingCollection(null)
-			setContextEditorMode('none')
-			setEditingContext(null)
-			handleInspectCollection(collection, events)
-		},
-		[handleInspectCollection],
-	)
-
-	const handleInspectContext = useCallback(
-		(context: NDKMapContextEvent) => {
-			setCollectionEditorMode('none')
-			setEditingCollection(null)
-			setContextEditorMode('none')
-			setEditingContext(null)
-			setViewModeState('view')
-			setViewDatasetState(null)
-			setViewCollectionState(null)
-			setViewContext(context)
-			ensureInfoPanelVisible()
-
-			const naddr = encodeContextNaddr(context)
-			if (naddr) {
-				window.location.hash = `/context/${naddr}`
-			}
-		},
-		[
-			setViewModeState,
-			setViewDatasetState,
-			setViewCollectionState,
-			setViewContext,
-			ensureInfoPanelVisible,
-			encodeContextNaddr,
-		],
-	)
-
-	const handleCreateContext = useCallback(() => {
-		setCollectionEditorMode('none')
-		setEditingCollection(null)
-		setContextEditorMode('create')
-		setEditingContext(null)
-		setViewModeState('edit')
-		setViewDatasetState(null)
-		setViewCollectionState(null)
-		setViewContext(null)
-		setViewContextDatasets([])
-		setViewContextCollections([])
-		clearFocus()
-		navigateToView('context-editor')
-		if (!isMobile) setShowInfoPanel(true)
-	}, [
-		isMobile,
-		setShowInfoPanel,
-		setViewModeState,
-		setViewDatasetState,
-		setViewCollectionState,
-		setViewContext,
-		setViewContextDatasets,
-		setViewContextCollections,
-		clearFocus,
-		navigateToView,
-	])
-
-	const handleEditContext = useCallback(
-		(context: NDKMapContextEvent) => {
-			setCollectionEditorMode('none')
-			setEditingCollection(null)
-			setContextEditorMode('edit')
-			setEditingContext(context)
-			setViewModeState('edit')
-			setViewDatasetState(null)
-			setViewCollectionState(null)
-			setViewContext(null)
-			setViewContextDatasets([])
-			setViewContextCollections([])
-			clearFocus()
-			navigateToView('context-editor')
-			if (!isMobile) setShowInfoPanel(true)
-		},
-		[
-			isMobile,
-			setShowInfoPanel,
-			setViewModeState,
-			setViewDatasetState,
-			setViewCollectionState,
-			setViewContext,
-			setViewContextDatasets,
-			setViewContextCollections,
-			clearFocus,
-			navigateToView,
-		],
-	)
-
-	const handleSaveContext = useCallback(
-		(_context: NDKMapContextEvent) => {
-			setContextEditorMode('none')
-			setEditingContext(null)
-			navigateToView('contexts')
-		},
-		[navigateToView],
-	)
-
-	const handleCloseContextEditor = useCallback(() => {
-		setContextEditorMode('none')
-		setEditingContext(null)
-		navigateToView('contexts')
-	}, [navigateToView])
-
-	const handleOpenGeometryEditor = useCallback(() => {
-		setCollectionEditorMode('none')
-		setEditingCollection(null)
-		setContextEditorMode('none')
-		setEditingContext(null)
-		setViewModeState('edit')
-		setViewDatasetState(null)
-		setViewCollectionState(null)
-		setViewContext(null)
-		setViewContextDatasets([])
-		setViewContextCollections([])
-		clearFocus()
-	}, [
-		setViewModeState,
-		setViewDatasetState,
-		setViewCollectionState,
-		setViewContext,
-		setViewContextDatasets,
-		setViewContextCollections,
-		clearFocus,
-	])
 
 	// Get collection key for visibility tracking
 	const getCollectionKey = useCallback((collection: NDKGeoCollectionEvent): string => {
