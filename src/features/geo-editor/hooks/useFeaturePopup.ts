@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import type { NDKGeoEvent } from '../../../lib/ndk/NDKGeoEvent'
+import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
 import type { FeaturePopupData } from '../components/FeaturePopup'
 
 interface UseFeaturePopupParams {

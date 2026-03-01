@@ -2,13 +2,13 @@ import { ChevronDown, ChevronRight, Eye, EyeOff, MapPin } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import type { FeatureCollection } from 'geojson'
 import type { CommentNode } from '../hooks/useGeoComments'
-import type { NDKGeoCommentEvent } from '../../../lib/ndk/NDKGeoCommentEvent'
-import { Button } from '../../../components/ui/button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '../../../components/ui/tooltip'
+import type { NDKGeoCommentEvent } from '@/lib/ndk/NDKGeoCommentEvent'
+import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { GeoCommentForm } from './GeoCommentForm'
 import { GeoSocialActions } from './GeoSocialActions'
-import { GeoRichTextEditor } from '../../../components/editor/GeoRichTextEditor'
-import { UserProfile } from '../../../components/user-profile'
+import { GeoRichTextEditor } from '@/components/editor/GeoRichTextEditor'
+import { UserProfile } from '@/components/user-profile'
 
 interface GeoCommentProps {
 	commentNode: CommentNode

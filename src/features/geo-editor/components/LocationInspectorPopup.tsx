@@ -1,7 +1,7 @@
 import { X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { Button } from '../../../components/ui/button'
-import type { ReverseLookupOutput } from '../../../ctxcn/EarthlyGeoServerClient'
+import { Button } from '@/components/ui/button'
+import type { ReverseLookupOutput } from '@/ctxcn/EarthlyGeoServerClient'
 
 type ReverseLookupResult = ReverseLookupOutput['result']
 

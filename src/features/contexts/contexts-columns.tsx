@@ -1,8 +1,8 @@
 import type { ColumnDef } from '@tanstack/react-table'
 import { Bug, Eye, Pencil } from 'lucide-react'
-import { Button } from '../../components/ui/button'
-import { UserProfile } from '../../components/user-profile'
-import type { NDKMapContextEvent } from '../../lib/ndk/NDKMapContextEvent'
+import { Button } from '@/components/ui/button'
+import { UserProfile } from '@/components/user-profile'
+import type { NDKMapContextEvent } from '@/lib/ndk/NDKMapContextEvent'
 
 export interface ContextRowData {
 	context: NDKMapContextEvent

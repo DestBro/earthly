@@ -1,7 +1,7 @@
 import { X } from 'lucide-react'
 import type React from 'react'
-import { Button } from '../../../components/ui/button'
-import { SearchBar } from '../../../components/ui/search-bar'
+import { Button } from '@/components/ui/button'
+import { SearchBar } from '@/components/ui/search-bar'
 import type { GeoSearchResult } from '../types'
 interface MobileSearchProps {
 	searchQuery?: string

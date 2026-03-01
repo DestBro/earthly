@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import type maplibregl from 'maplibre-gl'
-import type { NDKGeoEvent } from '../../../lib/ndk/NDKGeoEvent'
-import { bboxFromGeometry } from '../../../lib/geo/bbox'
+import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
+import { bboxFromGeometry } from '@/lib/geo/bbox'
 import { useEditorStore } from '../store'
 import type { FeaturePopupData } from '../components/FeaturePopup'
 import {

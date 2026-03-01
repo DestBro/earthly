@@ -10,7 +10,7 @@
 import type { FeatureCollection } from 'geojson'
 import type NDK from '@nostr-dev-kit/ndk'
 import { NDKEvent } from '@nostr-dev-kit/ndk'
-import { getBlossomServerUrl } from '../../features/geo-editor/constants'
+import { getBlossomServerUrl } from '@/features/geo-editor/constants'
 
 export interface BlossomUploadResult {
 	/** SHA-256 hash of the uploaded content */

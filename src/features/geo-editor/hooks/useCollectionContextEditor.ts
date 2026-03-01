@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
-import type { NDKGeoCollectionEvent } from '../../../lib/ndk/NDKGeoCollectionEvent'
-import type { NDKGeoEvent } from '../../../lib/ndk/NDKGeoEvent'
-import type { NDKMapContextEvent } from '../../../lib/ndk/NDKMapContextEvent'
+import type { NDKGeoCollectionEvent } from '@/lib/ndk/NDKGeoCollectionEvent'
+import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
+import type { NDKMapContextEvent } from '@/lib/ndk/NDKMapContextEvent'
 import { useEditorStore, type SidebarViewMode } from '../store'
 
 interface UseCollectionContextEditorParams {

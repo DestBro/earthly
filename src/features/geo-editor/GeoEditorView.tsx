@@ -8,23 +8,23 @@ import {
 	useRef,
 	useState,
 } from 'react'
-import { AppSidebar } from '../../components/AppSidebar'
-import { BlossomUploadDialog } from '../../components/BlossomUploadDialog'
-import { DebugDialog } from '../../components/DebugDialog'
-import { Button } from '../../components/ui/button'
-import { SidebarInset, SidebarProvider } from '../../components/ui/sidebar'
-import { useAvailableGeoFeatures } from '../../lib/hooks/useAvailableGeoFeatures'
-import { useIsMobile } from '../../lib/hooks/useIsMobile'
-import { useGeoCollections, useMapContexts, useStations } from '../../lib/hooks/useStations'
-import type { NDKGeoCollectionEvent } from '../../lib/ndk/NDKGeoCollectionEvent'
-import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
-import { GEO_EVENT_KIND } from '../../lib/ndk/kinds'
+import { AppSidebar } from '@/components/AppSidebar'
+import { BlossomUploadDialog } from '@/components/BlossomUploadDialog'
+import { DebugDialog } from '@/components/DebugDialog'
+import { Button } from '@/components/ui/button'
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
+import { useAvailableGeoFeatures } from '@/lib/hooks/useAvailableGeoFeatures'
+import { useIsMobile } from '@/lib/hooks/useIsMobile'
+import { useGeoCollections, useMapContexts, useStations } from '@/lib/hooks/useStations'
+import type { NDKGeoCollectionEvent } from '@/lib/ndk/NDKGeoCollectionEvent'
+import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
+import { GEO_EVENT_KIND } from '@/lib/ndk/kinds'
 import {
 	defaultContextFilterMode,
 	getContextCoordinate,
 	isDatasetAllowedByContextFilter,
 	validateDatasetForContext,
-} from '../../lib/context/validation'
+} from '@/lib/context/validation'
 import { Editor } from './components/Editor'
 import { ImportOsmDialog } from './components/ImportOsmDialog'
 import { LocateButton } from './components/LocateButton'

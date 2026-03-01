@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import type { NDKGeoEvent } from '../../../lib/ndk/NDKGeoEvent'
+import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
 import { useEditorStore } from '../store'
 
 interface UseMentionActionsParams {

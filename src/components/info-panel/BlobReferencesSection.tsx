@@ -1,5 +1,5 @@
 import { ExternalLink, Eye, EyeOff, Plus, Trash2, X } from 'lucide-react'
-import { useEditorStore } from '../../features/geo-editor/store'
+import { useEditorStore } from '@/features/geo-editor/store'
 import { cn } from '@/lib/utils'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'

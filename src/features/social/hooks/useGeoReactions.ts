@@ -1,9 +1,9 @@
 import { useNDK, useNDKCurrentUser, useSubscribe, NDKEvent } from '@nostr-dev-kit/react'
 import type { NDKEvent as NDKEventType } from '@nostr-dev-kit/ndk'
 import { useMemo, useCallback, useState } from 'react'
-import type { NDKGeoEvent } from '../../../lib/ndk/NDKGeoEvent'
-import type { NDKGeoCollectionEvent } from '../../../lib/ndk/NDKGeoCollectionEvent'
-import type { NDKGeoCommentEvent } from '../../../lib/ndk/NDKGeoCommentEvent'
+import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
+import type { NDKGeoCollectionEvent } from '@/lib/ndk/NDKGeoCollectionEvent'
+import type { NDKGeoCommentEvent } from '@/lib/ndk/NDKGeoCommentEvent'
 
 /** Any Nostr event that can receive reactions */
 export type ReactableEvent = NDKGeoEvent | NDKGeoCollectionEvent | NDKGeoCommentEvent | NDKEventType

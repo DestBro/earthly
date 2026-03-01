@@ -1,7 +1,7 @@
 import { Map } from 'lucide-react'
 import type React from 'react'
 import { useState } from 'react'
-import { Button } from '../../../components/ui/button'
+import { Button } from '@/components/ui/button'
 import {
 	Dialog,
 	DialogContent,
@@ -9,18 +9,18 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from '../../../components/ui/dialog'
-import { Input } from '../../../components/ui/input'
-import { Label } from '../../../components/ui/label'
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from '../../../components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs'
-import { earthlyGeoServer, type OsmElementType, type OsmFilters } from '../../../ctxcn'
+} from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { earthlyGeoServer, type OsmElementType, type OsmFilters } from '@/ctxcn'
 
 // Common OSM feature type presets
 const FEATURE_PRESETS = [

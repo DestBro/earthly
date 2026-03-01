@@ -1,11 +1,11 @@
 import { Eye, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { Feature, Geometry } from 'geojson'
-import { Button } from '../../../components/ui/button'
-import { GeometryBadge } from '../../../components/info-panel/geometry/GeometryDisplay'
-import { DatasetFeaturesList } from '../../../components/info-panel/DatasetFeaturesList'
-import { UserProfile } from '../../../components/user-profile/UserProfile'
-import type { NDKGeoEvent } from '../../../lib/ndk/NDKGeoEvent'
+import { Button } from '@/components/ui/button'
+import { GeometryBadge } from '@/components/info-panel/geometry/GeometryDisplay'
+import { DatasetFeaturesList } from '@/components/info-panel/DatasetFeaturesList'
+import { UserProfile } from '@/components/user-profile/UserProfile'
+import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
 import { cn } from '@/lib/utils'
 
 export interface FeaturePopupData {

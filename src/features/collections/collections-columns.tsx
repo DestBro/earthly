@@ -1,9 +1,9 @@
 import type { ColumnDef } from '@tanstack/react-table'
 import { Bug, Maximize2, Pencil, Eye } from 'lucide-react'
-import type { NDKGeoCollectionEvent } from '../../lib/ndk/NDKGeoCollectionEvent'
-import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
-import { Button } from '../../components/ui/button'
-import { UserProfile } from '../../components/user-profile'
+import type { NDKGeoCollectionEvent } from '@/lib/ndk/NDKGeoCollectionEvent'
+import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
+import { Button } from '@/components/ui/button'
+import { UserProfile } from '@/components/user-profile'
 
 export interface CollectionRowData {
 	collection: NDKGeoCollectionEvent

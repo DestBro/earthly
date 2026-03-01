@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { NDKGeoEvent } from '../../../lib/ndk/NDKGeoEvent'
+import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
 
 interface UseBlobResolutionParams {
 	geoEvents: NDKGeoEvent[]

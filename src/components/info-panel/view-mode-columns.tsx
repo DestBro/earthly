@@ -1,7 +1,7 @@
 import type { ColumnDef } from '@tanstack/react-table'
 import { Download, Eye, EyeOff, Maximize2, Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
+import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
 import { Button } from '../ui/button'
 
 export interface ViewModeRowData {

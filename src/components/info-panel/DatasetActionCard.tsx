@@ -1,6 +1,6 @@
 import { Eye, EyeOff, Maximize2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
+import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
 import { Button } from '../ui/button'
 
 export interface DatasetActionCardProps {

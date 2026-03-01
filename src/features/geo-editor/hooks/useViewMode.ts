@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react'
 import { nip19 } from 'nostr-tools'
-import type { NDKGeoCollectionEvent } from '../../../lib/ndk/NDKGeoCollectionEvent'
-import type { NDKGeoEvent } from '../../../lib/ndk/NDKGeoEvent'
-import type { NDKMapContextEvent } from '../../../lib/ndk/NDKMapContextEvent'
-import { GEO_EVENT_KIND } from '../../../lib/ndk/kinds'
+import type { NDKGeoCollectionEvent } from '@/lib/ndk/NDKGeoCollectionEvent'
+import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
+import type { NDKMapContextEvent } from '@/lib/ndk/NDKMapContextEvent'
+import { GEO_EVENT_KIND } from '@/lib/ndk/kinds'
 import { useEditorStore } from '../store'
 
 interface UseViewModeOptions {

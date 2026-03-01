@@ -13,12 +13,12 @@ import { useMemo, useState, useCallback } from 'react'
 import { toast } from 'sonner'
 import { Progress } from '../ui/progress'
 import { Button } from '../ui/button'
-import { BLOSSOM_UPLOAD_THRESHOLD_BYTES } from '../../features/geo-editor/constants'
+import { BLOSSOM_UPLOAD_THRESHOLD_BYTES } from '@/features/geo-editor/constants'
 import {
 	formatBytes,
 	uploadGeoJsonToBlossom,
 	type BlossomUploadResult,
-} from '../../lib/blossom/blossomUpload'
+} from '@/lib/blossom/blossomUpload'
 import type { FeatureCollection } from 'geojson'
 import { cn } from '@/lib/utils'
 import type NDK from '@nostr-dev-kit/react'

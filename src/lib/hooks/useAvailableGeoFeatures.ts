@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { nip19 } from 'nostr-tools'
 import type { FeatureCollection } from 'geojson'
 import type { NDKGeoEvent } from '../ndk/NDKGeoEvent'
-import type { GeoFeatureItem } from '../../components/editor/GeoRichTextEditor'
+import type { GeoFeatureItem } from '@/components/editor/GeoRichTextEditor'
 
 interface NamedFeatureCollection extends FeatureCollection {
 	name?: string

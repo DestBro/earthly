@@ -1,18 +1,18 @@
 import { Combine, Link2, Merge, Minus, Route, Split as SplitIcon } from 'lucide-react'
-import { Button } from '../../../../components/ui/button'
+import { Button } from '@/components/ui/button'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
-} from '../../../../components/ui/dropdown-menu'
+} from '@/components/ui/dropdown-menu'
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from '../../../../components/ui/tooltip'
+} from '@/components/ui/tooltip'
 
 export interface GeometryOpsDropdownProps {
 	disabled?: boolean

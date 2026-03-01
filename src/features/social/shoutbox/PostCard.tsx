@@ -4,13 +4,13 @@ import { useNDKCurrentUser } from '@nostr-dev-kit/react'
 import { formatDistanceToNow } from 'date-fns'
 import { nip19 } from 'nostr-tools'
 import { ExternalLink, ChevronDown, ChevronUp, LogIn } from 'lucide-react'
-import { Button } from '../../../components/ui/button'
-import { ContentViewer } from '../../../components/editor/ContentViewer'
-import { GeoRichTextEditor, type GeoRichTextEditorRef } from '../../../components/editor/GeoRichTextEditor'
+import { Button } from '@/components/ui/button'
+import { ContentViewer } from '@/components/editor/ContentViewer'
+import { GeoRichTextEditor, type GeoRichTextEditorRef } from '@/components/editor/GeoRichTextEditor'
 import { GeoSocialActions } from '../comments/GeoSocialActions'
 import { CommentsList } from './CommentThread'
 import { useShoutboxComments } from './useShoutboxComments'
-import { UserProfile } from '../../../components/user-profile'
+import { UserProfile } from '@/components/user-profile'
 
 interface PostCardProps {
 	/** The post event */

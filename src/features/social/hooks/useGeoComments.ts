@@ -1,10 +1,10 @@
 import { useNDK, useSubscribe } from '@nostr-dev-kit/react'
 import type { NDKEvent } from '@nostr-dev-kit/react'
 import { useMemo, useState, useCallback } from 'react'
-import { NDKGeoCommentEvent } from '../../../lib/ndk/NDKGeoCommentEvent'
-import { GEO_COMMENT_KIND } from '../../../lib/ndk/kinds'
-import type { NDKGeoEvent } from '../../../lib/ndk/NDKGeoEvent'
-import type { NDKGeoCollectionEvent } from '../../../lib/ndk/NDKGeoCollectionEvent'
+import { NDKGeoCommentEvent } from '@/lib/ndk/NDKGeoCommentEvent'
+import { GEO_COMMENT_KIND } from '@/lib/ndk/kinds'
+import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
+import type { NDKGeoCollectionEvent } from '@/lib/ndk/NDKGeoCollectionEvent'
 import type { FeatureCollection } from 'geojson'
 
 export interface CommentNode {

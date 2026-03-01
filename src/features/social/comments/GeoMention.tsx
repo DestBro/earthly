@@ -1,7 +1,7 @@
 import { Eye, EyeOff, MapPin, Maximize2 } from 'lucide-react'
 import { useState, useMemo } from 'react'
-import { Button } from '../../../components/ui/button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '../../../components/ui/tooltip'
+import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 interface GeoMentionProps {
 	/** The nostr address (naddr1...) */

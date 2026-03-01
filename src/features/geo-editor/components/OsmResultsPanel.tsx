@@ -1,6 +1,6 @@
 import { Check, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo } from 'react'
-import { Button } from '../../../components/ui/button'
+import { Button } from '@/components/ui/button'
 import { useEditorStore } from '../store'
 
 interface OsmResultsPanelProps {

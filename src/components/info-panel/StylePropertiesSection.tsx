@@ -1,13 +1,13 @@
 import { RotateCcw } from 'lucide-react'
-import type { EditorFeature } from '../../features/geo-editor/core'
+import type { EditorFeature } from '@/features/geo-editor/core'
 import {
 	DEFAULT_LINESTRING_STYLE,
 	DEFAULT_POINT_STYLE,
 	DEFAULT_POLYGON_STYLE,
 	getGeometryCategory,
 	type GeometryCategory,
-} from '../../features/geo-editor/types/styleProperties'
-import { useEditorStore } from '../../features/geo-editor/store'
+} from '@/features/geo-editor/types/styleProperties'
+import { useEditorStore } from '@/features/geo-editor/store'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 

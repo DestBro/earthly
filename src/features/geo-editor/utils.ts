@@ -1,11 +1,11 @@
 import type { FeatureCollection } from 'geojson'
-import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
+import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
 import {
 	isGeoJsonFeature,
 	isGeoJsonFeatureCollection,
 	isGeoJsonGeometry,
 	normalizeGeoJsonToFeatureCollection,
-} from '../../lib/geo/normalizeGeoJSON'
+} from '@/lib/geo/normalizeGeoJSON'
 import type { EditorFeature } from './core'
 import { NON_CUSTOM_EDITOR_PROPERTY_KEYS } from './constants'
 import { isStyleProperty } from './types/styleProperties'

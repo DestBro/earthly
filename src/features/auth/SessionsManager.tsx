@@ -17,11 +17,11 @@ import { nip19 } from 'nostr-tools'
 import { useRef, useState } from 'react'
 import { Nip46LoginDialog } from './Nip46LoginDialog'
 import { SignupDialog } from './SignupDialog'
-import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
-import { Button } from '../../components/ui/button'
-import { ButtonGroup } from '../../components/ui/button-group'
-import { Label } from '../../components/ui/label'
-import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
+import { ButtonGroup } from '@/components/ui/button-group'
+import { Label } from '@/components/ui/label'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 /**
  * Display a session item with profile info and actions

@@ -1,5 +1,5 @@
 import { Plus, Trash2 } from 'lucide-react'
-import { useEditorStore } from '../../features/geo-editor/store'
+import { useEditorStore } from '@/features/geo-editor/store'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 

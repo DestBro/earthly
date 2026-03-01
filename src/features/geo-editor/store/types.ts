@@ -1,8 +1,8 @@
 import type { FeatureCollection } from 'geojson'
-import type { NDKGeoCollectionEvent } from '../../../lib/ndk/NDKGeoCollectionEvent'
-import type { NDKGeoEvent } from '../../../lib/ndk/NDKGeoEvent'
-import type { NDKMapContextEvent } from '../../../lib/ndk/NDKMapContextEvent'
-import type { ContextFilterMode } from '../../../lib/context/validation'
+import type { NDKGeoCollectionEvent } from '@/lib/ndk/NDKGeoCollectionEvent'
+import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
+import type { NDKMapContextEvent } from '@/lib/ndk/NDKMapContextEvent'
+import type { ContextFilterMode } from '@/lib/context/validation'
 import type { EditorFeature, EditorMode, GeoEditor } from '../core'
 import type { CollectionMeta, EditorBlobReference, GeoSearchResult } from '../types'
 

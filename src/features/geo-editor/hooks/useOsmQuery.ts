@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react'
 import type maplibregl from 'maplibre-gl'
-import { earthlyGeoServer } from '../../../ctxcn'
+import { earthlyGeoServer } from '@/ctxcn'
 import type { EditorFeature } from '../core'
 import { useEditorStore } from '../store'
 import { toEditorFeature } from '../utils'

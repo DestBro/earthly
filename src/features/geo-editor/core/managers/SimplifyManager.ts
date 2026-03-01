@@ -1,6 +1,6 @@
 import type { EditorFeature, EditorOperationContext } from '../types'
 import { normalizeFeature } from '../utils/featureHelpers'
-import { isSimplifiableGeometryType } from '../../../../lib/geo/geometry'
+import { isSimplifiableGeometryType } from '@/lib/geo/geometry'
 
 export class SimplifyManager {
 	constructor(private ctx: EditorOperationContext) {}

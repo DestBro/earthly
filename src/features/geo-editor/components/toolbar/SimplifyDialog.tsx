@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Geometry } from 'geojson'
-import { Button } from '../../../../components/ui/button'
+import { Button } from '@/components/ui/button'
 import {
 	Dialog,
 	DialogContent,
@@ -8,14 +8,14 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from '../../../../components/ui/dialog'
-import { Slider } from '../../../../components/ui/slider'
-import { formatBytes } from '../../../../lib/blossom/blossomUpload'
-import { countGeometryVertices, isSimplifiableGeometryType } from '../../../../lib/geo/geometry'
-import { executeEditorCommand } from '../../commands'
-import { BLOSSOM_UPLOAD_THRESHOLD_BYTES } from '../../constants'
-import type { EditorFeature, GeoEditor } from '../../core'
-import { useEditorStore } from '../../store'
+} from '@/components/ui/dialog'
+import { Slider } from '@/components/ui/slider'
+import { formatBytes } from '@/lib/blossom/blossomUpload'
+import { countGeometryVertices, isSimplifiableGeometryType } from '@/lib/geo/geometry'
+import { executeEditorCommand } from '@/features/geo-editor/commands'
+import { BLOSSOM_UPLOAD_THRESHOLD_BYTES } from '@/features/geo-editor/constants'
+import type { EditorFeature, GeoEditor } from '@/features/geo-editor/core'
+import { useEditorStore } from '@/features/geo-editor/store'
 
 const SIMPLIFY_SLIDER_MIN = 0
 const SIMPLIFY_SLIDER_MAX = 100

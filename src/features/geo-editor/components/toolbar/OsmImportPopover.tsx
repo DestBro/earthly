@@ -1,19 +1,19 @@
 import { MousePointerClick, Scan, Settings2, Sparkles } from 'lucide-react'
-import { Button } from '../../../../components/ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from '../../../../components/ui/popover'
+import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from '../../../../components/ui/select'
+} from '@/components/ui/select'
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from '../../../../components/ui/tooltip'
+} from '@/components/ui/tooltip'
 
 export const OSM_FILTER_PRESETS = [
 	{ label: 'Highways', value: 'highway' },

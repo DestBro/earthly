@@ -1,13 +1,13 @@
 import { MapPin, Pentagon, Route, Type } from 'lucide-react'
-import { Button } from '../../../../components/ui/button'
-import { ButtonGroup } from '../../../../components/ui/button-group'
+import { Button } from '@/components/ui/button'
+import { ButtonGroup } from '@/components/ui/button-group'
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from '../../../../components/ui/tooltip'
-import type { EditorMode } from '../../core'
+} from '@/components/ui/tooltip'
+import type { EditorMode } from '@/features/geo-editor/core'
 
 export interface DrawButtonGroupProps {
 	mode: EditorMode

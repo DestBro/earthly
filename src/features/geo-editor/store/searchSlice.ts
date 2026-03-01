@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand'
-import { earthlyGeoServer } from '../../../ctxcn'
+import { earthlyGeoServer } from '@/ctxcn'
 import type { EditorState, SearchSlice } from './types'
 
 export const createSearchSlice: StateCreator<EditorState, [], [], SearchSlice> = (set, get) => ({
