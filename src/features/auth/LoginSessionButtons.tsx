@@ -15,10 +15,10 @@ import { AppWindowIcon, KeyRoundIcon, LogOutIcon, QrCodeIcon, User2Icon } from '
 import { useState, useRef } from 'react'
 import { Nip46LoginDialog } from './Nip46LoginDialog'
 import { SignupDialog } from './SignupDialog'
-import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
-import { Button } from './ui/button'
-import { ButtonGroup } from './ui/button-group'
-import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
+import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
+import { Button } from '../../components/ui/button'
+import { ButtonGroup } from '../../components/ui/button-group'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip'
 
 /**
  * Display a mini profile with avatar and optional name

@@ -5,7 +5,7 @@ import {
 	type CollectionColumnsContext,
 	type CollectionRowData,
 	createCollectionColumns,
-} from './collections-columns'
+} from '../features/collections/collections-columns'
 import {
 	DatasetFilterToolbar,
 	useFilterState,

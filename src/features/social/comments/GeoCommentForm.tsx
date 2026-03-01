@@ -2,13 +2,13 @@ import { MapPin, Send, X } from 'lucide-react'
 import { forwardRef, useState, useRef, useCallback } from 'react'
 import { useNDKCurrentUser } from '@nostr-dev-kit/react'
 import type { FeatureCollection } from 'geojson'
-import { Button } from '../ui/button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
+import { Button } from '../../../components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../../components/ui/tooltip'
 import {
 	GeoRichTextEditor,
 	type GeoRichTextEditorRef,
 	type GeoFeatureItem,
-} from '../editor/GeoRichTextEditor'
+} from '../../../components/editor/GeoRichTextEditor'
 
 interface GeoCommentFormProps {
 	onSubmit: (text: string, geojson?: FeatureCollection) => Promise<void>

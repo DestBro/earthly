@@ -20,8 +20,8 @@ import {
 	ViewModePanel,
 } from './info-panel'
 import { DatasetSizeIndicator } from './info-panel/DatasetSizeIndicator'
-import { GeoCollectionEditorPanel } from './GeoCollectionEditorPanel'
-import { MapContextEditorPanel } from './MapContextEditorPanel'
+import { GeoCollectionEditorPanel } from '../features/collections/GeoCollectionEditorPanel'
+import { MapContextEditorPanel } from '../features/contexts/MapContextEditorPanel'
 import { Button } from './ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'

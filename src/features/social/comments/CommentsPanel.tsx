@@ -1,15 +1,15 @@
 import { MessageCircle, RefreshCw } from 'lucide-react'
 import { useState, useCallback } from 'react'
 import type { FeatureCollection } from 'geojson'
-import { useGeoComments } from '../../lib/hooks/useGeoComments'
-import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
-import type { NDKGeoCollectionEvent } from '../../lib/ndk/NDKGeoCollectionEvent'
-import type { NDKGeoCommentEvent } from '../../lib/ndk/NDKGeoCommentEvent'
-import { Button } from '../ui/button'
+import { useGeoComments } from '../hooks/useGeoComments'
+import type { NDKGeoEvent } from '../../../lib/ndk/NDKGeoEvent'
+import type { NDKGeoCollectionEvent } from '../../../lib/ndk/NDKGeoCollectionEvent'
+import type { NDKGeoCommentEvent } from '../../../lib/ndk/NDKGeoCommentEvent'
+import { Button } from '../../../components/ui/button'
 import { GeoComment } from './GeoComment'
 import { GeoCommentForm } from './GeoCommentForm'
 import { GeoSocialActions } from './GeoSocialActions'
-import type { GeoFeatureItem } from '../editor/GeoRichTextEditor'
+import type { GeoFeatureItem } from '../../../components/editor/GeoRichTextEditor'
 
 interface CommentsPanelProps {
 	/** The dataset or collection to show comments for */

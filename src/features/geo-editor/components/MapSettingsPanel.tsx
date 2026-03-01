@@ -11,7 +11,7 @@ import {
 import { nip19 } from 'nostr-tools'
 import type React from 'react'
 import { useMemo, useRef, useState } from 'react'
-import { SessionsManager } from '../../../components/SessionsManager'
+import { SessionsManager } from '../../auth/SessionsManager'
 import { Button } from '../../../components/ui/button'
 import { Checkbox } from '../../../components/ui/checkbox'
 import {

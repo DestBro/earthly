@@ -10,7 +10,7 @@ import { Button } from '../ui/button'
 import { DataTable } from '../ui/data-table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { DatasetActionCard } from './DatasetActionCard'
-import { CommentsPanel } from '../comments'
+import { CommentsPanel } from '../../features/social/comments'
 import { GeoRichTextEditor, type GeoFeatureItem } from '../editor/GeoRichTextEditor'
 import {
 	createViewModeColumns,

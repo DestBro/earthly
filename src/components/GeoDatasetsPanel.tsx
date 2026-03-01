@@ -8,12 +8,12 @@ import {
 	type CollectionColumnsContext,
 	type CollectionRowData,
 	createCollectionColumns,
-} from './collections-columns'
+} from '../features/collections/collections-columns'
 import {
 	createContextColumns,
 	type ContextColumnsContext,
 	type ContextRowData,
-} from './contexts-columns'
+} from '../features/contexts/contexts-columns'
 import {
 	DatasetFilterToolbar,
 	useFilterState,

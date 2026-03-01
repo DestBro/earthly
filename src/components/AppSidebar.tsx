@@ -17,12 +17,12 @@ import type { FeatureCollection } from 'geojson'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
 import type { NDKMapContextEvent } from '../lib/ndk/NDKMapContextEvent'
-import { ShoutboxPanel } from './shoutbox'
+import { ShoutboxPanel } from '../features/social/shoutbox'
 import { GeoDatasetsPanelContent } from './GeoDatasetsPanel'
 import { UserProfilePanel } from './UserProfilePanel'
 import { GeoEditorInfoPanelContent } from './GeoEditorInfoPanel'
 import { HelpPanel } from './HelpPanel'
-import { LoginSessionButtons } from './LoginSessionButtom'
+import { LoginSessionButtons } from '../features/auth/LoginSessionButtons'
 import {
 	Sidebar,
 	SidebarContent,

@@ -16,7 +16,7 @@ import {
 import type React from 'react'
 import { useRef, useState } from 'react'
 import { HelpPopover } from '../../../components/HelpPopover'
-import { LoginSessionButtons } from '../../../components/LoginSessionButtom'
+import { LoginSessionButtons } from '../../auth/LoginSessionButtons'
 import { Button } from '../../../components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '../../../components/ui/popover'
 import { SearchBar } from '../../../components/ui/search-bar'

@@ -4,21 +4,21 @@ import type { FeatureCollection } from 'geojson'
 import { Eye, EyeOff, FileText, MapPin, Maximize2, MessageCircle, Plus, Trash2 } from 'lucide-react'
 import { nip19 } from 'nostr-tools'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useEditorStore, type GeoCollectionEditDraft } from '../features/geo-editor/store'
-import { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
-import type { NDKGeoCommentEvent } from '../lib/ndk/NDKGeoCommentEvent'
-import type { MapContextValidationMode, NDKMapContextEvent } from '../lib/ndk/NDKMapContextEvent'
-import { CommentsPanel } from './comments'
+import { useEditorStore, type GeoCollectionEditDraft } from '../geo-editor/store'
+import { NDKGeoCollectionEvent } from '../../lib/ndk/NDKGeoCollectionEvent'
+import type { NDKGeoCommentEvent } from '../../lib/ndk/NDKGeoCommentEvent'
+import type { MapContextValidationMode, NDKMapContextEvent } from '../../lib/ndk/NDKMapContextEvent'
+import { CommentsPanel } from '../social/comments'
 import {
 	GeoRichTextEditor,
 	type GeoFeatureItem,
 	type GeoRichTextEditorRef,
-} from './editor/GeoRichTextEditor'
-import { Button } from './ui/button'
-import { Input } from './ui/input'
-import { Label } from './ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
-import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
+} from '../../components/editor/GeoRichTextEditor'
+import { Button } from '../../components/ui/button'
+import { Input } from '../../components/ui/input'
+import { Label } from '../../components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip'
 
 type EditorTab = 'details' | 'comments'
 

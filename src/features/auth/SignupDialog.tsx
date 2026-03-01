@@ -3,10 +3,10 @@ import { Scanner } from '@yudiel/react-qr-scanner'
 import { AlertTriangle, CheckCircle2, ChevronDown, Copy, QrCode } from 'lucide-react'
 import { nip19 } from 'nostr-tools'
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, AlertDescription, AlertTitle } from './ui/alert'
-import { Button } from './ui/button'
-import { Checkbox } from './ui/checkbox'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
+import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert'
+import { Button } from '../../components/ui/button'
+import { Checkbox } from '../../components/ui/checkbox'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../../components/ui/collapsible'
 import {
 	Dialog,
 	DialogContent,
@@ -14,9 +14,9 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from './ui/dialog'
-import { Input } from './ui/input'
-import { Label } from './ui/label'
+} from '../../components/ui/dialog'
+import { Input } from '../../components/ui/input'
+import { Label } from '../../components/ui/label'
 
 interface SignupDialogProps {
 	open: boolean

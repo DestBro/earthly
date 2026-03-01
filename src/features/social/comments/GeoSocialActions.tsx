@@ -1,9 +1,9 @@
 import { Heart, MessageCircle, Zap } from 'lucide-react'
 import { useNDKCurrentUser } from '@nostr-dev-kit/react'
 import { toast } from 'sonner'
-import { Button } from '../ui/button'
-import { useGeoReactions, type ReactableEvent } from '../../lib/hooks/useGeoReactions'
-import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
+import { Button } from '../../../components/ui/button'
+import { useGeoReactions, type ReactableEvent } from '../hooks/useGeoReactions'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../../components/ui/tooltip'
 
 interface GeoSocialActionsProps {
 	/** Any Nostr event that can receive reactions */
