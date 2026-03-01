@@ -145,3 +145,24 @@ export interface IManager {
 	onAdd(map: Map): void
 	onRemove(): void
 }
+
+/** Minimal context passed to operation managers to avoid circular imports with GeoEditor. */
+export interface EditorOperationContext {
+	features: globalThis.Map<string, EditorFeature>
+	getSelectedFeatures(): EditorFeature[]
+	selection: {
+		clearSelection(): void
+		select(ids: string | string[]): void
+		getSelected(): string[]
+	}
+	history: {
+		recordUpdate(newFeatures: EditorFeature[], oldFeatures: EditorFeature[]): void
+	}
+	transform: {
+		simplify(feature: EditorFeature, tolerance: number): EditorFeature
+	}
+	mode: EditorMode
+	render(): void
+	renderVertices(): void
+	emit(event: EditorEventType, data: EditorEvent): void
+}

@@ -1,15 +1,19 @@
-import { bearing, polygon, union, difference, featureCollection, centerOfMass } from '@turf/turf'
-import type { Feature, FeatureCollection, Geometry, Position } from 'geojson'
+import { bearing, featureCollection, centerOfMass } from '@turf/turf'
+import type { Feature, FeatureCollection, Position } from 'geojson'
 import type {
 	MapGeoJSONFeature,
 	Map as MapLibreMap,
 	MapMouseEvent,
 	MapTouchEvent,
 } from 'maplibre-gl'
+import { BooleanManager } from './managers/BooleanManager'
+import { CombineManager } from './managers/CombineManager'
 import { HistoryManager } from './managers/HistoryManager'
 import { LayerManager } from './managers/LayerManager'
+import { LineOperationsManager } from './managers/LineOperationsManager'
 import { RenderingManager } from './managers/RenderingManager'
 import { SelectionManager } from './managers/SelectionManager'
+import { SimplifyManager } from './managers/SimplifyManager'
 import { SnapManager } from './managers/SnapManager'
 import { TransformManager } from './managers/TransformManager'
 import {
@@ -27,7 +31,6 @@ import type {
 	EditorMode,
 	GeoEditorOptions,
 } from './types'
-import { generateId } from './utils/geometry'
 
 type ScreenPoint = { x: number; y: number }
 type PointerOffset = { x: number; y: number }
@@ -54,7 +57,7 @@ export class GeoEditor {
 	private map: MapLibreMap
 	private options: Required<GeoEditorOptions>
 	private mode: EditorMode = 'static'
-	private features: Map<string, EditorFeature> = new Map()
+	features: Map<string, EditorFeature> = new Map()
 	private eventHandlers: Map<EditorEventType, Set<EditorEventHandler>> = new Map()
 
 	// Managers
@@ -64,6 +67,10 @@ export class GeoEditor {
 	public transform: TransformManager
 	public layers: LayerManager
 	public rendering: RenderingManager
+	public combine: CombineManager
+	public lineOps: LineOperationsManager
+	public boolean: BooleanManager
+	public simplifyManager: SimplifyManager
 
 	// Modes
 	private drawPointMode: DrawPointMode
@@ -84,10 +91,6 @@ export class GeoEditor {
 	private touchDrawInProgress: boolean = false
 	private lastTouchPoint?: ScreenPoint
 	private vertexDragMoved: boolean = false
-	private booleanOperation?: {
-		type: 'union' | 'difference'
-		firstFeatureId: string
-	}
 	private readonly DRAW_MIN_LINE_POINTS = 2
 	private readonly DRAW_MIN_POLYGON_POINTS = 3
 	private readonly keyDownHandler = this.onKeyDown.bind(this)
@@ -147,6 +150,10 @@ export class GeoEditor {
 		this.transform = new TransformManager()
 		this.layers = new LayerManager()
 		this.rendering = new RenderingManager()
+		this.combine = new CombineManager(this)
+		this.lineOps = new LineOperationsManager(this)
+		this.boolean = new BooleanManager(this)
+		this.simplifyManager = new SimplifyManager(this)
 
 		// Initialize modes
 		this.drawPointMode = new DrawPointMode()
@@ -319,11 +326,11 @@ export class GeoEditor {
 			if (!featureId) return
 
 			// If in boolean operation mode, complete the operation with this feature
-			if (this.booleanOperation) {
+			if (this.boolean.getOperation()) {
 				const clickedFeature = this.features.get(featureId)
 				if (
 					clickedFeature &&
-					featureId !== this.booleanOperation.firstFeatureId &&
+					featureId !== this.boolean.getOperation().firstFeatureId &&
 					(clickedFeature.geometry.type === 'Polygon' ||
 						clickedFeature.geometry.type === 'MultiPolygon')
 				) {
@@ -343,7 +350,7 @@ export class GeoEditor {
 			})
 		} else if (!this.isMultiSelectEvent(e.originalEvent)) {
 			// Cancel boolean operation if clicking empty space
-			if (this.booleanOperation) {
+			if (this.boolean.getOperation()) {
 				this.cancelBooleanOperation()
 				return
 			}
@@ -955,98 +962,19 @@ export class GeoEditor {
 	}
 
 	canCombineSelection(): boolean {
-		const selected = this.getSelectedFeatures()
-		if (selected.length < 2) return false
-		const baseType = this.getBaseGeometryType(selected[0].geometry.type)
-		if (!baseType) return false
-		return selected.every((feature) => this.getBaseGeometryType(feature.geometry.type) === baseType)
+		return this.combine.canCombine()
 	}
 
 	canSplitSelection(): boolean {
-		return this.getSelectedFeatures().some((feature) => this.isMultiGeometry(feature.geometry.type))
+		return this.combine.canSplit()
 	}
 
 	combineSelectedFeatures(): boolean {
-		const selected = this.getSelectedFeatures()
-		if (selected.length < 2) return false
-
-		const baseType = this.getBaseGeometryType(selected[0].geometry.type)
-		if (!baseType) return false
-		if (!selected.every((feature) => this.getBaseGeometryType(feature.geometry.type) === baseType))
-			return false
-
-		const multiType = this.toMultiGeometryType(baseType)
-		if (!multiType) return false
-
-		const parts = selected.flatMap((feature) =>
-			this.extractGeometryParts(feature.geometry, baseType),
-		)
-		if (parts.length === 0) return false
-
-		const template = this.cloneFeature(selected[0])
-		const newFeature: EditorFeature = {
-			...template,
-			id: generateId(),
-			geometry: {
-				type: multiType,
-				coordinates: JSON.parse(JSON.stringify(parts)),
-			} as Geometry,
-		}
-
-		selected.forEach((feature) => this.features.delete(feature.id))
-		const normalizedFeature = this.normalizeFeature(newFeature)
-		this.features.set(normalizedFeature.id, normalizedFeature)
-		this.selection.clearSelection()
-		this.selection.select(normalizedFeature.id)
-		this.history.recordUpdate([normalizedFeature], selected)
-		this.render()
-		if (this.mode === 'edit') this.renderVertices()
-		this.emit('selection.change', {
-			type: 'selection.change',
-			features: this.getSelectedFeatures(),
-		})
-		this.emit('update', { type: 'update', features: [normalizedFeature] })
-		return true
+		return this.combine.combineSelectedFeatures()
 	}
 
 	splitSelectedFeatures(): boolean {
-		const selected = this.getSelectedFeatures().filter((feature) =>
-			this.isMultiGeometry(feature.geometry.type),
-		)
-		if (selected.length === 0) return false
-
-		const newFeatures: EditorFeature[] = []
-
-		selected.forEach((feature) => {
-			const baseType = this.getBaseGeometryType(feature.geometry.type)
-			if (!baseType) return
-			const parts = this.extractGeometryParts(feature.geometry, baseType)
-			parts.forEach((coords) => {
-				const clone = this.cloneFeature(feature)
-				clone.id = generateId()
-				clone.geometry = {
-					type: baseType,
-					coordinates: JSON.parse(JSON.stringify(coords)),
-				} as Geometry
-				newFeatures.push(this.normalizeFeature(clone))
-			})
-		})
-
-		if (newFeatures.length === 0) return false
-
-		selected.forEach((feature) => this.features.delete(feature.id))
-		newFeatures.forEach((feature) => this.features.set(feature.id, feature))
-		this.selection.clearSelection()
-		this.selection.select(newFeatures.map((feature) => feature.id))
-		this.history.recordUpdate(newFeatures, selected)
-		this.render()
-		if (this.mode === 'edit') this.renderVertices()
-		this.emit('selection.change', {
-			type: 'selection.change',
-			features: this.getSelectedFeatures(),
-		})
-		this.emit('update', { type: 'update', features: newFeatures })
-		return true
+		return this.combine.splitSelectedFeatures()
 	}
 
 	/**
@@ -1054,123 +982,15 @@ export class GeoEditor {
 	 * Returns true if lines were successfully connected.
 	 */
 	connectSelectedLines(): boolean {
-		const selected = this.getSelectedFeatures()
-		if (selected.length !== 2) return false
-
-		// Both must be LineStrings
-		const line1 = selected[0]
-		const line2 = selected[1]
-		if (!line1 || !line2) return false
-		if (line1.geometry.type !== 'LineString' || line2.geometry.type !== 'LineString') {
-			return false
-		}
-
-		const coords1 = (line1.geometry as GeoJSON.LineString).coordinates
-		const coords2 = (line2.geometry as GeoJSON.LineString).coordinates
-
-		if (coords1.length < 2 || coords2.length < 2) return false
-
-		// Find matching endpoints (tolerance ~10cm on Earth)
-		const TOLERANCE = 1e-6
-		const pointsMatch = (a: Position, b: Position): boolean =>
-			Math.abs(a[0] - b[0]) < TOLERANCE && Math.abs(a[1] - b[1]) < TOLERANCE
-
-		const start1 = coords1[0]
-		const end1 = coords1[coords1.length - 1]
-		const start2 = coords2[0]
-		const end2 = coords2[coords2.length - 1]
-
-		// TypeScript guards
-		if (!start1 || !end1 || !start2 || !end2) return false
-
-		let newCoords: Position[] | null = null
-
-		if (pointsMatch(end1, start2)) {
-			// line1 end -> line2 start: append line2 (skip first point)
-			newCoords = [...coords1, ...coords2.slice(1)]
-		} else if (pointsMatch(start1, end2)) {
-			// line2 end -> line1 start: append line1 to line2 (skip first point)
-			newCoords = [...coords2, ...coords1.slice(1)]
-		} else if (pointsMatch(end1, end2)) {
-			// line1 end -> line2 end (reversed): append reversed line2
-			newCoords = [...coords1, ...coords2.slice(0, -1).reverse()]
-		} else if (pointsMatch(start1, start2)) {
-			// line1 start -> line2 start: reverse line1 and append line2
-			newCoords = [...[...coords1].reverse(), ...coords2.slice(1)]
-		}
-
-		if (!newCoords || newCoords.length < 2) return false
-
-		// Remove consecutive duplicate points
-		const firstCoord = newCoords[0]
-		if (!firstCoord) return false
-		const deduped: Position[] = [firstCoord]
-		for (let i = 1; i < newCoords.length; i++) {
-			const prev = deduped[deduped.length - 1]
-			const curr = newCoords[i]
-			if (prev && curr && !pointsMatch(prev, curr)) {
-				deduped.push(curr)
-			}
-		}
-		newCoords = deduped
-
-		// Create new feature using the first line as template
-		const template = this.cloneFeature(line1)
-		const newFeature: EditorFeature = {
-			...template,
-			id: generateId(),
-			geometry: {
-				type: 'LineString',
-				coordinates: newCoords,
-			} as Geometry,
-		}
-
-		// Remove old features
-		this.features.delete(line1.id)
-		this.features.delete(line2.id)
-
-		// Add new feature
-		const normalizedFeature = this.normalizeFeature(newFeature)
-		this.features.set(normalizedFeature.id, normalizedFeature)
-
-		// Update selection
-		this.selection.clearSelection()
-		this.selection.select(normalizedFeature.id)
-
-		// Record history
-		this.history.recordUpdate([normalizedFeature], selected)
-
-		// Render
-		this.render()
-		if (this.mode === 'edit') this.renderVertices()
-
-		// Emit events
-		this.emit('selection.change', {
-			type: 'selection.change',
-			features: this.getSelectedFeatures(),
-		})
-		this.emit('update', { type: 'update', features: [normalizedFeature] })
-
-		return true
+		return this.lineOps.connectSelectedLines()
 	}
 
 	canConnectSelectedLines(): boolean {
-		const selected = this.getSelectedFeatures()
-		if (selected.length !== 2) return false
-		return selected.every((f) => f.geometry.type === 'LineString')
+		return this.lineOps.canConnect()
 	}
 
 	canDissolveSelectedLines(): boolean {
-		const selected = this.getSelectedFeatures().filter((feature) =>
-			this.isLineGeometryType(feature.geometry.type),
-		)
-		if (selected.length === 0) return false
-
-		const partCount = selected.reduce(
-			(total, feature) => total + this.extractLinePartsFromGeometry(feature.geometry).length,
-			0,
-		)
-		return partCount >= 2
+		return this.lineOps.canDissolve()
 	}
 
 	dissolveSelectedLines(
@@ -1180,90 +1000,11 @@ export class GeoEditor {
 		createdCount: number
 		skippedPartCount: number
 	} {
-		const selected = this.getSelectedFeatures().filter((feature) =>
-			this.isLineGeometryType(feature.geometry.type),
-		)
-		if (selected.length === 0) {
-			return { sourceFeatureCount: 0, createdCount: 0, skippedPartCount: 0 }
-		}
-
-		const safeTolerance = Number.isFinite(tolerance)
-			? Math.min(1, Math.max(1e-8, tolerance))
-			: 0.00001
-
-		const lineParts = selected.flatMap((feature) =>
-			this.extractLinePartsFromGeometry(feature.geometry).map((coords) => ({ feature, coords })),
-		)
-
-		const snappedParts: Position[][] = []
-		let skippedPartCount = 0
-		for (const part of lineParts) {
-			const snapped = this.normalizeLineCoordinates(part.coords, safeTolerance)
-			if (snapped.length < 2) {
-				skippedPartCount += 1
-				continue
-			}
-			snappedParts.push(snapped)
-		}
-
-		if (snappedParts.length === 0) {
-			return {
-				sourceFeatureCount: selected.length,
-				createdCount: 0,
-				skippedPartCount,
-			}
-		}
-
-		const mergedLines = this.mergeLinePartsBySharedEndpoints(snappedParts, safeTolerance)
-		if (mergedLines.length === 0) {
-			return {
-				sourceFeatureCount: selected.length,
-				createdCount: 0,
-				skippedPartCount,
-			}
-		}
-
-		const template = this.cloneFeature(selected[0])
-		const mergedFeatures: EditorFeature[] = mergedLines.map((coordinates) =>
-			this.normalizeFeature({
-				...template,
-				id: generateId(),
-				geometry: {
-					type: 'LineString',
-					coordinates,
-				} as Geometry,
-			}),
-		)
-
-		selected.forEach((feature) => {
-			this.features.delete(feature.id)
-		})
-		mergedFeatures.forEach((feature) => {
-			this.features.set(feature.id, feature)
-		})
-
-		this.selection.clearSelection()
-		this.selection.select(mergedFeatures.map((feature) => feature.id))
-		this.history.recordUpdate(mergedFeatures, selected)
-		this.render()
-		if (this.mode === 'edit') this.renderVertices()
-		this.emit('selection.change', {
-			type: 'selection.change',
-			features: this.getSelectedFeatures(),
-		})
-		this.emit('update', { type: 'update', features: mergedFeatures })
-
-		return {
-			sourceFeatureCount: selected.length,
-			createdCount: mergedFeatures.length,
-			skippedPartCount,
-		}
+		return this.lineOps.dissolveSelectedLines(tolerance)
 	}
 
 	canSimplifySelectedFeatures(): boolean {
-		return this.getSelectedFeatures().some((feature) =>
-			this.isSimplifiableGeometryType(feature.geometry.type),
-		)
+		return this.simplifyManager.canSimplify()
 	}
 
 	simplifySelectedFeatures(
@@ -1272,53 +1013,7 @@ export class GeoEditor {
 		updatedCount: number
 		skippedCount: number
 	} {
-		const selected = this.getSelectedFeatures().filter((feature) =>
-			this.isSimplifiableGeometryType(feature.geometry.type),
-		)
-
-		if (selected.length === 0) {
-			return { updatedCount: 0, skippedCount: 0 }
-		}
-
-		const safeTolerance = Number.isFinite(tolerance)
-			? Math.min(1, Math.max(1e-8, tolerance))
-			: 0.0001
-
-		const updated: EditorFeature[] = []
-		const previous: EditorFeature[] = []
-		let skippedCount = 0
-
-		for (const feature of selected) {
-			try {
-				const simplified = this.transform.simplify(feature, safeTolerance)
-				if (JSON.stringify(simplified.geometry) === JSON.stringify(feature.geometry)) {
-					skippedCount += 1
-					continue
-				}
-
-				const normalized = this.normalizeFeature({
-					...feature,
-					geometry: simplified.geometry,
-				})
-				this.features.set(feature.id, normalized)
-				updated.push(normalized)
-				previous.push(feature)
-			} catch (error) {
-				console.error(`Failed to simplify feature ${feature.id}:`, error)
-				skippedCount += 1
-			}
-		}
-
-		if (updated.length === 0) {
-			return { updatedCount: 0, skippedCount }
-		}
-
-		this.history.recordUpdate(updated, previous)
-		this.render()
-		if (this.mode === 'edit') this.renderVertices()
-		this.emit('update', { type: 'update', features: updated })
-
-		return { updatedCount: updated.length, skippedCount }
+		return this.simplifyManager.simplifySelectedFeatures(tolerance)
 	}
 
 	copySelectedFeatures(): void {
@@ -1386,125 +1081,23 @@ export class GeoEditor {
 
 	// Boolean Operations
 	startBooleanUnion(): boolean {
-		const selected = this.getSelectedFeatures()
-		if (selected.length !== 1) return false
-
-		const feature = selected[0]
-		if (feature.geometry.type !== 'Polygon' && feature.geometry.type !== 'MultiPolygon') {
-			return false
-		}
-
-		this.booleanOperation = {
-			type: 'union',
-			firstFeatureId: feature.id,
-		}
-		this.emit('mode.change', { type: 'mode.change', mode: this.mode })
-		return true
+		return this.boolean.startUnion()
 	}
 
 	startBooleanDifference(): boolean {
-		const selected = this.getSelectedFeatures()
-		if (selected.length !== 1) return false
-
-		const feature = selected[0]
-		if (feature.geometry.type !== 'Polygon' && feature.geometry.type !== 'MultiPolygon') {
-			return false
-		}
-
-		this.booleanOperation = {
-			type: 'difference',
-			firstFeatureId: feature.id,
-		}
-		this.emit('mode.change', { type: 'mode.change', mode: this.mode })
-		return true
+		return this.boolean.startDifference()
 	}
 
 	cancelBooleanOperation(): void {
-		this.booleanOperation = undefined
-		this.emit('mode.change', { type: 'mode.change', mode: this.mode })
+		this.boolean.cancel()
 	}
 
 	getBooleanOperation(): { type: 'union' | 'difference'; firstFeatureId: string } | undefined {
-		return this.booleanOperation
+		return this.boolean.getOperation()
 	}
 
 	completeBooleanOperation(secondFeatureId: string): boolean {
-		if (!this.booleanOperation) return false
-
-		const firstFeature = this.features.get(this.booleanOperation.firstFeatureId)
-		const secondFeature = this.features.get(secondFeatureId)
-
-		if (!firstFeature || !secondFeature) {
-			this.cancelBooleanOperation()
-			return false
-		}
-
-		// Ensure both are polygons
-		if (
-			(firstFeature.geometry.type !== 'Polygon' && firstFeature.geometry.type !== 'MultiPolygon') ||
-			(secondFeature.geometry.type !== 'Polygon' && secondFeature.geometry.type !== 'MultiPolygon')
-		) {
-			this.cancelBooleanOperation()
-			return false
-		}
-
-		try {
-			let result: Feature | null = null
-
-			// Cast to proper polygon types for turf
-			const poly1 = polygon((firstFeature.geometry as any).coordinates)
-			const poly2 = polygon((secondFeature.geometry as any).coordinates)
-
-			if (this.booleanOperation.type === 'union') {
-				result = union(featureCollection([poly1, poly2]))
-			} else {
-				result = difference(featureCollection([poly1, poly2]))
-			}
-
-			if (!result || !result.geometry) {
-				this.cancelBooleanOperation()
-				return false
-			}
-
-			// Create new feature with result geometry
-			const newFeature: EditorFeature = {
-				...firstFeature,
-				id: crypto.randomUUID(),
-				geometry: result.geometry as Geometry,
-				properties: {
-					...firstFeature.properties,
-					featureId: crypto.randomUUID(),
-				},
-			}
-
-			const normalized = this.normalizeFeature(newFeature)
-
-			// Delete original features
-			this.features.delete(firstFeature.id)
-			this.features.delete(secondFeature.id)
-
-			// Add result
-			this.features.set(normalized.id, normalized)
-			this.history.recordUpdate([normalized], [firstFeature, secondFeature])
-
-			// Select the result
-			this.selection.clearSelection()
-			this.selection.select([normalized.id])
-
-			this.render()
-			this.emit('update', { type: 'update', features: [normalized] })
-			this.emit('selection.change', {
-				type: 'selection.change',
-				features: [normalized],
-			})
-		} catch (error) {
-			console.error('Boolean operation failed:', error)
-			this.cancelBooleanOperation()
-			return false
-		}
-
-		this.booleanOperation = undefined
-		return true
+		return this.boolean.complete(secondFeatureId)
 	}
 
 	addFeature(feature: EditorFeature): void {
@@ -1768,7 +1361,7 @@ export class GeoEditor {
 	// Private Helper Methods
 	// ==============================
 
-	private emit(eventType: EditorEventType, event: EditorEvent): void {
+	emit(eventType: EditorEventType, event: EditorEvent): void {
 		const handlers = this.eventHandlers.get(eventType)
 		if (handlers) handlers.forEach((handler: EditorEventHandler) => handler(event))
 	}
@@ -1815,170 +1408,6 @@ export class GeoEditor {
 			mode === 'draw_polygon' ||
 			mode === 'draw_annotation'
 		)
-	}
-
-	private isSimplifiableGeometryType(type: Geometry['type']): boolean {
-		return (
-			type === 'LineString' ||
-			type === 'Polygon' ||
-			type === 'MultiLineString' ||
-			type === 'MultiPolygon'
-		)
-	}
-
-	private isLineGeometryType(type: Geometry['type']): boolean {
-		return type === 'LineString' || type === 'MultiLineString'
-	}
-
-	private extractLinePartsFromGeometry(geometry: Geometry): Position[][] {
-		if (geometry.type === 'LineString') {
-			return [JSON.parse(JSON.stringify(geometry.coordinates)) as Position[]]
-		}
-		if (geometry.type === 'MultiLineString') {
-			return JSON.parse(JSON.stringify(geometry.coordinates)) as Position[][]
-		}
-		return []
-	}
-
-	private normalizeLineCoordinates(coords: Position[], tolerance: number): Position[] {
-		const snapped = coords.map((coord) => this.snapPosition(coord, tolerance))
-		return this.removeConsecutiveDuplicatePositions(snapped, tolerance)
-	}
-
-	private snapPosition(coord: Position, tolerance: number): Position {
-		const lon = Math.round(coord[0] / tolerance) * tolerance
-		const lat = Math.round(coord[1] / tolerance) * tolerance
-		if (coord.length > 2) {
-			return [lon, lat, ...coord.slice(2)] as Position
-		}
-		return [lon, lat]
-	}
-
-	private removeConsecutiveDuplicatePositions(coords: Position[], tolerance: number): Position[] {
-		if (coords.length === 0) return coords
-		const deduped: Position[] = [coords[0]]
-		for (let i = 1; i < coords.length; i++) {
-			const previous = deduped[deduped.length - 1]
-			const current = coords[i]
-			if (!previous || !current) continue
-			if (!this.positionsEquivalent(previous, current, tolerance)) {
-				deduped.push(current)
-			}
-		}
-		return deduped
-	}
-
-	private positionKey(position: Position, tolerance: number): string {
-		const lon = Math.round(position[0] / tolerance)
-		const lat = Math.round(position[1] / tolerance)
-		return `${lon}:${lat}`
-	}
-
-	private positionsEquivalent(a: Position, b: Position, tolerance: number): boolean {
-		return this.positionKey(a, tolerance) === this.positionKey(b, tolerance)
-	}
-
-	private mergeLinePartsBySharedEndpoints(lines: Position[][], tolerance: number): Position[][] {
-		const adjacency = new Map<string, Set<string>>()
-		const nodeCoords = new Map<string, Position>()
-		const allEdges = new Set<string>()
-
-		const toEdgeKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`)
-		const registerNode = (position: Position): string => {
-			const key = this.positionKey(position, tolerance)
-			if (!nodeCoords.has(key)) {
-				nodeCoords.set(key, position)
-			}
-			return key
-		}
-
-		for (const coords of lines) {
-			if (coords.length < 2) continue
-			for (let i = 0; i < coords.length - 1; i++) {
-				const start = coords[i]
-				const end = coords[i + 1]
-				if (!start || !end) continue
-				if (this.positionsEquivalent(start, end, tolerance)) continue
-
-				const startKey = registerNode(start)
-				const endKey = registerNode(end)
-				const edgeKey = toEdgeKey(startKey, endKey)
-				if (allEdges.has(edgeKey)) {
-					continue
-				}
-
-				allEdges.add(edgeKey)
-				const startLinks = adjacency.get(startKey) ?? new Set<string>()
-				startLinks.add(endKey)
-				adjacency.set(startKey, startLinks)
-
-				const endLinks = adjacency.get(endKey) ?? new Set<string>()
-				endLinks.add(startKey)
-				adjacency.set(endKey, endLinks)
-			}
-		}
-
-		if (allEdges.size === 0) return []
-
-		const visitedEdges = new Set<string>()
-		const walkPath = (startKey: string, nextKey: string): string[] => {
-			const path = [startKey, nextKey]
-			visitedEdges.add(toEdgeKey(startKey, nextKey))
-
-			let previous = startKey
-			let current = nextKey
-
-			while (true) {
-				const neighbors = [...(adjacency.get(current) ?? [])].filter((key) => key !== previous)
-				if (neighbors.length === 0) break
-
-				const candidate = neighbors.find(
-					(neighborKey) => !visitedEdges.has(toEdgeKey(current, neighborKey)),
-				)
-				if (!candidate) break
-
-				path.push(candidate)
-				visitedEdges.add(toEdgeKey(current, candidate))
-				previous = current
-				current = candidate
-			}
-
-			return path
-		}
-
-		const toCoordinatePath = (nodePath: string[]): Position[] => {
-			const positions = nodePath
-				.map((key) => nodeCoords.get(key))
-				.filter((position): position is Position => Boolean(position))
-			return this.removeConsecutiveDuplicatePositions(positions, tolerance)
-		}
-
-		const merged: Position[][] = []
-		const nodeKeys = [...adjacency.keys()]
-		const nonLinearNodes = nodeKeys.filter((key) => (adjacency.get(key)?.size ?? 0) !== 2)
-
-		for (const startKey of nonLinearNodes) {
-			for (const neighborKey of adjacency.get(startKey) ?? []) {
-				const edgeKey = toEdgeKey(startKey, neighborKey)
-				if (visitedEdges.has(edgeKey)) continue
-				const path = toCoordinatePath(walkPath(startKey, neighborKey))
-				if (path.length >= 2) {
-					merged.push(path)
-				}
-			}
-		}
-
-		for (const edgeKey of allEdges) {
-			if (visitedEdges.has(edgeKey)) continue
-			const [startKey, endKey] = edgeKey.split('|')
-			if (!startKey || !endKey) continue
-			const path = toCoordinatePath(walkPath(startKey, endKey))
-			if (path.length >= 2) {
-				merged.push(path)
-			}
-		}
-
-		return merged
 	}
 
 	private updateDoubleClickZoomState(): void {
@@ -2142,42 +1571,6 @@ export class GeoEditor {
 		}
 	}
 
-	private getBaseGeometryType(type: string): 'Point' | 'LineString' | 'Polygon' | null {
-		if (type === 'Point' || type === 'LineString' || type === 'Polygon') return type
-		if (type === 'MultiPoint') return 'Point'
-		if (type === 'MultiLineString') return 'LineString'
-		if (type === 'MultiPolygon') return 'Polygon'
-		return null
-	}
-
-	private toMultiGeometryType(type: 'Point' | 'LineString' | 'Polygon'): Geometry['type'] | null {
-		if (type === 'Point') return 'MultiPoint'
-		if (type === 'LineString') return 'MultiLineString'
-		if (type === 'Polygon') return 'MultiPolygon'
-		return null
-	}
-
-	private isMultiGeometry(type: string): boolean {
-		return type === 'MultiPoint' || type === 'MultiLineString' || type === 'MultiPolygon'
-	}
-
-	private extractGeometryParts(
-		geometry: Geometry,
-		base: 'Point' | 'LineString' | 'Polygon',
-	): any[] {
-		if (base === 'Point') {
-			if (geometry.type === 'Point') return [geometry.coordinates]
-			if (geometry.type === 'MultiPoint') return geometry.coordinates as Position[]
-		} else if (base === 'LineString') {
-			if (geometry.type === 'LineString') return [geometry.coordinates]
-			if (geometry.type === 'MultiLineString') return geometry.coordinates as Position[][]
-		} else if (base === 'Polygon') {
-			if (geometry.type === 'Polygon') return [geometry.coordinates]
-			if (geometry.type === 'MultiPolygon') return geometry.coordinates as Position[][][]
-		}
-		return []
-	}
-
 	// ==============================
 	// Rendering Methods
 	// ==============================
@@ -2190,7 +1583,7 @@ export class GeoEditor {
 		return { type: 'FeatureCollection', features }
 	}
 
-	private render(): void {
+	render(): void {
 		this.rendering.render(this.getFeatureCollection())
 		this.rendering.renderSelectionIndicator(this.getSelectedFeatures())
 		this.renderGizmo()
@@ -2201,7 +1594,7 @@ export class GeoEditor {
 		this.rendering.renderGizmo(this.mode, center, this.transformDragState?.center)
 	}
 
-	private renderVertices(): void {
+	renderVertices(): void {
 		const selectedVertex = this.editMode.getSelectedVertex()
 		this.rendering.renderVertices(
 			this.mode,
