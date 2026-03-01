@@ -25,7 +25,7 @@ export class NDKGeoCollectionEvent extends NDKEvent {
 
 	static from(event: NDKEvent): NDKGeoCollectionEvent {
 		const wrapped = new NDKGeoCollectionEvent(event.ndk, event)
-		wrapped.kind = event.kind ?? NDKGeoCollectionEvent.kinds[0]
+		wrapped.kind = event.kind ?? GEO_COLLECTION_KIND
 		return wrapped
 	}
 
@@ -74,30 +74,57 @@ export class NDKGeoCollectionEvent extends NDKEvent {
 	}
 
 	get relayHints(): string[] {
-		return this.tags.filter((tag) => tag[0] === 'r').map((tag) => tag[1])
+		return this.tags
+			.filter((tag) => tag[0] === 'r')
+			.flatMap((tag) => (typeof tag[1] === 'string' ? [tag[1]] : []))
 	}
 
 	set relayHints(relays: string[] | undefined) {
 		this.removeTag('r')
-		relays?.forEach((relay) => this.tags.push(['r', relay]))
+		relays?.forEach((relay) => {
+			this.tags.push(['r', relay])
+		})
 	}
 
 	get hashtags(): string[] {
-		return this.tags.filter((tag) => tag[0] === 't').map((tag) => tag[1])
+		return this.tags
+			.filter((tag) => tag[0] === 't')
+			.flatMap((tag) => (typeof tag[1] === 'string' ? [tag[1]] : []))
 	}
 
 	set hashtags(tags: string[] | undefined) {
 		this.removeTag('t')
-		tags?.forEach((tag) => this.tags.push(['t', tag]))
+		tags?.forEach((tag) => {
+			this.tags.push(['t', tag])
+		})
 	}
 
 	get datasetReferences(): string[] {
-		return this.tags.filter((tag) => tag[0] === 'a').map((tag) => tag[1])
+		return this.tags
+			.filter((tag) => tag[0] === 'a')
+			.flatMap((tag) => (typeof tag[1] === 'string' ? [tag[1]] : []))
 	}
 
 	set datasetReferences(references: string[] | undefined) {
 		this.removeTag('a')
-		references?.forEach((reference) => this.tags.push(['a', reference]))
+		references?.forEach((reference) => {
+			this.tags.push(['a', reference])
+		})
+	}
+
+	get contextReferences(): string[] {
+		return this.tags
+			.filter((tag) => tag[0] === 'c')
+			.flatMap((tag) => (typeof tag[1] === 'string' && tag[1] ? [tag[1]] : []))
+	}
+
+	set contextReferences(references: string[] | undefined) {
+		this.removeTag('c')
+		references?.forEach((reference) => {
+			if (reference) {
+				this.tags.push(['c', reference])
+			}
+		})
 	}
 
 	ensureCollectionId(): string {
@@ -115,7 +142,7 @@ export class NDKGeoCollectionEvent extends NDKEvent {
 	}
 
 	private async prepareForPublish(signer?: NDKSigner): Promise<void> {
-		this.kind = NDKGeoCollectionEvent.kinds[0]
+		this.kind = GEO_COLLECTION_KIND
 		this.ensureCollectionId()
 		await this.sign(signer)
 	}

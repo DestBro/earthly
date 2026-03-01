@@ -1,8 +1,10 @@
 import type NDK from '@nostr-dev-kit/ndk'
 import type { FeatureCollection } from 'geojson'
 import { useCallback, useMemo } from 'react'
+import { validateDatasetForContext } from '../../../lib/context/validation'
 import type { GeoBlobReference, NDKGeoEvent } from '../../../lib/ndk/NDKGeoEvent'
 import { NDKGeoEvent as NDKGeoEventClass } from '../../../lib/ndk/NDKGeoEvent'
+import type { NDKMapContextEvent } from '../../../lib/ndk/NDKMapContextEvent'
 import type { EditorFeature } from '../core'
 import { useEditorStore } from '../store'
 import type { EditorBlobReference } from '../types'
@@ -14,6 +16,8 @@ interface UsePublishingOptions {
 	currentUserPubkey: string | undefined
 	getDatasetName: (event: NDKGeoEvent) => string
 	getDatasetKey: (event: NDKGeoEvent) => string
+	mapContexts: NDKMapContextEvent[]
+	resolvedCollectionResolver?: (event: NDKGeoEvent) => FeatureCollection | undefined
 }
 
 export function usePublishing({
@@ -21,11 +25,15 @@ export function usePublishing({
 	currentUserPubkey,
 	getDatasetName,
 	getDatasetKey,
+	mapContexts,
+	resolvedCollectionResolver,
 }: UsePublishingOptions) {
+	void resolvedCollectionResolver
 	// Store state
 	const editor = useEditorStore((state) => state.editor)
 	const features = useEditorStore((state) => state.features)
 	const activeDataset = useEditorStore((state) => state.activeDataset)
+	const activeDatasetContextRefs = useEditorStore((state) => state.activeDatasetContextRefs)
 	const collectionMeta = useEditorStore((state) => state.collectionMeta)
 	const blobReferences = useEditorStore((state) => state.blobReferences)
 
@@ -35,6 +43,7 @@ export function usePublishing({
 	const setPublishError = useEditorStore((state) => state.setPublishError)
 	const setActiveDataset = useEditorStore((state) => state.setActiveDataset)
 	const setCollectionMeta = useEditorStore((state) => state.setCollectionMeta)
+	const setActiveDatasetContextRefs = useEditorStore((state) => state.setActiveDatasetContextRefs)
 	const setSelectedFeatureIds = useEditorStore((state) => state.setSelectedFeatureIds)
 
 	// Blossom dialog state
@@ -214,6 +223,55 @@ export function usePublishing({
 		return collection ? getCollectionSize(collection) : 0
 	}, [buildCollectionFromEditor, getCollectionSize])
 
+	const validateRequiredContextAttachments = useCallback(
+		(collection: FeatureCollection): { ok: true } | { ok: false; message: string } => {
+			if (activeDatasetContextRefs.length === 0) {
+				return { ok: true }
+			}
+
+			const contextByCoordinate = new Map<string, NDKMapContextEvent>()
+			mapContexts.forEach((context) => {
+				const coordinate = context.contextCoordinate
+				if (coordinate) {
+					contextByCoordinate.set(coordinate, context)
+				}
+			})
+
+			const requiredContexts = activeDatasetContextRefs
+				.map((ref) => contextByCoordinate.get(ref))
+				.filter((context): context is NDKMapContextEvent => Boolean(context))
+				.filter(
+					(context) =>
+						(context.context.contextUse === 'validation' ||
+							context.context.contextUse === 'hybrid') &&
+						context.context.validationMode === 'required',
+				)
+
+			if (requiredContexts.length === 0) {
+				return { ok: true }
+			}
+
+			const candidate = new NDKGeoEventClass(ndk || undefined)
+			candidate.featureCollection = collection
+			candidate.contextReferences = activeDatasetContextRefs
+
+			for (const context of requiredContexts) {
+				const result = validateDatasetForContext(candidate, context, collection, 'strict')
+				if (result.status !== 'valid') {
+					const contextName =
+						context.context.name || context.contextId || context.id || 'Unknown context'
+					return {
+						ok: false,
+						message: `Context validation failed for "${contextName}" (${result.featureErrorCount} invalid feature(s)).`,
+					}
+				}
+			}
+
+			return { ok: true }
+		},
+		[activeDatasetContextRefs, mapContexts, ndk],
+	)
+
 	const handlePublishNew = useCallback(async () => {
 		if (!editor) return
 		setIsPublishing(true)
@@ -223,6 +281,11 @@ export function usePublishing({
 		try {
 			const collection = buildCollectionFromEditor()
 			if (!collection) throw new Error('No features to publish')
+			const contextValidation = validateRequiredContextAttachments(collection)
+			if (contextValidation.ok === false) {
+				setPublishError(contextValidation.message)
+				return
+			}
 
 			if (!ndk) {
 				setPublishError('NDK is not ready.')
@@ -233,6 +296,7 @@ export function usePublishing({
 			const collectionBlobRef = refs.find((ref) => ref.scope === 'collection')
 
 			const event = new NDKGeoEventClass(ndk)
+			event.contextReferences = activeDatasetContextRefs
 
 			if (collectionBlobRef) {
 				// Publish as STUB with external reference (per SPEC.md section 1.5)
@@ -256,6 +320,7 @@ export function usePublishing({
 			}
 			setPublishMessage('Dataset published successfully.')
 			setActiveDataset(event)
+			setActiveDatasetContextRefs(event.contextReferences)
 			setCollectionMeta(extractCollectionMeta(collection))
 			setSelectedFeatureIds([])
 		} catch (error) {
@@ -270,10 +335,13 @@ export function usePublishing({
 		setPublishMessage,
 		setPublishError,
 		buildCollectionFromEditor,
+		validateRequiredContextAttachments,
 		ndk,
 		serializeBlobReferences,
+		activeDatasetContextRefs,
 		buildCollectionStub,
 		setActiveDataset,
+		setActiveDatasetContextRefs,
 		setCollectionMeta,
 		setSelectedFeatureIds,
 	])
@@ -296,8 +364,14 @@ export function usePublishing({
 			try {
 				const collection = buildCollectionFromEditor()
 				if (!collection) throw new Error('No features to publish')
+				const contextValidation = validateRequiredContextAttachments(collection)
+				if (contextValidation.ok === false) {
+					setPublishError(contextValidation.message)
+					return
+				}
 
 				const event = new NDKGeoEventClass(ndk)
+				event.contextReferences = activeDatasetContextRefs
 				// Compute discovery metadata (bbox/geohash) from the full geometry first.
 				event.featureCollection = collection
 				event.updateDerivedMetadata()
@@ -322,6 +396,7 @@ export function usePublishing({
 				await event.publishNew(undefined, { skipMetadataUpdate: true })
 				setPublishMessage('Dataset published with external reference.')
 				setActiveDataset(event)
+				setActiveDatasetContextRefs(event.contextReferences)
 				setCollectionMeta(extractCollectionMeta(collection))
 				setSelectedFeatureIds([])
 
@@ -341,9 +416,12 @@ export function usePublishing({
 			setPublishMessage,
 			setPublishError,
 			buildCollectionFromEditor,
+			validateRequiredContextAttachments,
+			activeDatasetContextRefs,
 			serializeBlobReferences,
 			buildCollectionStub,
 			setActiveDataset,
+			setActiveDatasetContextRefs,
 			setCollectionMeta,
 			setSelectedFeatureIds,
 			setPendingPublishCollection,
@@ -369,6 +447,12 @@ export function usePublishing({
 			setIsPublishing(false)
 			return
 		}
+		const contextValidation = validateRequiredContextAttachments(collection)
+		if (contextValidation.ok === false) {
+			setPublishError(contextValidation.message)
+			setIsPublishing(false)
+			return
+		}
 
 		try {
 			const refs = serializeBlobReferences()
@@ -378,6 +462,7 @@ export function usePublishing({
 			event.datasetId = activeDataset.datasetId ?? activeDataset.id
 			event.hashtags = activeDataset.hashtags
 			event.collectionReferences = activeDataset.collectionReferences
+			event.contextReferences = activeDatasetContextRefs
 			event.relayHints = activeDataset.relayHints
 			event.blobReferences = refs
 
@@ -403,6 +488,7 @@ export function usePublishing({
 
 			setPublishMessage('Dataset update published successfully.')
 			setActiveDataset(event)
+			setActiveDatasetContextRefs(event.contextReferences)
 			setCollectionMeta(extractCollectionMeta(collection))
 			setSelectedFeatureIds([])
 		} catch (error) {
@@ -419,10 +505,13 @@ export function usePublishing({
 		setPublishError,
 		currentUserPubkey,
 		buildCollectionFromEditor,
+		validateRequiredContextAttachments,
 		ndk,
 		serializeBlobReferences,
+		activeDatasetContextRefs,
 		buildCollectionStub,
 		setActiveDataset,
+		setActiveDatasetContextRefs,
 		setCollectionMeta,
 		setSelectedFeatureIds,
 	])
@@ -436,6 +525,11 @@ export function usePublishing({
 		try {
 			const collection = buildCollectionFromEditor()
 			if (!collection) throw new Error('No features to publish')
+			const contextValidation = validateRequiredContextAttachments(collection)
+			if (contextValidation.ok === false) {
+				setPublishError(contextValidation.message)
+				return
+			}
 
 			if (!ndk) {
 				setPublishError('NDK is not ready.')
@@ -446,6 +540,7 @@ export function usePublishing({
 			const collectionBlobRef = refs.find((ref) => ref.scope === 'collection')
 
 			const event = new NDKGeoEventClass(ndk)
+			event.contextReferences = activeDatasetContextRefs
 			event.blobReferences = refs
 
 			if (collectionBlobRef) {
@@ -462,6 +557,7 @@ export function usePublishing({
 
 			setPublishMessage('Dataset copy published successfully.')
 			setActiveDataset(event)
+			setActiveDatasetContextRefs(event.contextReferences)
 			setCollectionMeta(extractCollectionMeta(collection))
 			setSelectedFeatureIds([])
 		} catch (error) {
@@ -476,10 +572,13 @@ export function usePublishing({
 		setPublishMessage,
 		setPublishError,
 		buildCollectionFromEditor,
+		validateRequiredContextAttachments,
 		ndk,
 		serializeBlobReferences,
+		activeDatasetContextRefs,
 		buildCollectionStub,
 		setActiveDataset,
+		setActiveDatasetContextRefs,
 		setCollectionMeta,
 		setSelectedFeatureIds,
 	])

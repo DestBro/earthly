@@ -2,12 +2,18 @@ import { Plus, Eye } from 'lucide-react'
 import { useEffect, useMemo, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
-import { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
+import type { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
+import type { NDKMapContextEvent } from '../lib/ndk/NDKMapContextEvent'
 import {
 	type CollectionColumnsContext,
 	type CollectionRowData,
 	createCollectionColumns,
 } from './collections-columns'
+import {
+	createContextColumns,
+	type ContextColumnsContext,
+	type ContextRowData,
+} from './contexts-columns'
 import {
 	DatasetFilterToolbar,
 	useFilterState,
@@ -24,10 +30,11 @@ import { Button } from './ui/button'
 import { DataTable } from './ui/data-table'
 
 export interface GeoDatasetsPanelProps {
-	/** Which content to display: 'datasets' or 'collections' */
-	mode: 'datasets' | 'collections'
+	/** Which content to display: 'datasets' or 'collections' or 'contexts' */
+	mode: 'datasets' | 'collections' | 'contexts'
 	geoEvents: NDKGeoEvent[]
 	collectionEvents: NDKGeoCollectionEvent[]
+	mapContextEvents: NDKMapContextEvent[]
 	activeDataset: NDKGeoEvent | null
 	currentUserPubkey?: string
 	datasetVisibility: Record<string, boolean>
@@ -47,9 +54,12 @@ export interface GeoDatasetsPanelProps {
 	onZoomToCollection?: (collection: NDKGeoCollectionEvent, events: NDKGeoEvent[]) => void
 	onInspectDataset?: (event: NDKGeoEvent) => void
 	onInspectCollection?: (collection: NDKGeoCollectionEvent, events: NDKGeoEvent[]) => void
-	onOpenDebug?: (event: NDKGeoEvent | NDKGeoCollectionEvent) => void
+	onInspectContext?: (context: NDKMapContextEvent) => void
+	onOpenDebug?: (event: NDKGeoEvent | NDKGeoCollectionEvent | NDKMapContextEvent) => void
 	onCreateCollection?: () => void
+	onCreateContext?: () => void
 	onEditCollection?: (collection: NDKGeoCollectionEvent) => void
+	onEditContext?: (context: NDKMapContextEvent) => void
 	availableFeatures?: GeoFeatureItem[]
 	/** Whether focus mode is active (viewing a single dataset/collection via route) */
 	isFocused?: boolean
@@ -97,10 +107,30 @@ const collectionFilterConfig: FilterConfig<NDKGeoCollectionEvent> = {
 	getName: (collection) => getCollectionDisplayName(collection),
 }
 
+const getContextDisplayName = (context: NDKMapContextEvent): string => {
+	return context.context.name || context.contextId || context.id || 'Untitled'
+}
+
+const contextFilterConfig: FilterConfig<NDKMapContextEvent> = {
+	getSearchableText: (context) => {
+		const content = context.context
+		return [
+			content.name,
+			content.description,
+			content.contextUse,
+			content.validationMode,
+			context.contextId,
+			context.id,
+		]
+	},
+	getName: (context) => getContextDisplayName(context),
+}
+
 export function GeoDatasetsPanelContent({
 	mode,
 	geoEvents,
 	collectionEvents,
+	mapContextEvents,
 	activeDataset,
 	currentUserPubkey,
 	datasetVisibility,
@@ -120,9 +150,12 @@ export function GeoDatasetsPanelContent({
 	onZoomToCollection,
 	onInspectDataset,
 	onInspectCollection,
+	onInspectContext,
 	onOpenDebug,
 	onCreateCollection,
+	onCreateContext,
 	onEditCollection,
+	onEditContext,
 	availableFeatures = [],
 	isFocused = false,
 	onExitFocus,
@@ -143,9 +176,11 @@ export function GeoDatasetsPanelContent({
 		collectionFilterConfig,
 		filterState,
 	)
+	const contextResult = useSortedFilteredItems(mapContextEvents, contextFilterConfig, filterState)
 
 	const filteredGeoEvents = datasetResult.items
 	const filteredCollections = collectionResult.items
+	const filteredContexts = contextResult.items
 
 	// Track previous keys to avoid infinite update loops
 	const prevFilteredKeysRef = useRef<Set<string> | null>(null)
@@ -180,7 +215,7 @@ export function GeoDatasetsPanelContent({
 		geoEvents.forEach((event) => {
 			const datasetId = event.datasetId ?? event.dTag ?? event.id
 			if (!datasetId) return
-			const kind = event.kind ?? NDKGeoEvent.kinds[0]
+			const kind = event.kind ?? 37515
 			map.set(`${kind}:${event.pubkey}:${datasetId}`, event)
 		})
 		return map
@@ -262,6 +297,20 @@ export function GeoDatasetsPanelContent({
 		return 'some'
 	}, [collectionTableData])
 
+	const contextTableData: ContextRowData[] = useMemo(
+		() =>
+			filteredContexts.map((context) => {
+				const content = context.context
+				return {
+					context,
+					contextName: getContextDisplayName(context),
+					contextUse: content.contextUse,
+					validationMode: content.validationMode,
+				}
+			}),
+		[filteredContexts],
+	)
+
 	// Dataset columns context
 	// Note: resolvingDatasets/resolvingProgress not included - DatasetLoadButton subscribes directly to store
 	const datasetColumnsContext: DatasetColumnsContext = useMemo(
@@ -317,6 +366,20 @@ export function GeoDatasetsPanelContent({
 		],
 	)
 
+	const contextColumnsContext: ContextColumnsContext = useMemo(
+		() => ({
+			currentUserPubkey,
+			onInspectContext,
+			onEditContext,
+			onOpenDebug: onOpenDebug
+				? (event) => {
+						onOpenDebug(event)
+					}
+				: undefined,
+		}),
+		[currentUserPubkey, onInspectContext, onEditContext, onOpenDebug],
+	)
+
 	const datasetColumns = useMemo(
 		() => createDatasetColumns(datasetColumnsContext),
 		[datasetColumnsContext],
@@ -327,12 +390,16 @@ export function GeoDatasetsPanelContent({
 		[collectionColumnsContext],
 	)
 
+	const contextColumns = useMemo(
+		() => createContextColumns(contextColumnsContext),
+		[contextColumnsContext],
+	)
 	return (
 		<div className="space-y-3">
 			<div className="flex items-center justify-between gap-2">
 				<div>
 					<h3 className="text-base font-semibold text-gray-800">
-						{mode === 'datasets' ? 'Datasets' : 'Collections'}
+						{mode === 'datasets' ? 'Datasets' : mode === 'collections' ? 'Collections' : 'Contexts'}
 					</h3>
 					{isFocused ? (
 						<p className="text-xs text-amber-600">Focused view — others hidden</p>
@@ -340,7 +407,9 @@ export function GeoDatasetsPanelContent({
 						<p className="text-xs text-gray-500">
 							{mode === 'datasets'
 								? 'Remote GeoJSON datasets available to load.'
-								: 'Curated collections of datasets.'}
+								: mode === 'collections'
+									? 'Curated collections of datasets.'
+									: 'Taxonomy and validation contexts.'}
 						</p>
 					)}
 				</div>
@@ -364,17 +433,36 @@ export function GeoDatasetsPanelContent({
 					)}
 				</div>
 			</div>
-
 			<DatasetFilterToolbar
 				{...filterState}
-				totalCount={mode === 'datasets' ? datasetResult.totalCount : collectionResult.totalCount}
+				totalCount={
+					mode === 'datasets'
+						? datasetResult.totalCount
+						: mode === 'collections'
+							? collectionResult.totalCount
+							: contextResult.totalCount
+				}
 				filteredCount={
-					mode === 'datasets' ? datasetResult.filteredCount : collectionResult.filteredCount
+					mode === 'datasets'
+						? datasetResult.filteredCount
+						: mode === 'collections'
+							? collectionResult.filteredCount
+							: contextResult.filteredCount
 				}
 				displayedCount={
-					mode === 'datasets' ? datasetResult.displayedCount : collectionResult.displayedCount
+					mode === 'datasets'
+						? datasetResult.displayedCount
+						: mode === 'collections'
+							? collectionResult.displayedCount
+							: contextResult.displayedCount
 				}
-				hasMore={mode === 'datasets' ? datasetResult.hasMore : collectionResult.hasMore}
+				hasMore={
+					mode === 'datasets'
+						? datasetResult.hasMore
+						: mode === 'collections'
+							? collectionResult.hasMore
+							: contextResult.hasMore
+				}
 			/>
 
 			{mode === 'datasets' ? (
@@ -389,16 +477,24 @@ export function GeoDatasetsPanelContent({
 						getRowClassName={(row) => (!row.isVisible ? 'opacity-60' : undefined)}
 					/>
 				)
-			) : collectionEvents.length === 0 ? (
-				<p className="text-xs text-gray-500">Listening for GeoJSON collections…</p>
-			) : filteredCollections.length === 0 ? (
-				<p className="text-xs text-gray-500">No collections match your filters.</p>
+			) : mode === 'collections' ? (
+				collectionEvents.length === 0 ? (
+					<p className="text-xs text-gray-500">Listening for GeoJSON collections…</p>
+				) : filteredCollections.length === 0 ? (
+					<p className="text-xs text-gray-500">No collections match your filters.</p>
+				) : (
+					<DataTable
+						columns={collectionColumns}
+						data={collectionTableData}
+						getRowClassName={(row) => (!row.isVisible ? 'opacity-60' : undefined)}
+					/>
+				)
+			) : mapContextEvents.length === 0 ? (
+				<p className="text-xs text-gray-500">Listening for map contexts…</p>
+			) : filteredContexts.length === 0 ? (
+				<p className="text-xs text-gray-500">No contexts match your filters.</p>
 			) : (
-				<DataTable
-					columns={collectionColumns}
-					data={collectionTableData}
-					getRowClassName={(row) => (!row.isVisible ? 'opacity-60' : undefined)}
-				/>
+				<DataTable columns={contextColumns} data={contextTableData} />
 			)}
 		</div>
 	)

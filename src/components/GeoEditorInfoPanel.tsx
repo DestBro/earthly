@@ -5,14 +5,17 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { useEditorStore } from '../features/geo-editor/store'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
+import type { MapContextValidationMode, NDKMapContextEvent } from '../lib/ndk/NDKMapContextEvent'
 import {
 	BlobReferencesSection,
 	DatasetMetadataSection,
 	GeometriesTable,
+	MapContextViewPanel,
 	ViewModePanel,
 } from './info-panel'
 import { DatasetSizeIndicator } from './info-panel/DatasetSizeIndicator'
 import { GeoCollectionEditorPanel } from './GeoCollectionEditorPanel'
+import { MapContextEditorPanel } from './MapContextEditorPanel'
 import { Button } from './ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
@@ -27,6 +30,7 @@ export interface GeoEditorInfoPanelProps {
 	onZoomToDataset: (event: NDKGeoEvent) => void
 	onDeleteDataset: (event: NDKGeoEvent) => void
 	onZoomToCollection?: (collection: NDKGeoCollectionEvent, events: NDKGeoEvent[]) => void
+	onInspectCollection?: (collection: NDKGeoCollectionEvent, events: NDKGeoEvent[]) => void
 	deletingKey: string | null
 	onExitViewMode?: () => void
 	onClose?: () => void
@@ -55,6 +59,16 @@ export interface GeoEditorInfoPanelProps {
 	onSaveCollection?: (collection: NDKGeoCollectionEvent) => void
 	/** Callback to close collection editor */
 	onCloseCollectionEditor?: () => void
+	/** Context editor mode */
+	contextEditorMode?: 'none' | 'create' | 'edit'
+	/** Context being edited */
+	editingContext?: NDKMapContextEvent | null
+	/** Callback when context is saved */
+	onSaveContext?: (context: NDKMapContextEvent) => void
+	/** Callback to close context editor */
+	onCloseContextEditor?: () => void
+	/** Available contexts for dataset attachment */
+	mapContextEvents?: NDKMapContextEvent[]
 	/** Callback when a feature is zoomed to from the geometries list */
 	onZoomToFeature?: (feature: EditorFeature) => void
 	/** Current feature collection for size checking */
@@ -72,6 +86,7 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 		onZoomToDataset,
 		onDeleteDataset,
 		onZoomToCollection,
+		onInspectCollection,
 		currentUserPubkey,
 		deletingKey,
 		onExitViewMode,
@@ -87,6 +102,11 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 		editingCollection,
 		onSaveCollection,
 		onCloseCollectionEditor,
+		contextEditorMode = 'none',
+		editingContext,
+		onSaveContext,
+		onCloseContextEditor,
+		mapContextEvents = [],
 		onZoomToFeature,
 		featureCollectionForUpload,
 		onBlossomUploadComplete,
@@ -104,7 +124,11 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 	const viewMode = useEditorStore((state) => state.viewMode)
 	const setViewMode = useEditorStore((state) => state.setViewMode)
 	const setViewDataset = useEditorStore((state) => state.setViewDataset)
+	const setViewCollection = useEditorStore((state) => state.setViewCollection)
 	const blobReferences = useEditorStore((state) => state.blobReferences)
+	const viewContext = useEditorStore((state) => state.viewContext)
+	const activeDatasetContextRefs = useEditorStore((state) => state.activeDatasetContextRefs)
+	const setActiveDatasetContextRefs = useEditorStore((state) => state.setActiveDatasetContextRefs)
 	const geoEditDrafts = useEditorStore((state) => state.geoEditDrafts)
 	const activeGeoEditDraftId = useEditorStore((state) => state.activeGeoEditDraftId)
 	const createGeoEditDraft = useEditorStore((state) => state.createGeoEditDraft)
@@ -145,7 +169,8 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 	)
 
 	useEffect(() => {
-		if (collectionEditorMode !== 'none' || viewMode === 'view') return
+		if (collectionEditorMode !== 'none' || contextEditorMode !== 'none' || viewMode === 'view')
+			return
 
 		const store = useEditorStore.getState()
 		const existingDrafts = Object.values(store.geoEditDrafts)
@@ -155,6 +180,7 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 		if (existingDrafts.length > 0) {
 			const preferredDraft =
 				existingDrafts.find((draft) => draft.id === store.activeGeoEditDraftId) ?? existingDrafts[0]
+			if (!preferredDraft) return
 			applyDraft(preferredDraft.id)
 			return
 		}
@@ -167,7 +193,14 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 			selectedFeatureIds: store.selectedFeatureIds,
 		})
 		applyDraft(createdDraftId)
-	}, [collectionEditorMode, viewMode, draftSourceId, createGeoEditDraft, applyDraft])
+	}, [
+		collectionEditorMode,
+		contextEditorMode,
+		viewMode,
+		draftSourceId,
+		createGeoEditDraft,
+		applyDraft,
+	])
 
 	const handleDraftChange = useCallback(
 		(draftId: string) => {
@@ -196,7 +229,9 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 			.sort((a, b) => b.updatedAt - a.updatedAt)
 
 		if (remainingDrafts.length > 0) {
-			applyDraft(remainingDrafts[0].id)
+			const nextDraft = remainingDrafts[0]
+			if (!nextDraft) return
+			applyDraft(nextDraft.id)
 			return
 		}
 
@@ -218,6 +253,40 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 		}
 	}
 
+	const attachableContexts = useMemo(
+		() =>
+			mapContextEvents
+				.map((context) => {
+					const coordinate = context.contextCoordinate
+					if (!coordinate) return null
+					return {
+						coordinate,
+						name: context.context.name || context.contextId || context.id || 'Untitled context',
+						validationMode: context.context.validationMode,
+					}
+				})
+				.filter(
+					(
+						entry,
+					): entry is {
+						coordinate: string
+						name: string
+						validationMode: MapContextValidationMode
+					} => entry !== null,
+				),
+		[mapContextEvents],
+	)
+
+	const toggleContextAttachment = (coordinate: string, checked: boolean) => {
+		const next = new Set(activeDatasetContextRefs)
+		if (checked) {
+			next.add(coordinate)
+		} else {
+			next.delete(coordinate)
+		}
+		setActiveDatasetContextRefs(Array.from(next))
+	}
+
 	// Collection Editor mode takes precedence
 	if (collectionEditorMode !== 'none' && onSaveCollection && onCloseCollectionEditor) {
 		return (
@@ -226,6 +295,7 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 				onClose={onCloseCollectionEditor}
 				onSave={onSaveCollection}
 				availableFeatures={availableFeatures}
+				mapContextEvents={mapContextEvents}
 				onCommentGeometryVisibility={onCommentGeometryVisibility}
 				onZoomToBounds={onZoomToBounds}
 				onMentionVisibilityToggle={onMentionVisibilityToggle}
@@ -234,8 +304,38 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 		)
 	}
 
+	// Context Editor mode
+	if (contextEditorMode !== 'none' && onSaveContext && onCloseContextEditor) {
+		return (
+			<MapContextEditorPanel
+				initialContext={editingContext}
+				onClose={onCloseContextEditor}
+				onSave={onSaveContext}
+			/>
+		)
+	}
+
 	// View mode - delegate to ViewModePanel
 	if (viewMode === 'view') {
+		if (viewContext) {
+			return (
+				<MapContextViewPanel
+					getDatasetKey={getDatasetKey}
+					getDatasetName={getDatasetName}
+					onLoadDataset={onLoadDataset}
+					onZoomToDataset={onZoomToDataset}
+					onOpenReferenceCollection={
+						onInspectCollection
+							? (collection) => {
+									setViewCollection(collection)
+									onInspectCollection(collection, [])
+								}
+							: undefined
+					}
+				/>
+			)
+		}
+
 		return (
 			<ViewModePanel
 				currentUserPubkey={currentUserPubkey}
@@ -267,7 +367,7 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 					<h2 className="text-base font-semibold text-gray-900">Editor</h2>
 					{activeDataset && (
 						<Button
-							size="xs"
+							size="sm"
 							variant="ghost"
 							onClick={handleSwitchToView}
 							title="Switch to view mode"
@@ -318,7 +418,7 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 					</Select>
 					<Button
 						type="button"
-						size="icon-xs"
+						size="icon-sm"
 						variant="outline"
 						onClick={handleCreateDraft}
 						title="Create draft"
@@ -327,7 +427,7 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 					</Button>
 					<Button
 						type="button"
-						size="icon-xs"
+						size="icon-sm"
 						variant="outline"
 						onClick={handleDeleteDraft}
 						disabled={draftsForSource.length <= 1}
@@ -352,7 +452,7 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 								}
 							: null
 					}
-					ndk={ndk}
+					ndk={ndk ?? undefined}
 				/>
 			)}
 
@@ -363,6 +463,38 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 				</CollapsibleTrigger>
 				<CollapsibleContent>
 					<DatasetMetadataSection />
+				</CollapsibleContent>
+			</Collapsible>
+
+			<Collapsible defaultOpen={false}>
+				<CollapsibleTrigger className="text-xs font-medium text-gray-700 hover:text-gray-900 w-full text-left py-1">
+					Attached contexts ({activeDatasetContextRefs.length})
+				</CollapsibleTrigger>
+				<CollapsibleContent>
+					{attachableContexts.length === 0 ? (
+						<p className="text-[11px] text-gray-500">No map contexts available yet.</p>
+					) : (
+						<div className="space-y-1">
+							{attachableContexts.map((context) => (
+								<label
+									key={context.coordinate}
+									className="flex items-center justify-between gap-2 rounded border border-gray-100 px-2 py-1"
+								>
+									<span className="truncate text-xs text-gray-700">{context.name}</span>
+									<div className="flex items-center gap-2 shrink-0">
+										<span className="text-[10px] text-gray-500">{context.validationMode}</span>
+										<input
+											type="checkbox"
+											checked={activeDatasetContextRefs.includes(context.coordinate)}
+											onChange={(event) =>
+												toggleContextAttachment(context.coordinate, event.target.checked)
+											}
+										/>
+									</div>
+								</label>
+							))}
+						</div>
+					)}
 				</CollapsibleContent>
 			</Collapsible>
 

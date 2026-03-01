@@ -6,4 +6,5 @@ export {
 	type FeaturePropertiesSectionProps,
 } from './FeaturePropertiesSection'
 export { GeometriesTable, GeometryBadge, GeometryDisplay } from './geometry'
+export { MapContextViewPanel } from './MapContextViewPanel'
 export { ViewModePanel, type ViewModePanelProps } from './ViewModePanel'

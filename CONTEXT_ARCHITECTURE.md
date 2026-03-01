@@ -1,6 +1,6 @@
 # MapContext Architecture (Draft)
 
-Status: Draft for iteration before updating `SPEC.md`.
+Status: Implemented MVP baseline; keep as living architecture notes alongside `SPEC.md`.
 
 This document defines a new entity currently referred to as `MapContetxt` (typo).  
 Canonical name in code/spec should be `MapContext`.
@@ -312,12 +312,14 @@ Remaining design question:
 
 1. In a future phase, should collection taxonomy attachment optionally inherit to member datasets (opt-in), or stay strictly non-inheriting?
 
-## 11. Immediate Next Spec Actions (after review)
+## 11. Implementation Alignment
 
-1. Define kind `37518` formally in `SPEC.md`.
-2. Define `c` attachment tag semantics for kinds `37515` and `37516`.
-3. Define deterministic v1 attachment interpretation (no per-attachment role field).
-4. Define validation mode semantics and strict filtering for `required`.
-5. Define two-lane context behavior for enforced contexts.
-6. Define that v1 schemas are self-contained only.
-7. Correct existing replaceable update guidance inconsistencies in `SPEC.md`.
+Implemented in current MVP:
+
+1. Kind `37518` defined and wired.
+2. `c` attachment tags on datasets/collections.
+3. Deterministic v1 interpretation (no attachment role field).
+4. Validation mode semantics (`none|optional|required`) with viewer override (`off|warn|strict`).
+5. Two-lane context behavior (Map lane + Reference lane).
+6. Self-contained schema policy in v1 (no external `$ref` URLs).
+7. Replaceable update guidance aligned in `SPEC.md`.

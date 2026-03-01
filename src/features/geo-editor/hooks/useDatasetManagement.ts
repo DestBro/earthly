@@ -35,6 +35,7 @@ export function useDatasetManagement(
 	const editor = useEditorStore((state) => state.editor)
 	const setFeatures = useEditorStore((state) => state.setFeatures)
 	const setActiveDataset = useEditorStore((state) => state.setActiveDataset)
+	const setActiveDatasetContextRefs = useEditorStore((state) => state.setActiveDatasetContextRefs)
 	const setDatasetVisibility = useEditorStore((state) => state.setDatasetVisibility)
 	const setSelectedFeatureIds = useEditorStore((state) => state.setSelectedFeatureIds)
 	const setCollectionMeta = useEditorStore((state) => state.setCollectionMeta)
@@ -284,6 +285,7 @@ export function useDatasetManagement(
 			editor.setFeatures(datasetFeatures)
 			setFeatures(datasetFeatures)
 			setActiveDataset(event)
+			setActiveDatasetContextRefs(event.contextReferences)
 			setPublishMessage(null)
 			setPublishError(null)
 			setSelectedFeatureIds([])
@@ -309,6 +311,7 @@ export function useDatasetManagement(
 			resolvedCollectionResolver,
 			setFeatures,
 			setActiveDataset,
+			setActiveDatasetContextRefs,
 			setPublishMessage,
 			setSelectedFeatureIds,
 			setCollectionMeta,
@@ -332,6 +335,7 @@ export function useDatasetManagement(
 		editor.setFeatures([])
 		setFeatures([])
 		setActiveDataset(null)
+		setActiveDatasetContextRefs([])
 		setPublishMessage(null)
 		setPublishError(null)
 		setSelectedFeatureIds([])
@@ -343,6 +347,7 @@ export function useDatasetManagement(
 		editor,
 		setFeatures,
 		setActiveDataset,
+		setActiveDatasetContextRefs,
 		setPublishMessage,
 		setPublishError,
 		setSelectedFeatureIds,
@@ -361,6 +366,7 @@ export function useDatasetManagement(
 		editor.setFeatures([])
 		setFeatures([])
 		setActiveDataset(null)
+		setActiveDatasetContextRefs([])
 		setPublishMessage(null)
 		setPublishError(null)
 		setSelectedFeatureIds([])
@@ -376,6 +382,7 @@ export function useDatasetManagement(
 		editor,
 		setFeatures,
 		setActiveDataset,
+		setActiveDatasetContextRefs,
 		setPublishMessage,
 		setPublishError,
 		setSelectedFeatureIds,
@@ -397,6 +404,7 @@ export function useDatasetManagement(
 		editor.setFeatures([])
 		setFeatures([])
 		setActiveDataset(null)
+		setActiveDatasetContextRefs([])
 		setPublishMessage(null)
 		setPublishError(null)
 		setSelectedFeatureIds([])
@@ -412,6 +420,7 @@ export function useDatasetManagement(
 		editor,
 		setFeatures,
 		setActiveDataset,
+		setActiveDatasetContextRefs,
 		setPublishMessage,
 		setPublishError,
 		setSelectedFeatureIds,

@@ -28,6 +28,7 @@ v ["v", "2"] Semantic version or monotonically increasing integer for this datas
 r ["r", "wss://geo.relay.org"] Relay where future updates will be published.
 t ["t", "parks"] Hashtags / thematic categories. Multiple allowed.
 collection ["collection", "37516:npub1pubkey…:city_parks_2025"] (Optional) Back-link to a parent collection event.
+c ["c", "37518:npub1contextauthor…:hiking_trails"] (Optional) Attach dataset to a map context. Multiple allowed.
 
 1.3 Optional Tags
 
@@ -129,6 +130,7 @@ bbox Combined extent of all members (optional).
 g ["g", "u2yh7"] Geohash of collection centroid.
 t Hashtags categorising the collection.
 r Recommended relay.
+c ["c", "37518:npub1contextauthor…:thirty_year_war"] (Optional) Attach collection as context reference.
 
 2.2 Example Collection Event
 
@@ -146,6 +148,52 @@ r Recommended relay.
 ["t","parks"]
 ]
 }
+
+⸻
+
+2.3 Map Context Event (kind 37518)
+
+Map contexts provide shared taxonomy and optional schema validation envelopes for attached datasets/collections.
+
+Field Purpose
+kind 37518 identifies a map context definition.
+content JSON with { version?, name, description?, image?, contextUse, validationMode, schemaDialect?, schema? }.
+tags Addressing and optional metadata.
+
+Tag Example Notes
+d ["d", "hiking_trails"] Stable context identifier (parameterized replaceable key).
+bbox ["bbox", "16.1,48.1,16.7,48.4"] Optional geographic scope.
+t ["t", "history"] Optional hashtags.
+r ["r", "wss://geo.relay.org"] Optional relay hint.
+v ["v", "2"] Optional context version marker.
+schema-hash ["schema-hash", "sha256:..."] Optional schema integrity hint.
+parent ["parent", "37518:<pubkey>:<d>"] Optional hierarchy edge.
+
+Content fields:
+1. contextUse: taxonomy | validation | hybrid
+2. validationMode: none | optional | required
+3. schemaDialect: optional JSON Schema dialect URI (recommended 2020-12)
+4. schema: optional self-contained JSON Schema object (no external $ref in v1)
+
+Deterministic v1 interpretation (no attachment role field):
+1. Dataset + taxonomy context: taxonomy only, no schema validation.
+2. Dataset + validation/hybrid context: schema validation target.
+3. Collection attachment: reference/taxonomy lane only, never direct validation target.
+4. Collection attachment does not inherit to member datasets in v1.
+
+Context attachment tag semantics (`c`):
+1. `["c", "<context-coordinate>"]` where `<context-coordinate>` is `<kind>:<pubkey>:<d>`.
+2. Publishers may include multiple `c` tags to attach one event to multiple contexts.
+
+Validation behavior:
+1. `none`: no schema enforcement.
+2. `optional`: schema can validate and surface warnings.
+3. `required`: invalid datasets may be filtered in strict context views.
+4. Consumers can choose filter mode `off | warn | strict`; required contexts default to strict but can still be viewer-overridden.
+
+Two-lane context view behavior:
+1. Map lane: dataset candidates attached by `c`; strict mode includes only schema-valid entries.
+2. Reference lane: attached collections (and similar references) shown for navigation/isolation, not for direct map-lane validation.
 
 ⸻
 
@@ -167,7 +215,7 @@ Kind Purpose
 
 ⸻
 
-5 Versioning & Updates 1. Publish a new event (new random d) whenever the GeoJSON changes. 2. Use the v tag to communicate a logical version sequence within a dataset lineage. 3. Reference predecessors via ["p", "<old-event-id>"] if history is desirable.
+5 Versioning & Updates 1. Kinds 37515/37516/37518 are parameterized replaceable in this app model and SHOULD reuse the same d tag for updates. 2. Use the v tag to communicate a logical version sequence within a lineage. 3. Publish a new d only when intentionally creating a new lineage/breaking fork. 4. Reference predecessors via ["p", "<old-event-id>"] if history is desirable.
 
 ⸻
 

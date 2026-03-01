@@ -18,10 +18,17 @@ import { SidebarInset, SidebarProvider } from '../../components/ui/sidebar'
 import { earthlyGeoServer, type ReverseLookupOutput } from '../../ctxcn'
 import { useAvailableGeoFeatures } from '../../lib/hooks/useAvailableGeoFeatures'
 import { useIsMobile } from '../../lib/hooks/useIsMobile'
-import { useGeoCollections, useStations } from '../../lib/hooks/useStations'
+import { useGeoCollections, useMapContexts, useStations } from '../../lib/hooks/useStations'
 import type { NDKGeoCollectionEvent } from '../../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
+import type { NDKMapContextEvent } from '../../lib/ndk/NDKMapContextEvent'
 import { GEO_EVENT_KIND } from '../../lib/ndk/kinds'
+import {
+	defaultContextFilterMode,
+	getContextCoordinate,
+	isDatasetAllowedByContextFilter,
+	validateDatasetForContext,
+} from '../../lib/context/validation'
 import { Editor } from './components/Editor'
 import { ImportOsmDialog } from './components/ImportOsmDialog'
 import { LocateButton } from './components/LocateButton'
@@ -235,6 +242,14 @@ export function GeoEditorView() {
 	const selectionCount = selectedFeatureIds.length
 	const setSelectedFeatureIds = useEditorStore((state) => state.setSelectedFeatureIds)
 	const setFocusedMapGeometry = useEditorStore((state) => state.setFocusedMapGeometry)
+	const setViewModeState = useEditorStore((state) => state.setViewMode)
+	const setViewDatasetState = useEditorStore((state) => state.setViewDataset)
+	const setViewCollectionState = useEditorStore((state) => state.setViewCollection)
+	const setViewContext = useEditorStore((state) => state.setViewContext)
+	const setViewContextDatasets = useEditorStore((state) => state.setViewContextDatasets)
+	const setViewContextCollections = useEditorStore((state) => state.setViewContextCollections)
+	const contextFilterMode = useEditorStore((state) => state.contextFilterMode)
+	const setContextFilterMode = useEditorStore((state) => state.setContextFilterMode)
 	const activeDataset = useEditorStore((state) => state.activeDataset)
 	const datasetVisibility = useEditorStore((state) => state.datasetVisibility)
 	const setDatasetVisibility = useEditorStore((state) => state.setDatasetVisibility)
@@ -280,10 +295,13 @@ export function GeoEditorView() {
 		'none',
 	)
 	const [editingCollection, setEditingCollection] = useState<NDKGeoCollectionEvent | null>(null)
+	const [contextEditorMode, setContextEditorMode] = useState<'none' | 'create' | 'edit'>('none')
+	const [editingContext, setEditingContext] = useState<NDKMapContextEvent | null>(null)
 
 	// External data
 	const { events: geoEvents } = useStations([{ limit: 50 }])
 	const { events: collectionEvents } = useGeoCollections([{ limit: 50 }])
+	const { events: mapContextEvents } = useMapContexts([{ limit: 100 }])
 	const { ndk } = useNDK()
 	const currentUser = useNDKCurrentUser()
 	const isMobile = useIsMobile()
@@ -335,10 +353,12 @@ export function GeoEditorView() {
 		canPublishUpdate,
 		canPublishCopy,
 	} = usePublishing({
-		ndk,
+		ndk: ndk ?? undefined,
 		currentUserPubkey: currentUser?.pubkey,
 		getDatasetName,
 		getDatasetKey,
+		mapContexts: mapContextEvents,
+		resolvedCollectionResolver,
 	})
 
 	/**
@@ -396,10 +416,12 @@ export function GeoEditorView() {
 	const {
 		route,
 		navigateTo,
+		navigateToView,
 		clearFocus,
 		navigateHome,
 		encodeGeoEventNaddr,
 		encodeCollectionNaddr,
+		encodeContextNaddr,
 		isFocused,
 		userPubkey,
 	} = useRouting()
@@ -422,15 +444,44 @@ export function GeoEditorView() {
 		}
 	}, [isMobile])
 
+	const focusedContext = useMemo(() => {
+		if (focusedType !== 'mapcontext' || !focusedNaddr) return null
+		return (
+			mapContextEvents.find((context) => {
+				const contextNaddr = encodeContextNaddr(context)
+				return contextNaddr === focusedNaddr
+			}) ?? null
+		)
+	}, [focusedType, focusedNaddr, mapContextEvents, encodeContextNaddr])
+
+	const focusedContextCoordinate = useMemo(() => {
+		if (!focusedContext) return null
+		return getContextCoordinate(focusedContext)
+	}, [focusedContext])
+
+	const focusedContextAttachedDatasets = useMemo(() => {
+		if (!focusedContextCoordinate) return []
+		return geoEvents.filter((event) => event.contextReferences.includes(focusedContextCoordinate))
+	}, [geoEvents, focusedContextCoordinate])
+
+	const focusedContextReferenceCollections = useMemo(() => {
+		if (!focusedContextCoordinate) return []
+		return collectionEvents.filter((collection) =>
+			collection.contextReferences.includes(focusedContextCoordinate),
+		)
+	}, [collectionEvents, focusedContextCoordinate])
+
 	// Visible geo events based on visibility toggle, focus mode, AND filter state
 	const visibleGeoEvents = useMemo(() => {
 		// Helper: check if event passes visibility + filter criteria
-		const isEventVisible = (event: NDKGeoEvent) => {
+		const isEventVisible = (event: NDKGeoEvent, includeSidebarFilter = true) => {
 			const key = getDatasetKey(event)
 			// Must be marked visible
 			if (datasetVisibility[key] === false) return false
 			// Must pass filter (if filter is active)
-			if (filteredDatasetKeys !== null && !filteredDatasetKeys.has(key)) return false
+			if (includeSidebarFilter && filteredDatasetKeys !== null && !filteredDatasetKeys.has(key)) {
+				return false
+			}
 			return true
 		}
 
@@ -461,10 +512,28 @@ export function GeoEditorView() {
 					// Also respect visibility toggle
 					return datasetVisibility[getDatasetKey(event)] !== false
 				})
+			} else if (focusedType === 'mapcontext' && focusedContext) {
+				const attachedVisible = focusedContextAttachedDatasets.filter((event) =>
+					isEventVisible(event, false),
+				)
+				if (focusedContext.context.contextUse === 'taxonomy') {
+					return attachedVisible
+				}
+
+				return attachedVisible.filter((event) => {
+					const collection = resolvedCollectionResolver(event) ?? event.featureCollection
+					const validationResult = validateDatasetForContext(
+						event,
+						focusedContext,
+						collection,
+						contextFilterMode === 'off' ? 'warn' : contextFilterMode,
+					)
+					return isDatasetAllowedByContextFilter(validationResult, contextFilterMode)
+				})
 			}
 		}
 		// Default: filter by visibility toggles AND sidebar filter
-		return geoEvents.filter(isEventVisible)
+		return geoEvents.filter((event) => isEventVisible(event, true))
 	}, [
 		geoEvents,
 		collectionEvents,
@@ -474,7 +543,40 @@ export function GeoEditorView() {
 		focusedType,
 		encodeGeoEventNaddr,
 		encodeCollectionNaddr,
+		focusedContext,
+		focusedContextAttachedDatasets,
+		resolvedCollectionResolver,
+		contextFilterMode,
 		filteredDatasetKeys,
+	])
+
+	const lastContextCoordinateRef = useRef<string | null>(null)
+	useEffect(() => {
+		if (!focusedContext) {
+			lastContextCoordinateRef.current = null
+			setViewContext(null)
+			setViewContextDatasets([])
+			setViewContextCollections([])
+			return
+		}
+
+		const coordinate = getContextCoordinate(focusedContext)
+		setViewContext(focusedContext)
+		setViewContextDatasets(focusedContextAttachedDatasets)
+		setViewContextCollections(focusedContextReferenceCollections)
+
+		if (coordinate && lastContextCoordinateRef.current !== coordinate) {
+			lastContextCoordinateRef.current = coordinate
+			setContextFilterMode(defaultContextFilterMode(focusedContext))
+		}
+	}, [
+		focusedContext,
+		focusedContextAttachedDatasets,
+		focusedContextReferenceCollections,
+		setViewContext,
+		setViewContextDatasets,
+		setViewContextCollections,
+		setContextFilterMode,
 	])
 
 	// Effective visibility for sidebar - shows actual visibility state including focus mode
@@ -694,7 +796,8 @@ export function GeoEditorView() {
 		// If there's a specific focus route (e.g. /datasets/geoevent/...), handle zoom
 		if (route.focusType === 'none' || !route.naddr) return
 		// Wait for data to be available
-		if (geoEvents.length === 0 && collectionEvents.length === 0) return
+		if (geoEvents.length === 0 && collectionEvents.length === 0 && mapContextEvents.length === 0)
+			return
 
 		if (route.focusType === 'geoevent') {
 			// Find the dataset matching the naddr
@@ -714,10 +817,21 @@ export function GeoEditorView() {
 			if (collection) {
 				handleInspectCollection(collection, [])
 			}
+		} else if (route.focusType === 'mapcontext') {
+			const context = mapContextEvents.find((ctx) => encodeContextNaddr(ctx) === route.naddr)
+			if (context) {
+				handleInspectContext(context)
+			}
 		}
 		// Only run once when data becomes available
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [route.focusType, route.naddr, geoEvents.length, collectionEvents.length])
+	}, [
+		route.focusType,
+		route.naddr,
+		geoEvents.length,
+		collectionEvents.length,
+		mapContextEvents.length,
+	])
 
 	// Lock document scrolling on mobile to prevent address bar jitter during map gestures.
 	useEffect(() => {
@@ -945,7 +1059,7 @@ export function GeoEditorView() {
 					return
 				}
 
-				setOsmQueryResults(response.result.features)
+				setOsmQueryResults((response.result.features ?? []) as GeoJSON.Feature[])
 				setOsmQueryMode('idle')
 			} catch (err: any) {
 				setOsmQueryError(err.message || 'Failed to query OSM')
@@ -988,7 +1102,7 @@ export function GeoEditorView() {
 				return
 			}
 
-			setOsmQueryResults(response.result.features)
+			setOsmQueryResults((response.result.features ?? []) as GeoJSON.Feature[])
 			setOsmQueryMode('idle')
 		} catch (err: any) {
 			setOsmQueryError(err.message || 'Failed to query OSM')
@@ -1616,6 +1730,8 @@ export function GeoEditorView() {
 	const handleCreateCollection = useCallback(() => {
 		setCollectionEditorMode('create')
 		setEditingCollection(null)
+		setContextEditorMode('none')
+		setEditingContext(null)
 		// Exit view mode if active
 		exitViewMode()
 		if (!isMobile) setShowInfoPanel(true)
@@ -1625,6 +1741,8 @@ export function GeoEditorView() {
 		(collection: NDKGeoCollectionEvent) => {
 			setCollectionEditorMode('edit')
 			setEditingCollection(collection)
+			setContextEditorMode('none')
+			setEditingContext(null)
 			// Exit view mode if active
 			exitViewMode()
 			if (!isMobile) setShowInfoPanel(true)
@@ -1647,6 +1765,8 @@ export function GeoEditorView() {
 		(event: NDKGeoEvent) => {
 			setCollectionEditorMode('none')
 			setEditingCollection(null)
+			setContextEditorMode('none')
+			setEditingContext(null)
 			loadDatasetForEditing(event)
 		},
 		[loadDatasetForEditing],
@@ -1686,6 +1806,8 @@ export function GeoEditorView() {
 		(dataset: NDKGeoEvent) => {
 			setCollectionEditorMode('none')
 			setEditingCollection(null)
+			setContextEditorMode('none')
+			setEditingContext(null)
 			handleInspectDataset(dataset)
 			setFeaturePopupData(null)
 		},
@@ -1697,6 +1819,8 @@ export function GeoEditorView() {
 		(event: NDKGeoEvent) => {
 			setCollectionEditorMode('none')
 			setEditingCollection(null)
+			setContextEditorMode('none')
+			setEditingContext(null)
 			handleInspectDataset(event)
 		},
 		[handleInspectDataset],
@@ -1707,10 +1831,111 @@ export function GeoEditorView() {
 		(collection: NDKGeoCollectionEvent, events: NDKGeoEvent[]) => {
 			setCollectionEditorMode('none')
 			setEditingCollection(null)
+			setContextEditorMode('none')
+			setEditingContext(null)
 			handleInspectCollection(collection, events)
 		},
 		[handleInspectCollection],
 	)
+
+	const handleInspectContext = useCallback(
+		(context: NDKMapContextEvent) => {
+			setCollectionEditorMode('none')
+			setEditingCollection(null)
+			setContextEditorMode('none')
+			setEditingContext(null)
+			setViewModeState('view')
+			setViewDatasetState(null)
+			setViewCollectionState(null)
+			setViewContext(context)
+			ensureInfoPanelVisible()
+
+			const naddr = encodeContextNaddr(context)
+			if (naddr) {
+				window.location.hash = `/context/${naddr}`
+			}
+		},
+		[
+			setViewModeState,
+			setViewDatasetState,
+			setViewCollectionState,
+			setViewContext,
+			ensureInfoPanelVisible,
+			encodeContextNaddr,
+		],
+	)
+
+	const handleCreateContext = useCallback(() => {
+		setCollectionEditorMode('none')
+		setEditingCollection(null)
+		setContextEditorMode('create')
+		setEditingContext(null)
+		setViewModeState('edit')
+		setViewDatasetState(null)
+		setViewCollectionState(null)
+		setViewContext(null)
+		setViewContextDatasets([])
+		setViewContextCollections([])
+		clearFocus()
+		navigateToView('context-editor')
+		if (!isMobile) setShowInfoPanel(true)
+	}, [
+		isMobile,
+		setShowInfoPanel,
+		setViewModeState,
+		setViewDatasetState,
+		setViewCollectionState,
+		setViewContext,
+		setViewContextDatasets,
+		setViewContextCollections,
+		clearFocus,
+		navigateToView,
+	])
+
+	const handleEditContext = useCallback(
+		(context: NDKMapContextEvent) => {
+			setCollectionEditorMode('none')
+			setEditingCollection(null)
+			setContextEditorMode('edit')
+			setEditingContext(context)
+			setViewModeState('edit')
+			setViewDatasetState(null)
+			setViewCollectionState(null)
+			setViewContext(null)
+			setViewContextDatasets([])
+			setViewContextCollections([])
+			clearFocus()
+			navigateToView('context-editor')
+			if (!isMobile) setShowInfoPanel(true)
+		},
+		[
+			isMobile,
+			setShowInfoPanel,
+			setViewModeState,
+			setViewDatasetState,
+			setViewCollectionState,
+			setViewContext,
+			setViewContextDatasets,
+			setViewContextCollections,
+			clearFocus,
+			navigateToView,
+		],
+	)
+
+	const handleSaveContext = useCallback(
+		(_context: NDKMapContextEvent) => {
+			setContextEditorMode('none')
+			setEditingContext(null)
+			navigateToView('contexts')
+		},
+		[navigateToView],
+	)
+
+	const handleCloseContextEditor = useCallback(() => {
+		setContextEditorMode('none')
+		setEditingContext(null)
+		navigateToView('contexts')
+	}, [navigateToView])
 
 	// Get collection key for visibility tracking
 	const getCollectionKey = useCallback((collection: NDKGeoCollectionEvent): string => {
@@ -1753,6 +1978,7 @@ export function GeoEditorView() {
 				<AppSidebar
 					geoEvents={geoEvents}
 					collectionEvents={collectionEvents}
+					mapContextEvents={mapContextEvents}
 					activeDataset={activeDataset}
 					currentUserPubkey={currentUser?.pubkey}
 					datasetVisibility={effectiveVisibility}
@@ -1772,9 +1998,12 @@ export function GeoEditorView() {
 					onZoomToCollection={zoomToCollection}
 					onInspectDataset={handleInspectDatasetWithModeSwitch}
 					onInspectCollection={handleInspectCollectionWithModeSwitch}
+					onInspectContext={handleInspectContext}
 					onOpenDebug={handleOpenDebug}
 					onCreateCollection={handleCreateCollection}
+					onCreateContext={handleCreateContext}
 					onEditCollection={handleEditCollection}
+					onEditContext={handleEditContext}
 					isFocused={isFocused}
 					onExitFocus={navigateHome}
 					multiSelectModifier={multiSelectModifierLabel}
@@ -1788,6 +2017,10 @@ export function GeoEditorView() {
 					editingCollection={editingCollection}
 					onSaveCollection={handleSaveCollection}
 					onCloseCollectionEditor={handleCloseCollectionEditor}
+					contextEditorMode={contextEditorMode}
+					editingContext={editingContext}
+					onSaveContext={handleSaveContext}
+					onCloseContextEditor={handleCloseContextEditor}
 					onZoomToFeature={handleZoomToFeature}
 					onExitViewMode={exitViewMode}
 					// Blossom upload props - callback adds blob ref to store, does NOT publish
@@ -1919,6 +2152,7 @@ export function GeoEditorView() {
 						<MobilePanel
 							geoEvents={geoEvents}
 							collectionEvents={collectionEvents}
+							mapContextEvents={mapContextEvents}
 							activeDataset={activeDataset}
 							currentUserPubkey={currentUser?.pubkey}
 							userPubkey={userPubkey}
@@ -1942,8 +2176,11 @@ export function GeoEditorView() {
 							onToggleAllCollectionVisibility={handleToggleAllCollectionVisibility}
 							onZoomToCollection={zoomToCollection}
 							onInspectCollection={handleInspectCollectionWithModeSwitch}
+							onInspectContext={handleInspectContext}
 							onCreateCollection={handleCreateCollection}
+							onCreateContext={handleCreateContext}
 							onEditCollection={handleEditCollection}
+							onEditContext={handleEditContext}
 							onOpenDebug={handleOpenDebug}
 							onExitViewMode={exitViewMode}
 							onCommentGeometryVisibility={handleCommentGeometryVisibility}
@@ -1955,6 +2192,10 @@ export function GeoEditorView() {
 							editingCollection={editingCollection}
 							onSaveCollection={handleSaveCollection}
 							onCloseCollectionEditor={handleCloseCollectionEditor}
+							contextEditorMode={contextEditorMode}
+							editingContext={editingContext}
+							onSaveContext={handleSaveContext}
+							onCloseContextEditor={handleCloseContextEditor}
 							onZoomToFeature={handleZoomToFeature}
 							featureCollectionForUpload={memoizedFeatureCollection}
 							onBlossomUploadComplete={handleBlobUploadComplete}
@@ -2130,9 +2371,7 @@ export function GeoEditorView() {
 						geojson={pendingPublishCollection ?? memoizedFeatureCollection}
 						onUploadComplete={handleBlobUploadComplete}
 						onPublishWithUpload={handlePublishWithBlossomUpload}
-						onSkip={() => {
-							handlePublishNew({ skipSizeCheck: true })
-						}}
+						onSkip={handlePublishNew}
 						allowSkip={false}
 						title="Dataset Size Warning"
 						ndk={ndk}

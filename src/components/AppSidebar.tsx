@@ -1,5 +1,6 @@
 import {
 	Database,
+	FilePenLine,
 	FolderOpen,
 	Globe,
 	HelpCircle,
@@ -15,6 +16,7 @@ import { useEffect, useState } from 'react'
 import type { FeatureCollection } from 'geojson'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
+import type { NDKMapContextEvent } from '../lib/ndk/NDKMapContextEvent'
 import { ShoutboxPanel } from './shoutbox'
 import { GeoDatasetsPanelContent } from './GeoDatasetsPanel'
 import { UserProfilePanel } from './UserProfilePanel'
@@ -48,6 +50,8 @@ const META_VIEW_MODES: SidebarContentMode[] = ['posts', 'wallet', 'settings']
 const SPLIT_COMPANION_ALLOWED_MODES = new Set<SidebarContentMode>([
 	'datasets',
 	'collections',
+	'contexts',
+	'context-editor',
 	'chat',
 	'user',
 	'help',
@@ -67,6 +71,8 @@ const primaryNavItems: {
 }[] = [
 	{ mode: 'datasets', title: 'Datasets', icon: Database },
 	{ mode: 'collections', title: 'Collections', icon: FolderOpen },
+	{ mode: 'contexts', title: 'Contexts', icon: Globe },
+	{ mode: 'context-editor', title: 'Context Editor', icon: FilePenLine },
 	{ mode: 'chat', title: 'AI Chat', icon: MessageCircle },
 	{ mode: 'user', title: 'Profile', icon: User },
 ]
@@ -89,6 +95,7 @@ const allViewModeItems = [editorNavItem, ...primaryNavItems, ...metaNavItems]
 interface AppSidebarProps {
 	geoEvents: NDKGeoEvent[]
 	collectionEvents: NDKGeoCollectionEvent[]
+	mapContextEvents: NDKMapContextEvent[]
 	activeDataset: NDKGeoEvent | null
 	currentUserPubkey?: string
 	datasetVisibility: Record<string, boolean>
@@ -108,9 +115,12 @@ interface AppSidebarProps {
 	onZoomToCollection: (collection: NDKGeoCollectionEvent, events: NDKGeoEvent[]) => void
 	onInspectDataset: (event: NDKGeoEvent) => void
 	onInspectCollection: (collection: NDKGeoCollectionEvent, datasets: NDKGeoEvent[]) => void
-	onOpenDebug: (event: NDKGeoEvent | NDKGeoCollectionEvent) => void
+	onInspectContext: (context: NDKMapContextEvent) => void
+	onOpenDebug: (event: NDKGeoEvent | NDKGeoCollectionEvent | NDKMapContextEvent) => void
 	onCreateCollection: () => void
+	onCreateContext: () => void
 	onEditCollection: (collection: NDKGeoCollectionEvent) => void
+	onEditContext: (context: NDKMapContextEvent) => void
 	isFocused: boolean
 	onExitFocus: () => void
 	multiSelectModifier?: string
@@ -128,6 +138,10 @@ interface AppSidebarProps {
 	editingCollection?: NDKGeoCollectionEvent | null
 	onSaveCollection?: (collection: NDKGeoCollectionEvent) => void
 	onCloseCollectionEditor?: () => void
+	contextEditorMode?: 'none' | 'create' | 'edit'
+	editingContext?: NDKMapContextEvent | null
+	onSaveContext?: (context: NDKMapContextEvent) => void
+	onCloseContextEditor?: () => void
 	onZoomToFeature?: (feature: EditorFeature) => void
 	onExitViewMode?: () => void
 	// Blossom upload props
@@ -144,6 +158,7 @@ interface AppSidebarProps {
 export function AppSidebar({
 	geoEvents,
 	collectionEvents,
+	mapContextEvents,
 	activeDataset,
 	currentUserPubkey,
 	datasetVisibility,
@@ -163,9 +178,12 @@ export function AppSidebar({
 	onZoomToCollection,
 	onInspectDataset,
 	onInspectCollection,
+	onInspectContext,
 	onOpenDebug,
 	onCreateCollection,
+	onCreateContext,
 	onEditCollection,
+	onEditContext,
 	isFocused,
 	onExitFocus,
 	multiSelectModifier = 'Shift',
@@ -179,6 +197,10 @@ export function AppSidebar({
 	editingCollection,
 	onSaveCollection,
 	onCloseCollectionEditor,
+	contextEditorMode = 'none',
+	editingContext,
+	onSaveContext,
+	onCloseContextEditor,
 	onZoomToFeature,
 	onExitViewMode,
 	// Blossom upload props
@@ -207,6 +229,11 @@ export function AppSidebar({
 	const contentMode = resolveContentMode(viewMode)
 	const canUseSplitCompanion =
 		SPLIT_COMPANION_ALLOWED_MODES.has(contentMode) && !META_VIEW_MODES.includes(contentMode)
+	useEffect(() => {
+		if (!canUseSplitCompanion && splitWithEditor) {
+			setSplitWithEditor(false)
+		}
+	}, [canUseSplitCompanion, splitWithEditor])
 	const showSplitCompanion = canUseSplitCompanion && splitWithEditor && contentMode !== 'edit'
 	const currentTitle =
 		viewMode === 'combined'
@@ -217,6 +244,7 @@ export function AppSidebar({
 	const datasetsPanelProps = {
 		geoEvents,
 		collectionEvents,
+		mapContextEvents,
 		activeDataset,
 		currentUserPubkey,
 		datasetVisibility,
@@ -236,9 +264,12 @@ export function AppSidebar({
 		onZoomToCollection,
 		onInspectDataset,
 		onInspectCollection,
+		onInspectContext,
 		onOpenDebug,
 		onCreateCollection,
+		onCreateContext,
 		onEditCollection,
+		onEditContext,
 		isFocused,
 		onExitFocus,
 		onFilteredDatasetKeysChange,
@@ -282,6 +313,7 @@ export function AppSidebar({
 		onClose: () => {},
 		getDatasetKey,
 		getDatasetName,
+		onInspectCollection,
 		onCommentGeometryVisibility,
 		onZoomToBounds,
 		availableFeatures,
@@ -292,6 +324,11 @@ export function AppSidebar({
 		editingCollection,
 		onSaveCollection,
 		onCloseCollectionEditor,
+		contextEditorMode,
+		editingContext,
+		onSaveContext,
+		onCloseContextEditor,
+		mapContextEvents,
 		onZoomToFeature,
 		featureCollectionForUpload,
 		onBlossomUploadComplete,
@@ -306,6 +343,17 @@ export function AppSidebar({
 
 			case 'collections':
 				return <GeoDatasetsPanelContent mode="collections" {...datasetsPanelProps} />
+
+			case 'contexts':
+				return <GeoDatasetsPanelContent mode="contexts" {...datasetsPanelProps} />
+
+			case 'context-editor':
+				return (
+					<GeoEditorInfoPanelContent
+						{...editorPanelProps}
+						contextEditorMode={contextEditorMode !== 'none' ? contextEditorMode : 'create'}
+					/>
+				)
 
 			case 'posts':
 				return <ShoutboxPanel />
@@ -417,12 +465,12 @@ export function AppSidebar({
 								<SidebarMenuItem key="editor-split-toggle">
 									<SidebarMenuButton
 										tooltip={{
-											children:
-												'Toggle split layout with editor for datasets, collections, chat, profile, and help.',
+											children: 'Toggle split layout with geometry editor companion.',
 											hidden: false,
 										}}
 										onClick={() => setSplitWithEditor((prev) => !prev)}
 										isActive={splitWithEditor}
+										disabled={!canUseSplitCompanion}
 										className="px-2.5 md:px-2 border border-orange-200 bg-orange-50/70 text-orange-800 hover:bg-orange-100 data-[active=true]:bg-orange-600 data-[active=true]:text-white data-[active=true]:border-orange-600"
 									>
 										<PanelTop />

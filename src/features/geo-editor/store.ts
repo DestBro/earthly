@@ -3,6 +3,8 @@ import { create } from 'zustand'
 import { earthlyGeoServer } from '../../ctxcn'
 import type { NDKGeoCollectionEvent } from '../../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../../lib/ndk/NDKGeoEvent'
+import type { NDKMapContextEvent } from '../../lib/ndk/NDKMapContextEvent'
+import type { ContextFilterMode } from '../../lib/context/validation'
 import type { EditorFeature, EditorMode, GeoEditor } from './core'
 import type { CollectionMeta, EditorBlobReference, GeoSearchResult } from './types'
 import type { SidebarViewMode } from './hooks/useRouting'
@@ -43,6 +45,8 @@ export interface MapLayerState {
 export type MobilePanelTab =
 	| 'datasets'
 	| 'collections'
+	| 'contexts'
+	| 'context-editor'
 	| 'edit'
 	| 'profile'
 	| 'posts'
@@ -182,6 +186,7 @@ interface EditorState {
 	// Metadata & Dataset State
 	collectionMeta: CollectionMeta
 	activeDataset: NDKGeoEvent | null
+	activeDatasetContextRefs: string[]
 	datasetVisibility: Record<string, boolean>
 	resolvingDatasets: Set<string>
 	resolvingProgress: Map<string, { loaded: number; total: number }>
@@ -208,10 +213,14 @@ interface EditorState {
 	viewDataset: NDKGeoEvent | null
 	viewCollection: NDKGeoCollectionEvent | null
 	viewCollectionEvents: NDKGeoEvent[]
+	viewContext: NDKMapContextEvent | null
+	viewContextDatasets: NDKGeoEvent[]
+	viewContextCollections: NDKGeoCollectionEvent[]
+	contextFilterMode: ContextFilterMode
 
 	// Focus State (for URL routing)
 	focusedNaddr: string | null
-	focusedType: 'geoevent' | 'collection' | null
+	focusedType: 'geoevent' | 'collection' | 'mapcontext' | null
 
 	// Focused map geometry (e.g. last clicked remote feature)
 	focusedMapGeometry: {
@@ -300,6 +309,7 @@ interface EditorState {
 
 	setCollectionMeta: (meta: CollectionMeta) => void
 	setActiveDataset: (dataset: NDKGeoEvent | null) => void
+	setActiveDatasetContextRefs: (refs: string[]) => void
 	setDatasetVisibility: (
 		visibility:
 			| Record<string, boolean>
@@ -331,9 +341,13 @@ interface EditorState {
 	setViewDataset: (dataset: NDKGeoEvent | null) => void
 	setViewCollection: (collection: NDKGeoCollectionEvent | null) => void
 	setViewCollectionEvents: (events: NDKGeoEvent[]) => void
+	setViewContext: (context: NDKMapContextEvent | null) => void
+	setViewContextDatasets: (events: NDKGeoEvent[]) => void
+	setViewContextCollections: (collections: NDKGeoCollectionEvent[]) => void
+	setContextFilterMode: (mode: ContextFilterMode) => void
 
 	// Focus Actions
-	setFocused: (type: 'geoevent' | 'collection', naddr: string) => void
+	setFocused: (type: 'geoevent' | 'collection' | 'mapcontext', naddr: string) => void
 	clearFocused: () => void
 
 	// Focused map geometry actions
@@ -438,6 +452,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 		customProperties: {},
 	},
 	activeDataset: null,
+	activeDatasetContextRefs: [],
 	datasetVisibility: {},
 	resolvingDatasets: new Set<string>(),
 	resolvingProgress: new Map<string, { loaded: number; total: number }>(),
@@ -461,6 +476,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	viewDataset: null,
 	viewCollection: null,
 	viewCollectionEvents: [],
+	viewContext: null,
+	viewContextDatasets: [],
+	viewContextCollections: [],
+	contextFilterMode: 'strict',
 
 	// Focus State
 	focusedNaddr: null,
@@ -707,6 +726,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 			}
 		}),
 	setActiveDataset: (activeDataset) => set({ activeDataset }),
+	setActiveDatasetContextRefs: (activeDatasetContextRefs) => set({ activeDatasetContextRefs }),
 	setDatasetVisibility: (update) =>
 		set((state) => ({
 			datasetVisibility: typeof update === 'function' ? update(state.datasetVisibility) : update,
@@ -874,6 +894,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 	setViewDataset: (viewDataset) => set({ viewDataset }),
 	setViewCollection: (viewCollection) => set({ viewCollection }),
 	setViewCollectionEvents: (viewCollectionEvents) => set({ viewCollectionEvents }),
+	setViewContext: (viewContext) => set({ viewContext }),
+	setViewContextDatasets: (viewContextDatasets) => set({ viewContextDatasets }),
+	setViewContextCollections: (viewContextCollections) => set({ viewContextCollections }),
+	setContextFilterMode: (contextFilterMode) => set({ contextFilterMode }),
 
 	// Focus Actions
 	setFocused: (type, naddr) => set({ focusedType: type, focusedNaddr: naddr }),
@@ -948,7 +972,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
 		try {
 			const response = await earthlyGeoServer.SearchLocation(trimmed, 8)
-			set({ searchResults: response.result?.results ?? [] })
+			const rawResults = response.result?.results ?? []
+			const normalizedResults = rawResults.map((result) => {
+				const bbox = Array.isArray(result.boundingbox) ? result.boundingbox : null
+				const normalizedBbox =
+					bbox && bbox.length === 4 && bbox.every((value) => typeof value === 'number')
+						? (bbox as [number, number, number, number])
+						: null
+				return {
+					...result,
+					boundingbox: normalizedBbox,
+				}
+			})
+			set({ searchResults: normalizedResults })
 		} catch (error) {
 			set({
 				searchError: error instanceof Error ? error.message : 'Search failed',

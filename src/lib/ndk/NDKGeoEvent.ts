@@ -30,7 +30,7 @@ export class NDKGeoEvent extends NDKEvent {
 
 	static from(event: NDKEvent): NDKGeoEvent {
 		const wrapped = new NDKGeoEvent(event.ndk, event)
-		wrapped.kind = event.kind ?? NDKGeoEvent.kinds[0]
+		wrapped.kind = event.kind ?? GEO_EVENT_KIND
 		return wrapped
 	}
 
@@ -125,7 +125,9 @@ export class NDKGeoEvent extends NDKEvent {
 	}
 
 	get relayHints(): string[] {
-		return this.tags.filter((tag) => tag[0] === 'r').map((tag) => tag[1])
+		return this.tags
+			.filter((tag) => tag[0] === 'r')
+			.flatMap((tag) => (typeof tag[1] === 'string' ? [tag[1]] : []))
 	}
 
 	set relayHints(relays: string[] | undefined) {
@@ -136,7 +138,9 @@ export class NDKGeoEvent extends NDKEvent {
 	}
 
 	get hashtags(): string[] {
-		return this.tags.filter((tag) => tag[0] === 't').map((tag) => tag[1])
+		return this.tags
+			.filter((tag) => tag[0] === 't')
+			.flatMap((tag) => (typeof tag[1] === 'string' ? [tag[1]] : []))
 	}
 
 	set hashtags(tags: string[]) {
@@ -147,7 +151,9 @@ export class NDKGeoEvent extends NDKEvent {
 	}
 
 	get collectionReferences(): string[] {
-		return this.tags.filter((tag) => tag[0] === 'collection').map((tag) => tag[1])
+		return this.tags
+			.filter((tag) => tag[0] === 'collection')
+			.flatMap((tag) => (typeof tag[1] === 'string' ? [tag[1]] : []))
 	}
 
 	set collectionReferences(collections: string[]) {
@@ -157,16 +163,33 @@ export class NDKGeoEvent extends NDKEvent {
 		})
 	}
 
+	get contextReferences(): string[] {
+		return this.tags
+			.filter((tag) => tag[0] === 'c')
+			.flatMap((tag) => (typeof tag[1] === 'string' && tag[1] ? [tag[1]] : []))
+	}
+
+	set contextReferences(contexts: string[] | undefined) {
+		this.removeTag('c')
+		contexts?.forEach((value) => {
+			if (value) {
+				this.tags.push(['c', value])
+			}
+		})
+	}
+
 	/**
 	 * External blob references for oversized FeatureCollections or individual features.
 	 * Tags follow the format ["blob","collection|feature:<id>","<url>","sha256=...","size=...","mime=..."].
 	 */
 	get blobReferences(): GeoBlobReference[] {
 		return this.tags
-			.filter((tag) => tag[0] === 'blob' && tag.length >= 3)
+			.filter(
+				(tag) => tag[0] === 'blob' && typeof tag[1] === 'string' && typeof tag[2] === 'string',
+			)
 			.map((tag) => {
-				const scope = tag[1]
-				const url = tag[2]
+				const scope = tag[1] as string
+				const url = tag[2] as string
 				const reference: GeoBlobReference = {
 					scope: scope?.startsWith('feature:') ? 'feature' : 'collection',
 					url,
@@ -243,8 +266,10 @@ export class NDKGeoEvent extends NDKEvent {
 		try {
 			const computedCentroid = centroid(collection)
 			const coordinates = computedCentroid.geometry?.coordinates as Position | undefined
-			if (coordinates) {
-				this.geohash = encodeGeohash(coordinates[1], coordinates[0], geohashPrecision)
+			const lon = coordinates?.[0]
+			const lat = coordinates?.[1]
+			if (typeof lat === 'number' && typeof lon === 'number') {
+				this.geohash = encodeGeohash(lat, lon, geohashPrecision)
 			}
 		} catch {
 			// ignore – centroid calculation can fail on invalid geometry
@@ -278,7 +303,7 @@ export class NDKGeoEvent extends NDKEvent {
 		signer?: NDKSigner,
 		options?: { skipMetadataUpdate?: boolean },
 	): Promise<void> {
-		this.kind = NDKGeoEvent.kinds[0]
+		this.kind = GEO_EVENT_KIND
 		this.ensureDatasetId()
 		if (!options?.skipMetadataUpdate) {
 			this.updateDerivedMetadata()

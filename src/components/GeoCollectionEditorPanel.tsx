@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useEditorStore, type GeoCollectionEditDraft } from '../features/geo-editor/store'
 import { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoCommentEvent } from '../lib/ndk/NDKGeoCommentEvent'
+import type { MapContextValidationMode, NDKMapContextEvent } from '../lib/ndk/NDKMapContextEvent'
 import { CommentsPanel } from './comments'
 import {
 	GeoRichTextEditor,
@@ -26,6 +27,7 @@ interface GeoCollectionEditorPanelProps {
 	onClose: () => void
 	onSave: (collection: NDKGeoCollectionEvent) => void
 	availableFeatures?: GeoFeatureItem[]
+	mapContextEvents?: NDKMapContextEvent[]
 	className?: string
 	/** Callback to add/remove comment GeoJSON overlay on map */
 	onCommentGeometryVisibility?: (commentId: string, geojson: FeatureCollection | null) => void
@@ -46,6 +48,7 @@ export function GeoCollectionEditorPanel({
 	onClose,
 	onSave,
 	availableFeatures = [],
+	mapContextEvents = [],
 	className,
 	onCommentGeometryVisibility,
 	onZoomToBounds,
@@ -86,6 +89,9 @@ export function GeoCollectionEditorPanel({
 
 	const [name, setName] = useState(initialName)
 	const [description, setDescription] = useState(initialDescription)
+	const [selectedContextRefs, setSelectedContextRefs] = useState<string[]>(
+		initialCollection?.contextReferences ?? [],
+	)
 	const [isSaving, setIsSaving] = useState(false)
 	const [lastAutoSavedAt, setLastAutoSavedAt] = useState<number | null>(null)
 
@@ -131,6 +137,7 @@ export function GeoCollectionEditorPanel({
 		if (existingDrafts.length > 0) {
 			const preferredDraft =
 				existingDrafts.find((draft) => draft.id === store.activeGeoEditDraftId) ?? existingDrafts[0]
+			if (!preferredDraft) return
 			applyDraft(preferredDraft.id)
 			return
 		}
@@ -203,7 +210,9 @@ export function GeoCollectionEditorPanel({
 			.sort((a, b) => b.updatedAt - a.updatedAt)
 
 		if (remainingDrafts.length > 0) {
-			applyDraft(remainingDrafts[0].id)
+			const nextDraft = remainingDrafts[0]
+			if (!nextDraft) return
+			applyDraft(nextDraft.id)
 			return
 		}
 
@@ -274,6 +283,7 @@ export function GeoCollectionEditorPanel({
 			}
 
 			event.datasetReferences = aTags
+			event.contextReferences = selectedContextRefs
 
 			await event.publishNew()
 			onSave(event)
@@ -298,6 +308,30 @@ export function GeoCollectionEditorPanel({
 			}
 		})
 	}, [referencedAddresses, availableFeatures])
+	const attachableContexts = useMemo(
+		() =>
+			mapContextEvents
+				.map((context) => {
+					const coordinate = context.contextCoordinate
+					if (!coordinate) return null
+					return {
+						coordinate,
+						name: context.context.name || context.contextId || context.id || 'Untitled context',
+						validationMode: context.context.validationMode,
+					}
+				})
+				.filter(
+					(
+						entry,
+					): entry is {
+						coordinate: string
+						name: string
+						validationMode: MapContextValidationMode
+					} => entry !== null,
+				),
+		[mapContextEvents],
+	)
+
 	const selectedDraftId =
 		activeDraft && activeDraft.sourceId === draftSourceId ? activeDraft.id : draftsForSource[0]?.id
 
@@ -512,7 +546,7 @@ export function GeoCollectionEditorPanel({
 												<MapPin className="h-3 w-3 text-gray-400 flex-shrink-0" />
 												<span className="truncate flex-1">{ref.name}</span>
 												<Button
-													size="icon-xs"
+													size="icon-sm"
 													variant="ghost"
 													onClick={() => {
 														setVisibleReferenceAddrs((prev) => {
@@ -535,7 +569,7 @@ export function GeoCollectionEditorPanel({
 													)}
 												</Button>
 												<Button
-													size="icon-xs"
+													size="icon-sm"
 													variant="ghost"
 													onClick={() => onMentionZoomTo?.(ref.address, undefined)}
 													title="Zoom to dataset"
@@ -548,6 +582,42 @@ export function GeoCollectionEditorPanel({
 								</div>
 							</div>
 						)}
+
+						<div className="space-y-2">
+							<Label>References in context ({selectedContextRefs.length})</Label>
+							<div className="text-xs text-gray-500">
+								Collections attach as references (reference lane) in context view.
+							</div>
+							{attachableContexts.length === 0 ? (
+								<p className="text-xs text-gray-500">No map contexts available yet.</p>
+							) : (
+								<div className="space-y-1">
+									{attachableContexts.map((context) => (
+										<label
+											key={context.coordinate}
+											className="flex items-center justify-between gap-2 rounded border border-gray-100 px-2 py-1"
+										>
+											<span className="truncate text-xs text-gray-700">{context.name}</span>
+											<div className="flex items-center gap-2 shrink-0">
+												<span className="text-[10px] text-gray-500">{context.validationMode}</span>
+												<input
+													type="checkbox"
+													checked={selectedContextRefs.includes(context.coordinate)}
+													onChange={(event) => {
+														setSelectedContextRefs((prev) => {
+															if (event.target.checked) {
+																return Array.from(new Set([...prev, context.coordinate]))
+															}
+															return prev.filter((value) => value !== context.coordinate)
+														})
+													}}
+												/>
+											</div>
+										</label>
+									))}
+								</div>
+							)}
+						</div>
 					</div>
 				) : (
 					<CommentsPanel

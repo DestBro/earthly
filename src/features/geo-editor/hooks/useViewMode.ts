@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { nip19 } from 'nostr-tools'
 import type { NDKGeoCollectionEvent } from '../../../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../../../lib/ndk/NDKGeoEvent'
+import type { NDKMapContextEvent } from '../../../lib/ndk/NDKMapContextEvent'
 import { GEO_EVENT_KIND } from '../../../lib/ndk/kinds'
 import { useEditorStore } from '../store'
 
@@ -60,7 +61,9 @@ export function useViewMode({
 	const [sidebarMode, setSidebarMode] = useState<
 		'datasets' | 'info' | 'editor' | 'dataset' | 'inspector'
 	>('datasets')
-	const [debugEvent, setDebugEvent] = useState<NDKGeoEvent | NDKGeoCollectionEvent | null>(null)
+	const [debugEvent, setDebugEvent] = useState<
+		NDKGeoEvent | NDKGeoCollectionEvent | NDKMapContextEvent | null
+	>(null)
 	const [debugDialogOpen, setDebugDialogOpen] = useState(false)
 
 	// Store state
@@ -71,6 +74,9 @@ export function useViewMode({
 	const setViewingDataset = useEditorStore((state) => state.setViewDataset)
 	const setViewingCollection = useEditorStore((state) => state.setViewCollection)
 	const setViewingCollectionEvents = useEditorStore((state) => state.setViewCollectionEvents)
+	const setViewingContext = useEditorStore((state) => state.setViewContext)
+	const setViewingContextDatasets = useEditorStore((state) => state.setViewContextDatasets)
+	const setViewingContextCollections = useEditorStore((state) => state.setViewContextCollections)
 	const setViewMode = useEditorStore((state) => state.setViewMode)
 	const clearFocused = useEditorStore((state) => state.clearFocused)
 
@@ -94,6 +100,9 @@ export function useViewMode({
 		setViewingDataset(null)
 		setViewingCollection(null)
 		setViewingCollectionEvents([])
+		setViewingContext(null)
+		setViewingContextDatasets([])
+		setViewingContextCollections([])
 		setSidebarMode('editor')
 		// Clear URL and focus state
 		clearFocused()
@@ -102,6 +111,9 @@ export function useViewMode({
 		setViewingDataset,
 		setViewingCollection,
 		setViewingCollectionEvents,
+		setViewingContext,
+		setViewingContextDatasets,
+		setViewingContextCollections,
 		setViewMode,
 		clearFocused,
 	])
@@ -111,6 +123,9 @@ export function useViewMode({
 			setViewingDataset(event)
 			setViewingCollection(null)
 			setViewingCollectionEvents([])
+			setViewingContext(null)
+			setViewingContextDatasets([])
+			setViewingContextCollections([])
 			setInfoMode('view')
 			setViewMode('view')
 			setSidebarMode('dataset')
@@ -129,6 +144,9 @@ export function useViewMode({
 			setViewingDataset,
 			setViewingCollection,
 			setViewingCollectionEvents,
+			setViewingContext,
+			setViewingContextDatasets,
+			setViewingContextCollections,
 			setViewMode,
 			onEnsureInfoPanelVisible,
 			onZoomToDataset,
@@ -144,6 +162,9 @@ export function useViewMode({
 			setViewingDataset(event)
 			setViewingCollection(null)
 			setViewingCollectionEvents([])
+			setViewingContext(null)
+			setViewingContextDatasets([])
+			setViewingContextCollections([])
 			setInfoMode('view')
 			setViewMode('view')
 			setSidebarMode('dataset')
@@ -154,6 +175,9 @@ export function useViewMode({
 			setViewingDataset,
 			setViewingCollection,
 			setViewingCollectionEvents,
+			setViewingContext,
+			setViewingContextDatasets,
+			setViewingContextCollections,
 			setViewMode,
 			onEnsureInfoPanelVisible,
 		],
@@ -166,6 +190,9 @@ export function useViewMode({
 			setViewingCollection(collection)
 			setViewingCollectionEvents(referencedEvents)
 			setViewingDataset(null)
+			setViewingContext(null)
+			setViewingContextDatasets([])
+			setViewingContextCollections([])
 			setInfoMode('view')
 			setViewMode('view')
 			setSidebarMode('dataset')
@@ -185,16 +212,22 @@ export function useViewMode({
 			setViewingCollection,
 			setViewingCollectionEvents,
 			setViewingDataset,
+			setViewingContext,
+			setViewingContextDatasets,
+			setViewingContextCollections,
 			setViewMode,
 			onEnsureInfoPanelVisible,
 			onZoomToCollection,
 		],
 	)
 
-	const handleOpenDebug = useCallback((event: NDKGeoEvent | NDKGeoCollectionEvent) => {
+	const handleOpenDebug = useCallback(
+		(event: NDKGeoEvent | NDKGeoCollectionEvent | NDKMapContextEvent) => {
 		setDebugEvent(event)
 		setDebugDialogOpen(true)
-	}, [])
+		},
+		[],
+	)
 
 	return {
 		// State

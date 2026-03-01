@@ -3,6 +3,7 @@ import { useNDK, useSubscribe, wrapEvent } from '@nostr-dev-kit/react'
 import { useEffect, useMemo, useState } from 'react'
 import { NDKGeoCollectionEvent } from '../ndk/NDKGeoCollectionEvent'
 import { NDKGeoEvent } from '../ndk/NDKGeoEvent'
+import { NDKMapContextEvent } from '../ndk/NDKMapContextEvent'
 
 /**
  * Subscribe to GeoJSON dataset events (kind 37515) and wrap them into our custom NDKGeoEvent class.
@@ -36,6 +37,21 @@ export function useGeoCollections(additionalFilters: Omit<NDKFilter, 'kinds'>[] 
 
 	return {
 		events: collections,
+		eose,
+	}
+}
+
+export function useMapContexts(additionalFilters: Omit<NDKFilter, 'kinds'>[] = [{}]) {
+	const filters = additionalFilters.map((filter) => ({
+		...filter,
+		kinds: NDKMapContextEvent.kinds,
+	}))
+
+	const { events, eose } = useSubscribe(filters)
+	const contexts = events.map((event) => wrapEvent(event) as NDKMapContextEvent)
+
+	return {
+		events: contexts,
 		eose,
 	}
 }
