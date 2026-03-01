@@ -79,6 +79,7 @@ import type { EditorFeature, EditorMode, GeoEditor } from '../core'
 import { useEditorStore } from '../store'
 import type { GeoSearchResult } from '../types'
 import { formatBytes } from '../../../lib/blossom/blossomUpload'
+import { countGeometryVertices, isSimplifiableGeometryType } from '../../../lib/geo/geometry'
 import { CreateMapPopover } from './CreateMapPopover'
 import { MapSettingsPanel } from './MapSettingsPanel'
 
@@ -124,37 +125,6 @@ function toleranceToSliderValue(tolerance: number): number {
 	const safe = Math.max(SIMPLIFY_TOLERANCE_MIN, Math.min(SIMPLIFY_TOLERANCE_MAX, tolerance))
 	const scale = SIMPLIFY_TOLERANCE_MAX / SIMPLIFY_TOLERANCE_MIN
 	return Math.round((Math.log(safe / SIMPLIFY_TOLERANCE_MIN) / Math.log(scale)) * 100)
-}
-
-function countGeometryVertices(geometry: Geometry): number {
-	switch (geometry.type) {
-		case 'Point':
-			return 1
-		case 'MultiPoint':
-		case 'LineString':
-			return geometry.coordinates.length
-		case 'MultiLineString':
-		case 'Polygon':
-			return geometry.coordinates.reduce((sum, ring) => sum + ring.length, 0)
-		case 'MultiPolygon':
-			return geometry.coordinates.reduce(
-				(sum, polygon) => sum + polygon.reduce((ringSum, ring) => ringSum + ring.length, 0),
-				0,
-			)
-		case 'GeometryCollection':
-			return geometry.geometries.reduce((sum, child) => sum + countGeometryVertices(child), 0)
-		default:
-			return 0
-	}
-}
-
-function isSimplifiableGeometryType(type: Geometry['type']): boolean {
-	return (
-		type === 'LineString' ||
-		type === 'Polygon' ||
-		type === 'MultiLineString' ||
-		type === 'MultiPolygon'
-	)
 }
 
 function estimateFeatureCollectionBytes(features: EditorFeature[]): number {

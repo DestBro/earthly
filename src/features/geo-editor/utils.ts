@@ -7,6 +7,8 @@ import {
 	normalizeGeoJsonToFeatureCollection,
 } from '../../lib/geo/normalizeGeoJSON'
 import type { EditorFeature } from './core'
+import { NON_CUSTOM_EDITOR_PROPERTY_KEYS } from './constants'
+import { isStyleProperty } from './types/styleProperties'
 import type { CollectionMeta } from './types'
 
 export function convertGeoEventsToEditorFeatures(
@@ -233,4 +235,68 @@ export function parseCustomValue(value: string): string | number | boolean {
 		return num
 	}
 	return value
+}
+
+/**
+ * Derive a stable ID for a GeoJSON feature.
+ * Checks `feature.id`, then `properties["@id"]` (OSM convention), then generates a UUID.
+ */
+export function featureStableId(feature: GeoJSON.Feature): string {
+	const rawId = feature.id
+	if (typeof rawId === 'string' || typeof rawId === 'number') {
+		return String(rawId)
+	}
+	const props = feature.properties
+	if (props && typeof props === 'object') {
+		const atId = (props as Record<string, unknown>)['@id']
+		if (typeof atId === 'string' || typeof atId === 'number') {
+			return String(atId)
+		}
+	}
+	return crypto.randomUUID()
+}
+
+/**
+ * Convert a raw GeoJSON feature into an EditorFeature, normalizing properties
+ * and mirroring non-internal keys into `customProperties`.
+ */
+export function toEditorFeature(
+	feature: GeoJSON.Feature,
+	importSource?: string,
+): EditorFeature {
+	const stableId = featureStableId(feature)
+	const sourceProps =
+		feature.properties && typeof feature.properties === 'object'
+			? (feature.properties as Record<string, unknown>)
+			: {}
+	const existingCustomProperties =
+		sourceProps.customProperties &&
+		typeof sourceProps.customProperties === 'object' &&
+		!Array.isArray(sourceProps.customProperties)
+			? (sourceProps.customProperties as Record<string, unknown>)
+			: {}
+	const mirroredCustomProperties: Record<string, unknown> = {}
+	for (const [key, value] of Object.entries(sourceProps)) {
+		if (NON_CUSTOM_EDITOR_PROPERTY_KEYS.has(key) || isStyleProperty(key)) continue
+		mirroredCustomProperties[key] = value
+	}
+
+	const mergedCustomProperties = {
+		...existingCustomProperties,
+		...mirroredCustomProperties,
+	}
+
+	return {
+		...feature,
+		id: stableId,
+		properties: {
+			...sourceProps,
+			...(Object.keys(mergedCustomProperties).length > 0
+				? { customProperties: mergedCustomProperties }
+				: {}),
+			meta: 'feature',
+			featureId: stableId,
+			...(importSource ? { importSource } : {}),
+		},
+	} as EditorFeature
 }

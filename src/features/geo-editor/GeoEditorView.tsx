@@ -8,7 +8,6 @@ import {
 	useMemo,
 	useRef,
 	useState,
-	type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { AppSidebar } from '../../components/AppSidebar'
 import { BlossomUploadDialog } from '../../components/BlossomUploadDialog'
@@ -43,139 +42,29 @@ import { Toolbar } from './components/Toolbar'
 import type { EditorFeature, EditorMode } from './core'
 import {
 	CLUSTER_CIRCLE_LAYER,
+	MAGNIFIER_SIZE,
 	REMOTE_ANNOTATION_ANCHOR_LAYER,
 	REMOTE_ANNOTATION_LAYER,
 	REMOTE_FILL_LAYER,
 	REMOTE_LINE_LAYER,
 	REMOTE_POINT_LAYER,
 	UNCLUSTERED_POINT_LAYER,
+	useCommentGeometry,
 	useDatasetManagement,
+	useInspector,
+	useMagnifier,
 	useMapLayers,
+	useMentionActions,
 	usePublishing,
 	useRouting,
 	useViewMode,
 } from './hooks'
 import { useEditorStore } from './store'
 import type { GeoSearchResult } from './types'
-import { isStyleProperty } from './types/styleProperties'
-import { ensureFeatureCollection, extractCollectionMeta } from './utils'
-
-const MAGNIFIER_SIZE = 140
-const MAGNIFIER_OFFSET = { x: 80, y: -80 }
-const POINTER_OFFSET = { x: 0, y: -48 }
-const NON_CUSTOM_EDITOR_PROPERTY_KEYS = new Set([
-	'meta',
-	'active',
-	'mode',
-	'parent',
-	'coord_path',
-	'featureId',
-	'customProperties',
-	'name',
-	'description',
-	'featureType',
-	'text',
-	'textFontSize',
-	'textColor',
-	'textHaloColor',
-	'textHaloWidth',
-])
+import { bboxFromGeometry } from '../../lib/geo/bbox'
+import { ensureFeatureCollection, extractCollectionMeta, toEditorFeature } from './utils'
 
 type ReverseLookupResult = ReverseLookupOutput['result']
-
-function bboxFromGeometry(geometry: any): [number, number, number, number] | null {
-	let west = Infinity
-	let south = Infinity
-	let east = -Infinity
-	let north = -Infinity
-
-	const add = (coord: any) => {
-		if (!Array.isArray(coord) || coord.length < 2) return
-		const lon = Number(coord[0])
-		const lat = Number(coord[1])
-		if (!Number.isFinite(lon) || !Number.isFinite(lat)) return
-		if (lon < west) west = lon
-		if (lon > east) east = lon
-		if (lat < south) south = lat
-		if (lat > north) north = lat
-	}
-
-	const walk = (g: any) => {
-		if (!g) return
-		switch (g.type) {
-			case 'Point':
-				add(g.coordinates)
-				break
-			case 'MultiPoint':
-			case 'LineString':
-				for (const c of g.coordinates ?? []) add(c)
-				break
-			case 'MultiLineString':
-			case 'Polygon':
-				for (const ring of g.coordinates ?? []) {
-					for (const c of ring ?? []) add(c)
-				}
-				break
-			case 'MultiPolygon':
-				for (const poly of g.coordinates ?? []) {
-					for (const ring of poly ?? []) {
-						for (const c of ring ?? []) add(c)
-					}
-				}
-				break
-			case 'GeometryCollection':
-				for (const geom of g.geometries ?? []) walk(geom)
-				break
-		}
-	}
-
-	walk(geometry)
-	if (
-		!Number.isFinite(west) ||
-		!Number.isFinite(south) ||
-		!Number.isFinite(east) ||
-		!Number.isFinite(north)
-	) {
-		return null
-	}
-	return [west, south, east, north]
-}
-
-function toImportedEditorFeature(feature: GeoJSON.Feature): EditorFeature {
-	const stableId = feature.id?.toString() || crypto.randomUUID()
-	const sourceProps =
-		feature.properties && typeof feature.properties === 'object' ? feature.properties : {}
-	const baseProperties = sourceProps as Record<string, unknown>
-	const existingCustomProperties =
-		baseProperties.customProperties &&
-		typeof baseProperties.customProperties === 'object' &&
-		!Array.isArray(baseProperties.customProperties)
-			? (baseProperties.customProperties as Record<string, unknown>)
-			: {}
-	const mirroredCustomProperties: Record<string, unknown> = {}
-	for (const [key, value] of Object.entries(baseProperties)) {
-		if (NON_CUSTOM_EDITOR_PROPERTY_KEYS.has(key) || isStyleProperty(key)) continue
-		mirroredCustomProperties[key] = value
-	}
-
-	const mergedCustomProperties = {
-		...existingCustomProperties,
-		...mirroredCustomProperties,
-	}
-
-	return {
-		...feature,
-		id: stableId,
-		properties: {
-			...baseProperties,
-			...(Object.keys(mergedCustomProperties).length > 0
-				? { customProperties: mergedCustomProperties }
-				: {}),
-			meta: 'feature',
-			featureId: stableId,
-		},
-	} as EditorFeature
-}
 
 export function GeoEditorView() {
 	const map = useRef<maplibregl.Map | null>(null)
@@ -184,37 +73,43 @@ export function GeoEditorView() {
 	const [deletingKey, setDeletingKey] = useState<string | null>(null)
 	const [resolvedCollectionsVersion, setResolvedCollectionsVersion] = useState(0)
 
-	// Comment geometry layers - track which comment geometries are visible on map
-	const commentGeometryLayers = useRef<Map<string, { sourceId: string; layerIds: string[] }>>(
-		new Map(),
-	)
-
 	// Drawing mode state
 	const [isDrawingMode, setIsDrawingMode] = useState(false)
-	const [magnifierEnabled, setMagnifierEnabled] = useState(false)
-	const [magnifierVisible, setMagnifierVisible] = useState(false)
-	const [magnifierPosition, setMagnifierPosition] = useState({ x: 0, y: 0 })
-	const [magnifierCenter, setMagnifierCenter] = useState<[number, number]>([0, 0])
-	const [magnifierZoomOffset, setMagnifierZoomOffset] = useState(1)
-	const [magnifierMenuOpen, setMagnifierMenuOpen] = useState(false)
 	const [previousMode, setPreviousMode] = useState<string | null>(null)
 	const [showToolbar, setShowToolbar] = useState(true)
-	const magnifierLongPressTimerRef = useRef<number | null>(null)
-	const magnifierLongPressTriggeredRef = useRef(false)
-	const magnifierButtonRef = useRef<HTMLButtonElement>(null)
-	const magnifierMenuRef = useRef<HTMLDivElement>(null)
-
-	// Inspector state
-	const [reverseLookupResult, setReverseLookupResult] = useState<ReverseLookupResult | null>(null)
-	const [reverseLookupStatus, setReverseLookupStatus] = useState<'idle' | 'loading' | 'error'>(
-		'idle',
-	)
-	const [reverseLookupError, setReverseLookupError] = useState<string | null>(null)
-	const [inspectorClickPosition, setInspectorClickPosition] = useState<{
-		x: number
-		y: number
-	} | null>(null)
 	const mapContainerRef = useRef<HTMLDivElement>(null)
+
+	// Extracted hooks
+	const {
+		magnifierEnabled,
+		setMagnifierEnabled,
+		magnifierVisible,
+		magnifierPosition,
+		magnifierCenter,
+		magnifierZoomOffset,
+		setMagnifierZoomOffset,
+		magnifierMenuOpen,
+		setMagnifierMenuOpen,
+		magnifierButtonRef,
+		magnifierMenuRef,
+		toggleMagnifier,
+		handleMagnifierPointerDown,
+		handleMagnifierPointerUp,
+		clearMagnifierLongPress,
+	} = useMagnifier(map)
+
+	const {
+		reverseLookupResult,
+		setReverseLookupResult,
+		reverseLookupStatus,
+		reverseLookupError,
+		setReverseLookupError,
+		inspectorClickPosition,
+		setInspectorClickPosition,
+		disableInspector,
+	} = useInspector(map, previousMode)
+
+	const { handleCommentGeometryVisibility } = useCommentGeometry(map)
 
 	// Feature popup state (shown when clicking a feature on the map in view mode)
 	const [featurePopupData, setFeaturePopupData] = useState<FeaturePopupData | null>(null)
@@ -705,12 +600,7 @@ export function GeoEditorView() {
 
 		const performZoom = async () => {
 			try {
-				// Get collection or feature collection
-				const dataset = resolveNaddrToDataset(
-					latestEvent.datasetId || latestEvent.dTag || latestEvent.id,
-				)
-				const col = dataset?.featureCollection || latestEvent.featureCollection
-
+				const col = latestEvent.featureCollection
 				if (!col) return
 
 				const turf = await import('@turf/turf')
@@ -1114,7 +1004,7 @@ export function GeoEditorView() {
 		(features: GeoJSON.Feature[]) => {
 			if (!editor) return
 			features.forEach((feature) => {
-				editor.addFeature(toImportedEditorFeature(feature))
+				editor.addFeature(toEditorFeature(feature))
 			})
 		},
 		[editor],
@@ -1148,96 +1038,6 @@ export function GeoEditorView() {
 		editor.setPanLocked(next)
 		setPanLocked(next)
 	}, [editor, isDrawingMode, panLocked, setPanLocked])
-
-	const toggleMagnifier = useCallback(() => {
-		const next = !magnifierEnabled
-		setMagnifierEnabled(next)
-		if (!next) setMagnifierVisible(false)
-	}, [magnifierEnabled])
-
-	const clearMagnifierLongPress = useCallback(() => {
-		if (magnifierLongPressTimerRef.current) {
-			window.clearTimeout(magnifierLongPressTimerRef.current)
-			magnifierLongPressTimerRef.current = null
-		}
-	}, [])
-
-	const handleMagnifierPointerDown = useCallback(
-		(event: ReactPointerEvent<HTMLButtonElement>) => {
-			if (event.pointerType === 'mouse' && event.button !== 0) return
-			event.preventDefault()
-			magnifierLongPressTriggeredRef.current = false
-			clearMagnifierLongPress()
-			magnifierLongPressTimerRef.current = window.setTimeout(() => {
-				magnifierLongPressTriggeredRef.current = true
-				setMagnifierMenuOpen(true)
-			}, 550)
-		},
-		[clearMagnifierLongPress],
-	)
-
-	const handleMagnifierPointerUp = useCallback(() => {
-		const didLongPress = magnifierLongPressTriggeredRef.current
-		clearMagnifierLongPress()
-		if (!didLongPress) {
-			toggleMagnifier()
-		}
-	}, [clearMagnifierLongPress, toggleMagnifier])
-
-	useEffect(() => {
-		if (!magnifierMenuOpen) return
-		const handlePointerDown = (event: PointerEvent) => {
-			const target = event.target as Node
-			if (magnifierMenuRef.current?.contains(target)) return
-			if (magnifierButtonRef.current?.contains(target)) return
-			setMagnifierMenuOpen(false)
-		}
-		document.addEventListener('pointerdown', handlePointerDown)
-		return () => document.removeEventListener('pointerdown', handlePointerDown)
-	}, [magnifierMenuOpen])
-
-	// Magnifier update on touch
-	useEffect(() => {
-		if (!map.current) return
-		const mapInstance = map.current
-
-		const updateMagnifier = (event: maplibregl.MapTouchEvent) => {
-			if (!magnifierEnabled) return
-			const point = event.point
-			const container = mapInstance.getContainer()
-			const width = container.clientWidth
-			const height = container.clientHeight
-			const posX = Math.min(
-				Math.max(point.x + MAGNIFIER_OFFSET.x, MAGNIFIER_SIZE / 2),
-				width - MAGNIFIER_SIZE / 2,
-			)
-			const posY = Math.min(
-				Math.max(point.y + MAGNIFIER_OFFSET.y, MAGNIFIER_SIZE / 2),
-				height - MAGNIFIER_SIZE / 2,
-			)
-			const targetX = Math.min(Math.max(point.x + POINTER_OFFSET.x, 0), width)
-			const targetY = Math.min(Math.max(point.y + POINTER_OFFSET.y, 0), height)
-			const lngLat = mapInstance.unproject([targetX, targetY])
-
-			setMagnifierPosition({ x: posX, y: posY })
-			setMagnifierCenter([lngLat.lng, lngLat.lat])
-			setMagnifierVisible(true)
-		}
-
-		const handleTouchStart = (e: maplibregl.MapTouchEvent) => updateMagnifier(e)
-		const handleTouchMove = (e: maplibregl.MapTouchEvent) => updateMagnifier(e)
-		const handleTouchEnd = () => setMagnifierVisible(false)
-
-		mapInstance.on('touchstart', handleTouchStart)
-		mapInstance.on('touchmove', handleTouchMove)
-		mapInstance.on('touchend', handleTouchEnd)
-
-		return () => {
-			mapInstance.off('touchstart', handleTouchStart)
-			mapInstance.off('touchmove', handleTouchMove)
-			mapInstance.off('touchend', handleTouchEnd)
-		}
-	}, [magnifierEnabled])
 
 	// Remote dataset click and hover handling
 	useEffect(() => {
@@ -1392,48 +1192,6 @@ export function GeoEditorView() {
 		getDatasetName,
 	])
 
-	// Inspector click handling
-	useEffect(() => {
-		if (!map.current) return
-		const mapInstance = map.current
-
-		const handleInspectorClick = async (event: maplibregl.MapMouseEvent & any) => {
-			const { lng, lat } = event.lngLat
-			// Capture click position for popup positioning
-			setInspectorClickPosition({ x: event.point.x, y: event.point.y })
-			setReverseLookupStatus('loading')
-			setReverseLookupError(null)
-			setReverseLookupResult(null)
-
-			try {
-				await new Promise((resolve) => setTimeout(resolve, 100))
-				const response = await earthlyGeoServer.ReverseLookup(lat, lng)
-				setReverseLookupResult(response.result)
-			} catch (error) {
-				const errorMessage =
-					error instanceof Error && error.message === 'Not connected'
-						? 'Cannot connect to geo server. Make sure the relay is running (bun relay).'
-						: error instanceof Error
-							? error.message
-							: 'Reverse lookup failed'
-				setReverseLookupError(errorMessage)
-				setReverseLookupResult(null)
-			} finally {
-				setReverseLookupStatus('idle')
-			}
-		}
-
-		if (inspectorActive) {
-			mapInstance.getCanvas().style.cursor = 'crosshair'
-			mapInstance.on('click', handleInspectorClick)
-		}
-
-		return () => {
-			mapInstance.getCanvas().style.cursor = ''
-			mapInstance.off('click', handleInspectorClick)
-		}
-	}, [inspectorActive])
-
 	// Search result handling
 	const zoomToSearchResult = useCallback((result: GeoSearchResult) => {
 		if (!map.current) return
@@ -1485,100 +1243,6 @@ export function GeoEditorView() {
 		[zoomToSearchResult],
 	)
 
-	const disableInspector = useCallback(() => {
-		setInspectorActive(false)
-		if (editor) {
-			editor.setMode((previousMode as EditorMode) || 'select')
-			setCurrentMode((previousMode as EditorMode) || 'select')
-		}
-	}, [previousMode, editor, setCurrentMode, setInspectorActive])
-
-	// Comment geometry visibility handler - adds/removes GeoJSON layers on map
-	const handleCommentGeometryVisibility = useCallback(
-		(commentId: string, geojson: FeatureCollection | null) => {
-			if (!map.current) return
-
-			const mapInstance = map.current
-			const existing = commentGeometryLayers.current.get(commentId)
-
-			// Remove existing layers for this comment
-			if (existing) {
-				for (const layerId of existing.layerIds) {
-					if (mapInstance.getLayer(layerId)) {
-						mapInstance.removeLayer(layerId)
-					}
-				}
-				if (mapInstance.getSource(existing.sourceId)) {
-					mapInstance.removeSource(existing.sourceId)
-				}
-				commentGeometryLayers.current.delete(commentId)
-			}
-
-			// If hiding, we're done
-			if (!geojson) return
-
-			// Add new layers
-			const sourceId = `comment-geo-${commentId}`
-			const fillLayerId = `comment-fill-${commentId}`
-			const lineLayerId = `comment-line-${commentId}`
-			const pointLayerId = `comment-point-${commentId}`
-
-			mapInstance.addSource(sourceId, {
-				type: 'geojson',
-				data: geojson,
-			})
-
-			// Add fill layer for polygons
-			mapInstance.addLayer({
-				id: fillLayerId,
-				type: 'fill',
-				source: sourceId,
-				filter: ['==', ['geometry-type'], 'Polygon'],
-				paint: {
-					'fill-color': '#f97316', // Orange for comments
-					'fill-opacity': 0.3,
-				},
-			})
-
-			// Add line layer
-			mapInstance.addLayer({
-				id: lineLayerId,
-				type: 'line',
-				source: sourceId,
-				filter: [
-					'any',
-					['==', ['geometry-type'], 'LineString'],
-					['==', ['geometry-type'], 'Polygon'],
-				],
-				paint: {
-					'line-color': '#f97316',
-					'line-width': 2,
-					'line-dasharray': [2, 2], // Dashed line for comments
-				},
-			})
-
-			// Add point layer
-			mapInstance.addLayer({
-				id: pointLayerId,
-				type: 'circle',
-				source: sourceId,
-				filter: ['==', ['geometry-type'], 'Point'],
-				paint: {
-					'circle-color': '#f97316',
-					'circle-radius': 6,
-					'circle-stroke-color': '#fff',
-					'circle-stroke-width': 2,
-				},
-			})
-
-			commentGeometryLayers.current.set(commentId, {
-				sourceId,
-				layerIds: [fillLayerId, lineLayerId, pointLayerId],
-			})
-		},
-		[],
-	)
-
 	// Zoom to bounds handler
 	const handleZoomToBounds = useCallback((bounds: [number, number, number, number]) => {
 		if (!map.current) return
@@ -1610,121 +1274,23 @@ export function GeoEditorView() {
 		[handleZoomToBounds],
 	)
 
-	// Resolve naddr to dataset
-	const resolveNaddrToDataset = useCallback(
-		(address: string): NDKGeoEvent | null => {
-			// Skip non-naddr addresses (e.g., legacy UUIDs or malformed data)
-			if (!address || !address.startsWith('naddr1')) {
-				return null
-			}
-			try {
-				// Decode naddr to get kind, pubkey, identifier
-				const { nip19 } = require('nostr-tools')
-				const decoded = nip19.decode(address)
-				if (decoded.type !== 'naddr') return null
-
-				const { kind, pubkey, identifier } = decoded.data
-
-				// Find matching dataset
-				return (
-					geoEvents.find(
-						(ev) =>
-							ev.kind === kind &&
-							ev.pubkey === pubkey &&
-							(ev.datasetId === identifier || ev.dTag === identifier || ev.id === identifier),
-					) ?? null
-				)
-			} catch {
-				console.warn('Failed to decode naddr:', address)
-				return null
-			}
-		},
-		[geoEvents],
-	)
-
-	// Handle mention zoom
-	const handleMentionZoomTo = useCallback(
-		(address: string, featureId: string | undefined) => {
-			const dataset = resolveNaddrToDataset(address)
-			if (!dataset) {
-				console.warn('Could not find dataset for address:', address)
-				return
-			}
-
-			// Get the feature collection
-			const collection = resolvedCollectionResolver?.(dataset) ?? dataset.featureCollection
-
-			if (featureId) {
-				// Find specific feature and zoom to it
-				const feature = collection?.features.find(
-					(f) => f.id === featureId || String(f.id) === featureId || f.properties?.id === featureId,
-				)
-				if (feature?.geometry) {
-					import('@turf/turf')
-						.then((turf) => {
-							const bbox = turf.bbox(feature) as [number, number, number, number]
-							if (bbox.every((v) => Number.isFinite(v))) {
-								handleZoomToBounds(bbox)
-							}
-						})
-						.catch(() => {
-							// Fallback to dataset zoom
-							zoomToDataset(dataset)
-						})
-				} else {
-					// Feature not found, zoom to whole dataset
-					zoomToDataset(dataset)
-				}
-			} else {
-				// Zoom to whole dataset
-				zoomToDataset(dataset)
-			}
-		},
-		[resolveNaddrToDataset, resolvedCollectionResolver, handleZoomToBounds, zoomToDataset],
-	)
-
-	// Handle mention visibility toggle
-	const handleMentionVisibilityToggle = useCallback(
-		(address: string, _featureId: string | undefined, visible: boolean) => {
-			const dataset = resolveNaddrToDataset(address)
-			if (!dataset) {
-				console.warn('Could not find dataset for address:', address)
-				return
-			}
-			// Set the dataset visibility explicitly based on the visible parameter
-			// datasetVisibility semantics: false = hidden, true/undefined = visible
-			const key = getDatasetKey(dataset)
-			setDatasetVisibility((prev) => ({
-				...prev,
-				[key]: visible,
-			}))
-		},
-		[resolveNaddrToDataset, getDatasetKey, setDatasetVisibility],
-	)
-
-	// Wrapped visibility toggle that exits focus mode
-	const handleToggleVisibilityWithExitFocus = useCallback(
-		(event: NDKGeoEvent) => {
-			// Exit focus mode when manually toggling visibility
-			if (isFocused) {
-				navigateHome()
-			}
-			toggleDatasetVisibility(event)
-		},
-		[isFocused, navigateHome, toggleDatasetVisibility],
-	)
-
-	// Wrapped toggle all visibility that exits focus mode
-	const handleToggleAllVisibilityWithExitFocus = useCallback(
-		(visible: boolean) => {
-			// Exit focus mode when toggling all visibility
-			if (isFocused) {
-				navigateHome()
-			}
-			toggleAllDatasetVisibility(visible)
-		},
-		[isFocused, navigateHome, toggleAllDatasetVisibility],
-	)
+	// Mention actions (naddr resolution, zoom-to, visibility toggle with focus exit)
+	const {
+		handleMentionZoomTo,
+		handleMentionVisibilityToggle,
+		handleToggleVisibilityWithExitFocus,
+		handleToggleAllVisibilityWithExitFocus,
+	} = useMentionActions({
+		geoEvents,
+		resolvedCollectionResolver,
+		handleZoomToBounds,
+		zoomToDataset,
+		getDatasetKey,
+		isFocused,
+		navigateHome,
+		toggleDatasetVisibility,
+		toggleAllDatasetVisibility,
+	})
 
 	// Collection Editor Handlers
 	const handleCreateCollection = useCallback(() => {
@@ -2429,7 +1995,7 @@ export function GeoEditorView() {
 						onImport={(features) => {
 							if (!editor) return
 							features.forEach((feature) => {
-								editor.addFeature(toImportedEditorFeature(feature))
+								editor.addFeature(toEditorFeature(feature))
 							})
 						}}
 					/>

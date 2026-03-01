@@ -1,21 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { nip19 } from 'nostr-tools'
-import { useEditorStore } from '../store'
+import { useEditorStore, type SidebarViewMode } from '../store'
 
-/** Sidebar view modes that can be routed */
-export type SidebarViewMode =
-	| 'datasets'
-	| 'collections'
-	| 'contexts'
-	| 'context-editor'
-	| 'combined'
-	| 'edit'
-	| 'posts'
-	| 'settings'
-	| 'help'
-	| 'user'
-	| 'wallet'
-	| 'chat'
+export type { SidebarViewMode }
 
 /** All valid sidebar view mode values */
 const SIDEBAR_VIEW_MODES: SidebarViewMode[] = [

@@ -32,3 +32,26 @@ export const BLOSSOM_SERVER_URL = 'https://blossom.earthly.city'
 export function getBlossomServerUrl(): string {
 	return BLOSSOM_SERVER_URL
 }
+
+/**
+ * Property keys that are internal to the editor and should not be treated
+ * as user-defined custom properties.
+ */
+export const NON_CUSTOM_EDITOR_PROPERTY_KEYS = new Set([
+	'meta',
+	'active',
+	'mode',
+	'parent',
+	'coord_path',
+	'featureId',
+	'importSource',
+	'customProperties',
+	'name',
+	'description',
+	'featureType',
+	'text',
+	'textFontSize',
+	'textColor',
+	'textHaloColor',
+	'textHaloWidth',
+])

@@ -12,3 +12,7 @@ export {
 export { usePublishing } from './usePublishing'
 export { useViewMode } from './useViewMode'
 export { useRouting, type SidebarViewMode, type RouteState } from './useRouting'
+export { useMagnifier, MAGNIFIER_SIZE } from './useMagnifier'
+export { useInspector, type ReverseLookupResult } from './useInspector'
+export { useCommentGeometry } from './useCommentGeometry'
+export { useMentionActions } from './useMentionActions'

@@ -1,29 +1,11 @@
 import { Plus, Trash2 } from 'lucide-react'
 import type { EditorFeature } from '../../features/geo-editor/core'
+import { NON_CUSTOM_EDITOR_PROPERTY_KEYS } from '../../features/geo-editor/constants'
 import { isStyleProperty } from '../../features/geo-editor/types/styleProperties'
 import { useEditorStore } from '../../features/geo-editor/store'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { StylePropertiesSection } from './StylePropertiesSection'
-
-const NON_CUSTOM_EDITOR_PROPERTY_KEYS = new Set([
-	'meta',
-	'active',
-	'mode',
-	'parent',
-	'coord_path',
-	'featureId',
-	'importSource',
-	'customProperties',
-	'name',
-	'description',
-	'featureType',
-	'text',
-	'textFontSize',
-	'textColor',
-	'textHaloColor',
-	'textHaloWidth',
-])
 
 function deriveCustomProperties(properties: EditorFeature['properties'] | undefined) {
 	if (!properties || typeof properties !== 'object') return {}
