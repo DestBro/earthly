@@ -259,7 +259,7 @@ export function ChatPanel({
 	}, [messages])
 
 	return (
-		<div className="flex flex-col h-full">
+		<div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
 			{/* Header with provider, model picker and wallet info */}
 			<div className="p-3 border-b space-y-2">
 				<div className="flex items-center gap-2">
@@ -418,40 +418,46 @@ export function ChatPanel({
 				</div>
 
 				{/* Diagnostics */}
-				<div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
-					{contextTokenDisplay ? (
-						<span className="rounded border px-1.5 py-0.5">
-							{diagnostics.effectiveContextTokens ? 'ctx' : 'ctx(model)'}{' '}
-							{contextTokenDisplay.toLocaleString()}
-						</span>
-					) : null}
-					{diagnostics.promptBudgetTokens ? (
-						<span className="rounded border px-1.5 py-0.5">
-							prompt budget {diagnostics.promptBudgetTokens.toLocaleString()}
-						</span>
-					) : null}
-					{diagnostics.estimatedPromptTokens ? (
-						<span className="rounded border px-1.5 py-0.5">
-							~prompt {diagnostics.estimatedPromptTokens.toLocaleString()} tok
-						</span>
-					) : null}
-					{diagnostics.estimatedCompletionTokens ? (
-						<span className="rounded border px-1.5 py-0.5">
-							~completion {diagnostics.estimatedCompletionTokens.toLocaleString()} tok
-						</span>
-					) : null}
-					{diagnostics.finishReason ? (
-						<span className="rounded border px-1.5 py-0.5">finish {diagnostics.finishReason}</span>
-					) : null}
-					{diagnostics.toolCallCount > 0 ? (
-						<span className="rounded border px-1.5 py-0.5">tools {diagnostics.toolCallCount}</span>
-					) : null}
-					{isStreaming ? (
-						<span className="rounded border px-1.5 py-0.5">
-							{phaseLabel}
-							{stalledSeconds > 0 ? ` · ${stalledSeconds}s` : ''}
-						</span>
-					) : null}
+				<div className="min-w-0">
+					<div className="flex min-w-0 flex-wrap items-center gap-1 pb-0.5 text-[11px] text-muted-foreground">
+						{contextTokenDisplay ? (
+							<span className="max-w-full rounded border px-1.5 py-0.5 break-words">
+								{diagnostics.effectiveContextTokens ? 'ctx' : 'ctx(model)'}{' '}
+								{contextTokenDisplay.toLocaleString()}
+							</span>
+						) : null}
+						{diagnostics.promptBudgetTokens ? (
+							<span className="max-w-full rounded border px-1.5 py-0.5 break-words">
+								prompt budget {diagnostics.promptBudgetTokens.toLocaleString()}
+							</span>
+						) : null}
+						{diagnostics.estimatedPromptTokens ? (
+							<span className="max-w-full rounded border px-1.5 py-0.5 break-words">
+								~prompt {diagnostics.estimatedPromptTokens.toLocaleString()} tok
+							</span>
+						) : null}
+						{diagnostics.estimatedCompletionTokens ? (
+							<span className="max-w-full rounded border px-1.5 py-0.5 break-words">
+								~completion {diagnostics.estimatedCompletionTokens.toLocaleString()} tok
+							</span>
+						) : null}
+						{diagnostics.finishReason ? (
+							<span className="max-w-full rounded border px-1.5 py-0.5 break-words">
+								finish {diagnostics.finishReason}
+							</span>
+						) : null}
+						{diagnostics.toolCallCount > 0 ? (
+							<span className="max-w-full rounded border px-1.5 py-0.5 break-words">
+								tools {diagnostics.toolCallCount}
+							</span>
+						) : null}
+						{isStreaming ? (
+							<span className="max-w-full rounded border px-1.5 py-0.5 break-words">
+								{phaseLabel}
+								{stalledSeconds > 0 ? ` · ${stalledSeconds}s` : ''}
+							</span>
+						) : null}
+					</div>
 				</div>
 
 				{/* Errors */}
@@ -479,7 +485,7 @@ export function ChatPanel({
 			</div>
 
 			{/* Messages */}
-			<div className="flex-1 overflow-y-auto p-3 space-y-4">
+			<div className="min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto p-3">
 				{messages.length === 0 && !isStreaming ? (
 					<div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground p-4">
 						<Bot className="h-12 w-12 mb-4 opacity-50" />
@@ -585,7 +591,7 @@ export function ChatPanel({
 			)}
 
 			{/* Input */}
-			<form onSubmit={handleSubmit} className="p-3 border-t">
+			<form onSubmit={handleSubmit} className="shrink-0 border-t p-3">
 				<div className="flex gap-2">
 					<textarea
 						ref={textareaRef}
@@ -863,11 +869,11 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 	// Tool result message
 	if (isTool) {
 		return (
-			<div className="flex gap-2 ml-8">
+			<div className="ml-8 flex min-w-0 gap-2">
 				<div className="flex-shrink-0 h-5 w-5 rounded flex items-center justify-center bg-blue-100 dark:bg-blue-900">
 					<MapPin className="h-3 w-3 text-blue-600 dark:text-blue-400" />
 				</div>
-				<div className="max-w-[85%]">
+				<div className="min-w-0 max-w-[85%]">
 					<ToolResultDisclosure content={contentText} tokenEstimate={tokenEstimate} />
 				</div>
 			</div>
@@ -877,14 +883,14 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 	// Assistant message with tool calls
 	if (hasToolCalls) {
 		return (
-			<div className="space-y-2">
+			<div className="min-w-0 space-y-2">
 				{(parsedAssistantContent.answerText ||
 					parsedAssistantContent.reasoningBlocks.length > 0) && (
 					<div className="flex gap-2">
 						<div className="flex-shrink-0 h-6 w-6 rounded-full flex items-center justify-center bg-muted">
 							<Bot className="h-3.5 w-3.5" />
 						</div>
-						<div className="max-w-[85%] space-y-2">
+						<div className="min-w-0 max-w-[85%] space-y-2">
 							{parsedAssistantContent.answerText && (
 								<div className="relative rounded-lg px-3 py-2 text-sm bg-muted">
 									<CopyBubbleButton
@@ -892,7 +898,7 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 										className="absolute right-1.5 top-1.5"
 										title="Copy assistant message"
 									/>
-									<p className="whitespace-pre-wrap break-words">
+									<p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
 										{parsedAssistantContent.answerText}
 									</p>
 									<div className="mt-2 text-[10px] text-muted-foreground">
@@ -906,11 +912,11 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 						</div>
 					</div>
 				)}
-				<div className="flex gap-2 ml-8">
+				<div className="ml-8 flex min-w-0 gap-2">
 					<div className="flex-shrink-0 h-5 w-5 rounded flex items-center justify-center bg-orange-100 dark:bg-orange-900">
 						<Wrench className="h-3 w-3 text-orange-600 dark:text-orange-400" />
 					</div>
-					<div className="relative rounded-lg px-2 py-1.5 text-xs text-muted-foreground bg-orange-50/70 dark:bg-orange-950/40 border border-orange-200/80 dark:border-orange-800/70">
+					<div className="relative min-w-0 overflow-hidden rounded-lg border border-orange-200/80 bg-orange-50/70 px-2 py-1.5 text-xs text-muted-foreground dark:border-orange-800/70 dark:bg-orange-950/40">
 						<CopyBubbleButton
 							text={JSON.stringify(message.tool_calls, null, 2)}
 							className="absolute right-1 top-1"
@@ -919,10 +925,10 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 						{message.tool_calls?.map((tc: ToolCall) => (
 							<span
 								key={tc.id}
-								className="inline-flex items-center gap-1 bg-orange-50 dark:bg-orange-950 px-2 py-1 rounded mr-1"
+								className="mr-1 inline-flex max-w-full items-center gap-1 rounded bg-orange-50 px-2 py-1 dark:bg-orange-950"
 							>
 								<Wrench className="h-3 w-3" />
-								{tc.function.name}
+								<span className="truncate">{tc.function.name}</span>
 							</span>
 						))}
 						<div className="mt-1 text-[10px] text-muted-foreground">
@@ -937,13 +943,13 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 	// Regular user message
 	if (isUser) {
 		return (
-			<div className="flex gap-2 flex-row-reverse">
+			<div className="flex min-w-0 flex-row-reverse gap-2">
 				<div className="flex-shrink-0 h-6 w-6 rounded-full flex items-center justify-center bg-primary text-primary-foreground">
 					<User className="h-3.5 w-3.5" />
 				</div>
 				<div
 					className={cn(
-						'relative rounded-lg px-3 py-2 max-w-[85%] text-sm bg-primary text-primary-foreground',
+						'relative rounded-lg px-3 py-2 min-w-0 max-w-[85%] overflow-hidden text-sm bg-primary text-primary-foreground',
 						isStreaming && 'animate-pulse',
 					)}
 				>
@@ -952,7 +958,7 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 						className="absolute right-1.5 top-1.5"
 						title="Copy user message"
 					/>
-					<p className="whitespace-pre-wrap break-words">{contentText}</p>
+					<p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{contentText}</p>
 					<div className="mt-2 text-[10px] text-primary-foreground/80">
 						~{tokenEstimate.toLocaleString()} tok
 					</div>
@@ -963,15 +969,15 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 
 	// Regular assistant message
 	return (
-		<div className="flex gap-2">
+		<div className="flex min-w-0 gap-2">
 			<div className="flex-shrink-0 h-6 w-6 rounded-full flex items-center justify-center bg-muted">
 				<Bot className="h-3.5 w-3.5" />
 			</div>
-			<div className="max-w-[85%] space-y-2">
+			<div className="min-w-0 max-w-[85%] space-y-2">
 				{parsedAssistantContent.answerText && (
 					<div
 						className={cn(
-							'relative rounded-lg px-3 py-2 text-sm bg-muted',
+							'relative min-w-0 overflow-hidden rounded-lg bg-muted px-3 py-2 text-sm',
 							isStreaming && 'animate-pulse',
 						)}
 					>
@@ -980,7 +986,9 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 							className="absolute right-1.5 top-1.5"
 							title="Copy assistant message"
 						/>
-						<p className="whitespace-pre-wrap break-words">{parsedAssistantContent.answerText}</p>
+						<p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+							{parsedAssistantContent.answerText}
+						</p>
 						<div className="mt-2 text-[10px] text-muted-foreground">
 							~{tokenEstimate.toLocaleString()} tok
 						</div>
