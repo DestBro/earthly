@@ -1,8 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useChatStore } from './store'
 import { useNip60Store } from '@/lib/stores/nip60'
+import type { NDKGeoCollectionEvent } from '@/lib/ndk/NDKGeoCollectionEvent'
+import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
+import type { NDKMapContextEvent } from '@/lib/ndk/NDKMapContextEvent'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import type { GeoFeatureItem } from '@/components/editor/GeoRichTextEditor'
+import {
+	EntityReferenceToolbar,
+	getEntityReferenceKey,
+	type EntitySearchResult,
+} from '@/components/entity-search'
 import {
 	Select,
 	SelectContent,
@@ -26,11 +35,13 @@ import {
 	Check,
 	Copy,
 	ArrowDownToLine,
+	ChevronDown,
 } from 'lucide-react'
 import { estimateTokens, type ChatMessage, type ToolCall, type ProviderType } from './routstr'
 import { analyzeToolResultGeometryContent, bakeToolResultContentToEditor } from './tools'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 
 const EMPTY_STATE_PROMPTS = [
 	'Get me the route from Linz to Vienna and bring it to the editor.',
@@ -43,7 +54,31 @@ const EMPTY_STATE_PROMPTS = [
 	'Set editor mode to draw_polygon, then explain the next 2 user actions to complete a polygon.',
 ] as const
 
-export function ChatPanel() {
+const PROVIDER_LABELS: Record<ProviderType, string> = {
+	routstr: 'Routstr (paid)',
+	lmstudio: 'LM Studio',
+	ollama: 'Ollama',
+	custom: 'Custom endpoint',
+}
+
+interface ChatPanelProps {
+	geoEvents?: NDKGeoEvent[]
+	collectionEvents?: NDKGeoCollectionEvent[]
+	mapContextEvents?: NDKMapContextEvent[]
+	availableFeatures?: GeoFeatureItem[]
+	getDatasetName?: (event: NDKGeoEvent) => string
+}
+
+const defaultGetDatasetName = (event: NDKGeoEvent): string =>
+	event.datasetId ?? event.dTag ?? event.id ?? 'Untitled'
+
+export function ChatPanel({
+	geoEvents = [],
+	collectionEvents = [],
+	mapContextEvents = [],
+	availableFeatures = [],
+	getDatasetName = defaultGetDatasetName,
+}: ChatPanelProps) {
 	const {
 		messages,
 		models,
@@ -77,9 +112,31 @@ export function ChatPanel() {
 	const { status: walletStatus, balance: walletBalance } = useNip60Store()
 
 	const [input, setInput] = useState('')
+	const [selectedReferences, setSelectedReferences] = useState<EntitySearchResult[]>([])
+	const [settingsOpen, setSettingsOpen] = useState(false)
 	const [nowMs, setNowMs] = useState(Date.now())
 	const messagesEndRef = useRef<HTMLDivElement>(null)
 	const textareaRef = useRef<HTMLTextAreaElement>(null)
+	const datasetNameByIdentity = useMemo(() => {
+		const map = new Map<string, string>()
+		for (const event of geoEvents) {
+			const name = getDatasetName(event)
+			if (event.id) map.set(`id:${event.id}`, name)
+			if (event.datasetId) map.set(`dataset:${event.datasetId}`, name)
+			if (event.dTag) map.set(`d:${event.dTag}`, name)
+		}
+		return map
+	}, [geoEvents, getDatasetName])
+
+	const entitySources = useMemo(
+		() => ({
+			datasets: geoEvents,
+			collections: collectionEvents,
+			contexts: mapContextEvents,
+			features: availableFeatures,
+		}),
+		[geoEvents, collectionEvents, mapContextEvents, availableFeatures],
+	)
 
 	// Load models on mount
 	useEffect(() => {
@@ -117,7 +174,34 @@ export function ChatPanel() {
 
 		const message = input.trim()
 		setInput('')
-		await sendMessage(message)
+		const referenceContextMessage = buildReferenceContextSystemMessage(
+			selectedReferences,
+			geoEvents,
+			collectionEvents,
+			mapContextEvents,
+			datasetNameByIdentity,
+		)
+		await sendMessage(message, referenceContextMessage ? { referenceContextMessage } : undefined)
+	}
+
+	const handleAddReference = (result: EntitySearchResult) => {
+		const nextKey = getEntityReferenceKey(result)
+		setSelectedReferences((current) => {
+			if (current.some((entry) => getEntityReferenceKey(entry) === nextKey)) {
+				return current
+			}
+			return [...current, result]
+		})
+	}
+
+	const handleRemoveReference = (referenceKey: string) => {
+		setSelectedReferences((current) =>
+			current.filter((entry) => getEntityReferenceKey(entry) !== referenceKey),
+		)
+	}
+
+	const handleClearReferences = () => {
+		setSelectedReferences([])
 	}
 
 	const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -135,6 +219,8 @@ export function ChatPanel() {
 	}
 
 	const selectedModelData = models.find((m) => m.id === selectedModel)
+	const selectedModelLabel = selectedModelData?.name ?? 'No model selected'
+	const providerLabel = PROVIDER_LABELS[provider]
 	const isWalletRequired = provider === 'routstr'
 	const canSend = !!selectedModel && (!isWalletRequired || walletStatus === 'ready')
 	const stalledSeconds =
@@ -176,23 +262,98 @@ export function ChatPanel() {
 		<div className="flex flex-col h-full">
 			{/* Header with provider, model picker and wallet info */}
 			<div className="p-3 border-b space-y-2">
-				{/* Provider selector */}
 				<div className="flex items-center gap-2">
-					<Select
-						value={provider}
-						onValueChange={(v) => setProvider(v as ProviderType)}
-						disabled={isStreaming}
+					<Collapsible
+						open={settingsOpen}
+						onOpenChange={setSettingsOpen}
+						className="flex-1 min-w-0"
 					>
-						<SelectTrigger className="flex-1">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="routstr">Routstr (paid)</SelectItem>
-							<SelectItem value="lmstudio">LM Studio</SelectItem>
-							<SelectItem value="ollama">Ollama</SelectItem>
-							<SelectItem value="custom">Custom endpoint</SelectItem>
-						</SelectContent>
-					</Select>
+						<CollapsibleTrigger asChild>
+							<Button
+								type="button"
+								variant="outline"
+								className="w-full h-8 justify-between px-2 text-xs font-normal"
+							>
+								<span className="truncate">
+									{providerLabel} · {selectedModelLabel}
+								</span>
+								<ChevronDown
+									className={cn('h-3.5 w-3.5 transition-transform', settingsOpen && 'rotate-180')}
+								/>
+							</Button>
+						</CollapsibleTrigger>
+						<CollapsibleContent className="space-y-1.5 pt-2">
+							<Select
+								value={provider}
+								onValueChange={(v) => setProvider(v as ProviderType)}
+								disabled={isStreaming}
+							>
+								<SelectTrigger className="h-8 text-xs">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="routstr">Routstr (paid)</SelectItem>
+									<SelectItem value="lmstudio">LM Studio</SelectItem>
+									<SelectItem value="ollama">Ollama</SelectItem>
+									<SelectItem value="custom">Custom endpoint</SelectItem>
+								</SelectContent>
+							</Select>
+
+							{provider === 'custom' && (
+								<div className="space-y-1.5">
+									<Input
+										placeholder="http://localhost:8080/v1"
+										value={customEndpoint}
+										onChange={(e) => setCustomEndpoint(e.target.value)}
+										disabled={isStreaming}
+										className="text-xs h-7"
+									/>
+									<Input
+										placeholder="API key (optional)"
+										type="password"
+										value={customApiKey}
+										onChange={(e) => setCustomApiKey(e.target.value)}
+										disabled={isStreaming}
+										className="text-xs h-7"
+									/>
+									<Button
+										variant="outline"
+										size="sm"
+										className="h-7 text-xs w-full"
+										onClick={loadModels}
+										disabled={!customEndpoint || isStreaming}
+									>
+										Connect
+									</Button>
+								</div>
+							)}
+
+							<Select
+								value={selectedModel || ''}
+								onValueChange={setSelectedModel}
+								disabled={modelsLoading || isStreaming}
+							>
+								<SelectTrigger className="h-8 text-xs">
+									<SelectValue placeholder={modelsLoading ? 'Loading models...' : 'Select model'} />
+								</SelectTrigger>
+								<SelectContent>
+									{models.map((model) => (
+										<SelectItem key={model.id} value={model.id}>
+											<div className="flex flex-col">
+												<span>{model.name}</span>
+												{isWalletRequired &&
+													(model.pricing.input > 0 || model.pricing.output > 0) && (
+														<span className="text-xs text-muted-foreground">
+															{model.pricing.input}/{model.pricing.output} sats/M tokens
+														</span>
+													)}
+											</div>
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</CollapsibleContent>
+					</Collapsible>
 					<Button
 						variant="ghost"
 						size="icon"
@@ -202,63 +363,6 @@ export function ChatPanel() {
 					>
 						<Trash2 className="h-4 w-4" />
 					</Button>
-				</div>
-
-				{/* Custom endpoint config */}
-				{provider === 'custom' && (
-					<div className="space-y-1.5">
-						<Input
-							placeholder="http://localhost:8080/v1"
-							value={customEndpoint}
-							onChange={(e) => setCustomEndpoint(e.target.value)}
-							disabled={isStreaming}
-							className="text-xs h-7"
-						/>
-						<Input
-							placeholder="API key (optional)"
-							type="password"
-							value={customApiKey}
-							onChange={(e) => setCustomApiKey(e.target.value)}
-							disabled={isStreaming}
-							className="text-xs h-7"
-						/>
-						<Button
-							variant="outline"
-							size="sm"
-							className="h-7 text-xs w-full"
-							onClick={loadModels}
-							disabled={!customEndpoint || isStreaming}
-						>
-							Connect
-						</Button>
-					</div>
-				)}
-
-				{/* Model picker */}
-				<div className="flex items-center gap-2">
-					<Select
-						value={selectedModel || ''}
-						onValueChange={setSelectedModel}
-						disabled={modelsLoading || isStreaming}
-					>
-						<SelectTrigger className="flex-1">
-							<SelectValue placeholder={modelsLoading ? 'Loading models...' : 'Select model'} />
-						</SelectTrigger>
-						<SelectContent>
-							{models.map((model) => (
-								<SelectItem key={model.id} value={model.id}>
-									<div className="flex flex-col">
-										<span>{model.name}</span>
-										{isWalletRequired && (model.pricing.input > 0 || model.pricing.output > 0) && (
-											<span className="text-xs text-muted-foreground">
-												{model.pricing.input}/{model.pricing.output} sats/M tokens
-											</span>
-										)}
-									</div>
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
 				</div>
 
 				{/* Wallet status / provider info and tools toggle */}
@@ -360,6 +464,18 @@ export function ChatPanel() {
 						</Button>
 					</div>
 				)}
+			</div>
+
+			<div className="px-3 py-2 border-b">
+				<EntityReferenceToolbar
+					sources={entitySources}
+					references={selectedReferences}
+					onAddReference={handleAddReference}
+					onRemoveReference={handleRemoveReference}
+					onClearReferences={handleClearReferences}
+					placeholder="Add references (geometries, contexts, collections)…"
+					getDatasetName={getDatasetName}
+				/>
 			</div>
 
 			{/* Messages */}
@@ -530,6 +646,193 @@ function contentToDisplayText(content: ChatMessage['content']): string {
 		})
 		.filter((part) => part.length > 0)
 		.join('\n')
+}
+
+const MAX_REFERENCE_CONTEXT_ITEMS = 12
+const MAX_REFERENCE_CONTEXT_CHARS = 8000
+
+function truncateContextValue(value: string | undefined, maxChars = 240): string | undefined {
+	if (!value) return undefined
+	if (value.length <= maxChars) return value
+	return `${value.slice(0, maxChars)}...`
+}
+
+function asCoordinateTag(
+	kind: number | undefined,
+	pubkey: string | undefined,
+	identifier: string | undefined,
+): string | null {
+	if (typeof kind !== 'number' || !pubkey || !identifier) return null
+	return `${kind}:${pubkey}:${identifier}`
+}
+
+function parseCoordinateTag(
+	reference: string,
+): { kind: number; pubkey: string; identifier: string } | null {
+	const [kindPart, pubkey, ...identifierParts] = reference.split(':')
+	if (!kindPart || !pubkey || identifierParts.length === 0) return null
+	const kind = Number.parseInt(kindPart, 10)
+	if (!Number.isFinite(kind)) return null
+	return {
+		kind,
+		pubkey,
+		identifier: identifierParts.join(':'),
+	}
+}
+
+function buildReferenceContextSystemMessage(
+	selectedReferences: EntitySearchResult[],
+	geoEvents: NDKGeoEvent[],
+	collectionEvents: NDKGeoCollectionEvent[],
+	mapContextEvents: NDKMapContextEvent[],
+	datasetNameByIdentity: Map<string, string>,
+): string | null {
+	if (selectedReferences.length === 0) return null
+
+	const datasetByAnyId = new Map<string, NDKGeoEvent>()
+	for (const event of geoEvents) {
+		if (event.id) datasetByAnyId.set(`id:${event.id}`, event)
+		if (event.datasetId) datasetByAnyId.set(`dataset:${event.datasetId}`, event)
+		if (event.dTag) datasetByAnyId.set(`d:${event.dTag}`, event)
+	}
+	const collectionByAnyId = new Map<string, NDKGeoCollectionEvent>()
+	for (const event of collectionEvents) {
+		if (event.id) collectionByAnyId.set(`id:${event.id}`, event)
+		if (event.collectionId) collectionByAnyId.set(`collection:${event.collectionId}`, event)
+		if (event.dTag) collectionByAnyId.set(`d:${event.dTag}`, event)
+	}
+	const contextByAnyId = new Map<string, NDKMapContextEvent>()
+	for (const event of mapContextEvents) {
+		if (event.id) contextByAnyId.set(`id:${event.id}`, event)
+		if (event.contextId) contextByAnyId.set(`context:${event.contextId}`, event)
+		if (event.dTag) contextByAnyId.set(`d:${event.dTag}`, event)
+	}
+
+	const references = selectedReferences.slice(0, MAX_REFERENCE_CONTEXT_ITEMS).map((reference) => {
+		if (reference.type === 'dataset') {
+			const selectedEvent = reference.entity as NDKGeoEvent
+			const resolvedEvent =
+				datasetByAnyId.get(`id:${reference.id}`) ??
+				datasetByAnyId.get(`dataset:${reference.id}`) ??
+				datasetByAnyId.get(`d:${reference.id}`) ??
+				selectedEvent
+			const collection = resolvedEvent.featureCollection
+			const geometryTypeCounts = collection.features.reduce(
+				(acc, feature) => {
+					const geometryType = feature.geometry?.type ?? 'Unknown'
+					acc[geometryType] = (acc[geometryType] ?? 0) + 1
+					return acc
+				},
+				{} as Record<string, number>,
+			)
+			const datasetId = resolvedEvent.datasetId ?? resolvedEvent.dTag ?? undefined
+			return {
+				type: 'dataset',
+				name: reference.name,
+				coordinate: asCoordinateTag(resolvedEvent.kind, resolvedEvent.pubkey, datasetId),
+				id: resolvedEvent.id ?? reference.id,
+				datasetId,
+				featureCount: collection.features.length,
+				geometryTypeCounts,
+				boundingBox: resolvedEvent.boundingBox,
+				contextReferences: resolvedEvent.contextReferences.slice(0, 8),
+				collectionReferences: resolvedEvent.collectionReferences.slice(0, 8),
+				description: truncateContextValue(reference.subtitle),
+			}
+		}
+
+		if (reference.type === 'collection') {
+			const selectedEvent = reference.entity as NDKGeoCollectionEvent
+			const resolvedEvent =
+				collectionByAnyId.get(`id:${reference.id}`) ??
+				collectionByAnyId.get(`collection:${reference.id}`) ??
+				collectionByAnyId.get(`d:${reference.id}`) ??
+				selectedEvent
+			const datasetReferences = resolvedEvent.datasetReferences.slice(0, 12).map((datasetRef) => {
+				const parsed = parseCoordinateTag(datasetRef)
+				const datasetName = parsed
+					? (datasetNameByIdentity.get(`dataset:${parsed.identifier}`) ??
+						datasetNameByIdentity.get(`d:${parsed.identifier}`) ??
+						undefined)
+					: undefined
+				return {
+					reference: datasetRef,
+					datasetName,
+				}
+			})
+
+			return {
+				type: 'collection',
+				name: reference.name,
+				coordinate: asCoordinateTag(
+					resolvedEvent.kind,
+					resolvedEvent.pubkey,
+					resolvedEvent.collectionId ?? resolvedEvent.dTag,
+				),
+				id: resolvedEvent.id ?? reference.id,
+				description: truncateContextValue(resolvedEvent.metadata.description ?? reference.subtitle),
+				datasetReferences,
+				contextReferences: resolvedEvent.contextReferences.slice(0, 8),
+				boundingBox: resolvedEvent.boundingBox,
+			}
+		}
+
+		if (reference.type === 'context') {
+			const selectedEvent = reference.entity as NDKMapContextEvent
+			const resolvedEvent =
+				contextByAnyId.get(`id:${reference.id}`) ??
+				contextByAnyId.get(`context:${reference.id}`) ??
+				contextByAnyId.get(`d:${reference.id}`) ??
+				selectedEvent
+			const content = resolvedEvent.context
+			return {
+				type: 'context',
+				name: content.name || reference.name,
+				coordinate: resolvedEvent.contextCoordinate ?? null,
+				id: resolvedEvent.id ?? reference.id,
+				contextUse: content.contextUse,
+				validationMode: content.validationMode,
+				allowedGeometryTypes: content.geometryConstraints?.allowedTypes ?? [],
+				description: truncateContextValue(content.description ?? reference.subtitle),
+				schemaPropertyKeys:
+					content.schema &&
+					typeof content.schema === 'object' &&
+					!Array.isArray(content.schema) &&
+					content.schema.properties &&
+					typeof content.schema.properties === 'object' &&
+					!Array.isArray(content.schema.properties)
+						? Object.keys(content.schema.properties as Record<string, unknown>).slice(0, 24)
+						: [],
+			}
+		}
+
+		const feature = reference.entity as GeoFeatureItem
+		return {
+			type: 'feature',
+			name: feature.name || reference.name,
+			id: feature.id || reference.id,
+			address: feature.address,
+			featureId: feature.featureId ?? null,
+			geometryType: feature.geometryType ?? null,
+			datasetName: feature.datasetName ?? null,
+		}
+	})
+
+	const payload = {
+		selectedCount: selectedReferences.length,
+		includedCount: references.length,
+		references,
+	}
+	let payloadJson = JSON.stringify(payload, null, 2)
+	if (payloadJson.length > MAX_REFERENCE_CONTEXT_CHARS) {
+		payloadJson = `${payloadJson.slice(0, MAX_REFERENCE_CONTEXT_CHARS)}\n...[reference context truncated]`
+	}
+
+	return [
+		'Use the following user-selected entity references as high-priority grounding context for this conversation.',
+		'Prefer these identifiers when choosing datasets, collections, contexts, and geometries for tool calls.',
+		`Reference context JSON:\n${payloadJson}`,
+	].join('\n\n')
 }
 
 function MessageBubble({ message, isStreaming }: MessageBubbleProps) {

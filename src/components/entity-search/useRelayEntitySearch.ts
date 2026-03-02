@@ -19,6 +19,7 @@ const KIND_TO_TYPE: Record<number, EntityType> = {
 }
 
 const DEBOUNCE_MS = 300
+const DEFAULT_RELAY_ENTITY_TYPES: EntityType[] = ['dataset', 'collection', 'context']
 
 interface UseRelayEntitySearchOptions {
 	query: string
@@ -40,8 +41,9 @@ export function useRelayEntitySearch({
 	const [loading, setLoading] = useState(false)
 	const [eose, setEose] = useState(false)
 	const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	const subscriptionRef = useRef<{ stop: () => void } | null>(null)
 
-	const activeTypes = entityTypes ?? (['dataset', 'collection', 'context'] as const)
+	const activeTypes = useMemo(() => entityTypes ?? DEFAULT_RELAY_ENTITY_TYPES, [entityTypes])
 
 	const kinds = useMemo(() => {
 		const k: number[] = []
@@ -53,6 +55,10 @@ export function useRelayEntitySearch({
 
 	useEffect(() => {
 		if (debounceRef.current) clearTimeout(debounceRef.current)
+		if (subscriptionRef.current) {
+			subscriptionRef.current.stop()
+			subscriptionRef.current = null
+		}
 
 		const trimmed = query.trim()
 		if (!trimmed || !ndk || !enabled || kinds.length === 0) {
@@ -70,6 +76,7 @@ export function useRelayEntitySearch({
 
 			// biome-ignore lint/suspicious/noExplicitAny: NDK types don't include NIP-50 `search` field
 			const sub = ndk.subscribe({ kinds, search: trimmed, limit } as any, { closeOnEose: true })
+			subscriptionRef.current = sub
 
 			// biome-ignore lint/suspicious/noExplicitAny: NDK subscription event type is loosely typed
 			sub.on('event', (event: any) => {
@@ -102,15 +109,14 @@ export function useRelayEntitySearch({
 				setLoading(false)
 				setEose(true)
 			})
-
-			// Cleanup on unmount or query change
-			return () => {
-				sub.stop()
-			}
 		}, DEBOUNCE_MS)
 
 		return () => {
 			if (debounceRef.current) clearTimeout(debounceRef.current)
+			if (subscriptionRef.current) {
+				subscriptionRef.current.stop()
+				subscriptionRef.current = null
+			}
 		}
 	}, [ndk, query, kinds, limit, enabled, getDatasetName])
 

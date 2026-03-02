@@ -425,7 +425,15 @@ export function AppSidebar({
 				)
 
 			case 'chat':
-				return <ChatPanel />
+				return (
+					<ChatPanel
+						geoEvents={geoEvents}
+						collectionEvents={collectionEvents}
+						mapContextEvents={mapContextEvents}
+						availableFeatures={availableFeatures}
+						getDatasetName={getDatasetName}
+					/>
+				)
 
 			case 'help':
 				return <HelpPanel multiSelectModifier={multiSelectModifier} />

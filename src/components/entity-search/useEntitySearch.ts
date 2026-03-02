@@ -26,6 +26,7 @@ interface UseEntitySearchOptions {
 
 const defaultGetDatasetName = (event: NDKGeoEvent): string =>
 	event.datasetId ?? event.dTag ?? event.id ?? 'Untitled'
+const DEFAULT_ENTITY_TYPES: EntityType[] = ['dataset', 'collection', 'context', 'feature']
 
 export function useEntitySearch({
 	sources,
@@ -33,7 +34,7 @@ export function useEntitySearch({
 	filterState,
 	getDatasetName = defaultGetDatasetName,
 }: UseEntitySearchOptions): EntitySearchOutput {
-	const activeTypes = entityTypes ?? (['dataset', 'collection', 'context', 'feature'] as const)
+	const activeTypes = useMemo(() => entityTypes ?? DEFAULT_ENTITY_TYPES, [entityTypes])
 
 	const datasetFilterConfig = useMemo(
 		() => createDatasetFilterConfig(getDatasetName),

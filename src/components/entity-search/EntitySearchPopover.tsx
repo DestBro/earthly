@@ -3,7 +3,6 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
 import { DEFAULT_FILTER_STATE, type FilterState } from '@/components/data-filter/types'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { EntityResultGroup } from './EntityResultGroup'
 import { EntityResultItem } from './EntityResultItem'
 import { EntitySearchInput } from './EntitySearchInput'
@@ -161,12 +160,12 @@ export function EntitySearchPopover({
 				/>
 			</PopoverAnchor>
 			<PopoverContent
-				className="w-[var(--radix-popover-trigger-width)] p-1"
+				className="w-[var(--radix-popover-trigger-width)] p-1 max-h-[60vh] overflow-hidden"
 				onOpenAutoFocus={(e) => e.preventDefault()}
 				align="start"
 				sideOffset={4}
 			>
-				<ScrollArea className="max-h-64">
+				<div className="max-h-[56vh] overflow-y-auto overscroll-contain">
 					{mergedResults.groups.map((group) => (
 						<EntityResultGroup key={group.type} group={group}>
 							{group.results.map((result) => {
@@ -188,7 +187,7 @@ export function EntitySearchPopover({
 							Searching relay…
 						</div>
 					)}
-				</ScrollArea>
+				</div>
 			</PopoverContent>
 		</Popover>
 	)

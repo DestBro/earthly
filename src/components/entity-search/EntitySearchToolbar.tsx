@@ -1,4 +1,4 @@
-import { ArrowDownAZ, ArrowUpZA, Clock } from 'lucide-react'
+import { ArrowDownAZ, ArrowUpZA, Clock, Database, FolderOpen, Globe, MapPin, X } from 'lucide-react'
 import {
 	LIMIT_OPTIONS,
 	type FilterActions,
@@ -6,6 +6,7 @@ import {
 	type SortDirection,
 	type SortField,
 } from '@/components/data-filter/types'
+import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
 import {
 	Select,
 	SelectContent,
@@ -13,7 +14,9 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select'
+import { EntitySearchPopover, type SearchMode } from './EntitySearchPopover'
 import { EntitySearchInput } from './EntitySearchInput'
+import type { EntitySearchResult, EntitySearchSources, EntityType } from './types'
 
 interface EntitySearchToolbarProps extends FilterState, FilterActions {
 	totalCount: number
@@ -93,6 +96,94 @@ export function EntitySearchToolbar({
 				{displayedCount}/{filteredCount}
 				{filteredCount !== totalCount && ` (${totalCount})`}
 			</span>
+		</div>
+	)
+}
+
+interface EntityReferenceToolbarProps {
+	sources: EntitySearchSources
+	references: EntitySearchResult[]
+	onAddReference: (result: EntitySearchResult) => void
+	onRemoveReference: (referenceKey: string) => void
+	onClearReferences?: () => void
+	entityTypes?: EntityType[]
+	placeholder?: string
+	searchMode?: SearchMode
+	getDatasetName?: (event: NDKGeoEvent) => string
+	className?: string
+}
+
+const ENTITY_TYPE_ICONS: Record<EntityType, typeof Database> = {
+	dataset: Database,
+	collection: FolderOpen,
+	context: Globe,
+	feature: MapPin,
+}
+
+export function getEntityReferenceKey(result: EntitySearchResult): string {
+	const stableId = result.id || result.name || 'unknown'
+	return `${result.type}:${stableId}:${result.pubkey ?? ''}`
+}
+
+export function EntityReferenceToolbar({
+	sources,
+	references,
+	onAddReference,
+	onRemoveReference,
+	onClearReferences,
+	entityTypes,
+	placeholder = 'Add geometry/context/collection references…',
+	searchMode = 'both',
+	getDatasetName,
+	className,
+}: EntityReferenceToolbarProps) {
+	return (
+		<div className={className}>
+			<EntitySearchPopover
+				sources={sources}
+				entityTypes={entityTypes}
+				onSelect={onAddReference}
+				placeholder={placeholder}
+				searchMode={searchMode}
+				compact
+				getDatasetName={getDatasetName}
+			/>
+
+			{references.length > 0 && (
+				<div className="mt-1.5 flex flex-wrap items-center gap-1">
+					{references.map((reference) => {
+						const Icon = ENTITY_TYPE_ICONS[reference.type]
+						const referenceKey = getEntityReferenceKey(reference)
+						return (
+							<div
+								key={referenceKey}
+								className="inline-flex items-center gap-1 rounded-md border bg-muted/30 px-1.5 py-0.5 text-[11px]"
+							>
+								<Icon className="h-3 w-3 text-muted-foreground" />
+								<span className="max-w-[180px] truncate">{reference.name}</span>
+								<button
+									type="button"
+									onClick={() => onRemoveReference(referenceKey)}
+									className="rounded-sm p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+									title={`Remove ${reference.name}`}
+									aria-label={`Remove ${reference.name}`}
+								>
+									<X className="h-3 w-3" />
+								</button>
+							</div>
+						)
+					})}
+					{onClearReferences && references.length > 1 && (
+						<button
+							type="button"
+							onClick={onClearReferences}
+							className="inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
+						>
+							Clear all
+						</button>
+					)}
+				</div>
+			)}
 		</div>
 	)
 }

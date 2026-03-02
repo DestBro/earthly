@@ -476,10 +476,14 @@ interface ChatActions {
 	addMessage: (message: ChatMessage) => void
 	clearMessages: () => void
 	// Chat actions
-	sendMessage: (content: string) => Promise<void>
+	sendMessage: (content: string, options?: SendMessageOptions) => Promise<void>
 	cancelStream: () => void
 	// Reset
 	reset: () => void
+}
+
+interface SendMessageOptions {
+	referenceContextMessage?: string
 }
 
 type ChatStore = ChatState & ChatActions
@@ -585,7 +589,7 @@ export const useChatStore = create<ChatStore>()(
 				})
 			},
 
-			sendMessage: async (content: string) => {
+			sendMessage: async (content: string, options?: SendMessageOptions) => {
 				const {
 					selectedModel,
 					models,
@@ -599,6 +603,7 @@ export const useChatStore = create<ChatStore>()(
 				const requestMaxTokens = toolsEnabled
 					? Math.max(maxTokens, MIN_TOOL_ENABLED_MAX_TOKENS)
 					: maxTokens
+				const referenceContextMessage = options?.referenceContextMessage?.trim()
 
 				if (!selectedModel) {
 					toast.error('Please select a model first')
@@ -896,18 +901,35 @@ export const useChatStore = create<ChatStore>()(
 						if (toolsEnabled) {
 							mapContextMessage = createMapContextSystemMessage()
 						}
+						const referenceContextSystemMessage: ChatMessage | null = referenceContextMessage
+							? {
+									role: 'system',
+									content: referenceContextMessage,
+								}
+							: null
 
 						const mapContextTokens = mapContextMessage
 							? estimateMessageTokensForBudget(sanitizeMessageForPrompt(mapContextMessage))
 							: 0
+						const referenceContextTokens = referenceContextSystemMessage
+							? estimateMessageTokensForBudget(
+									sanitizeMessageForPrompt(referenceContextSystemMessage),
+								)
+							: 0
 						const conversationBudget = Math.max(
 							MIN_PROMPT_BUDGET_TOKENS,
-							promptBudgetTokens - mapContextTokens,
+							promptBudgetTokens - mapContextTokens - referenceContextTokens,
 						)
 						requestMessages = trimMessagesToPromptBudget(requestMessages, conversationBudget)
 
 						if (mapContextMessage) {
 							requestMessages = [sanitizeMessageForPrompt(mapContextMessage), ...requestMessages]
+						}
+						if (referenceContextSystemMessage) {
+							requestMessages = [
+								sanitizeMessageForPrompt(referenceContextSystemMessage),
+								...requestMessages,
+							]
 						}
 						requestMessages = ensureReasoningContentForToolMessages(
 							requestMessages,
@@ -1158,7 +1180,8 @@ export const chatActions = {
 	loadModels: () => useChatStore.getState().loadModels(),
 	setSelectedModel: (modelId: string) => useChatStore.getState().setSelectedModel(modelId),
 	setToolsEnabled: (enabled: boolean) => useChatStore.getState().setToolsEnabled(enabled),
-	sendMessage: (content: string) => useChatStore.getState().sendMessage(content),
+	sendMessage: (content: string, options?: SendMessageOptions) =>
+		useChatStore.getState().sendMessage(content, options),
 	clearMessages: () => useChatStore.getState().clearMessages(),
 	cancelStream: () => useChatStore.getState().cancelStream(),
 	reset: () => useChatStore.getState().reset(),

@@ -5,5 +5,9 @@ export { EntitySearchInput } from './EntitySearchInput'
 export { EntityResultItem } from './EntityResultItem'
 export { EntityResultGroup } from './EntityResultGroup'
 export { EntitySearchPopover } from './EntitySearchPopover'
-export { EntitySearchToolbar } from './EntitySearchToolbar'
+export {
+	EntitySearchToolbar,
+	EntityReferenceToolbar,
+	getEntityReferenceKey,
+} from './EntitySearchToolbar'
 export type { SearchMode } from './EntitySearchPopover'
