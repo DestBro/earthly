@@ -14,12 +14,8 @@ import {
 	type ContextColumnsContext,
 	type ContextRowData,
 } from '../features/contexts/contexts-columns'
-import {
-	DatasetFilterToolbar,
-	useFilterState,
-	useSortedFilteredItems,
-	type FilterConfig,
-} from './data-filter'
+import { useFilterState, useSortedFilteredItems, type FilterConfig } from './data-filter'
+import { EntitySearchToolbar } from './entity-search'
 import {
 	createDatasetColumns,
 	type DatasetColumnsContext,
@@ -430,7 +426,7 @@ export function GeoDatasetsPanelContent({
 					)}
 				</div>
 			</div>
-			<DatasetFilterToolbar
+			<EntitySearchToolbar
 				{...filterState}
 				totalCount={
 					mode === 'datasets'

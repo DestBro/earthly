@@ -1,0 +1,165 @@
+import type { NDKGeoCollectionEvent } from '@/lib/ndk/NDKGeoCollectionEvent'
+import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
+import type { NDKMapContextEvent } from '@/lib/ndk/NDKMapContextEvent'
+import type { GeoFeatureItem } from '@/components/editor/GeoRichTextEditor'
+import type { FilterConfig } from '@/components/data-filter/types'
+
+// ── Entity types ──────────────────────────────────────────────────────
+
+export type EntityType = 'dataset' | 'collection' | 'context' | 'feature'
+
+export const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
+	dataset: 'Datasets',
+	collection: 'Collections',
+	context: 'Contexts',
+	feature: 'Features',
+}
+
+// ── Unified result shape ──────────────────────────────────────────────
+
+export interface EntitySearchResult {
+	id: string
+	name: string
+	type: EntityType
+	subtitle?: string
+	address?: string
+	pubkey?: string
+	createdAt?: number
+	/** Original entity reference for callbacks */
+	entity: NDKGeoEvent | NDKGeoCollectionEvent | NDKMapContextEvent | GeoFeatureItem
+}
+
+export interface EntitySearchResultGroup {
+	type: EntityType
+	label: string
+	results: EntitySearchResult[]
+	totalCount: number
+	filteredCount: number
+}
+
+// ── Hook input / output ───────────────────────────────────────────────
+
+export interface EntitySearchSources {
+	datasets?: NDKGeoEvent[]
+	collections?: NDKGeoCollectionEvent[]
+	contexts?: NDKMapContextEvent[]
+	features?: GeoFeatureItem[]
+}
+
+export interface EntitySearchOutput {
+	results: EntitySearchResult[]
+	groups: EntitySearchResultGroup[]
+	totalCount: number
+	filteredCount: number
+	hasResults: boolean
+}
+
+// ── Adapter functions ─────────────────────────────────────────────────
+
+const getDatasetDescriptionText = (event: NDKGeoEvent): string | undefined => {
+	// biome-ignore lint/suspicious/noExplicitAny: GeoJSON properties are dynamically typed
+	const featureCollection = event.featureCollection as Record<string, any>
+	if (!featureCollection) return undefined
+	const candidates = [
+		featureCollection?.description,
+		featureCollection?.summary,
+		featureCollection?.properties?.description,
+		featureCollection?.properties?.summary,
+	]
+	for (const value of candidates) {
+		if (typeof value === 'string' && value.trim().length > 0) {
+			return value
+		}
+	}
+	return undefined
+}
+
+export function datasetToSearchResult(
+	event: NDKGeoEvent,
+	getDatasetName?: (event: NDKGeoEvent) => string,
+): EntitySearchResult {
+	const name = getDatasetName
+		? getDatasetName(event)
+		: (event.datasetId ?? event.dTag ?? event.id ?? 'Untitled')
+	return {
+		id: event.id ?? event.dTag ?? '',
+		name,
+		type: 'dataset',
+		subtitle: getDatasetDescriptionText(event),
+		pubkey: event.pubkey,
+		createdAt: event.created_at,
+		entity: event,
+	}
+}
+
+export function collectionToSearchResult(collection: NDKGeoCollectionEvent): EntitySearchResult {
+	const metadata = collection.metadata
+	return {
+		id: collection.id ?? collection.dTag ?? '',
+		name: metadata.name ?? collection.collectionId ?? collection.id ?? 'Untitled',
+		type: 'collection',
+		subtitle: metadata.description,
+		pubkey: collection.pubkey,
+		createdAt: collection.created_at,
+		entity: collection,
+	}
+}
+
+export function contextToSearchResult(context: NDKMapContextEvent): EntitySearchResult {
+	const content = context.context
+	return {
+		id: context.id ?? context.dTag ?? '',
+		name: content.name || context.contextId || context.id || 'Untitled',
+		type: 'context',
+		subtitle: content.description ?? content.contextUse,
+		pubkey: context.pubkey,
+		createdAt: context.created_at,
+		entity: context,
+	}
+}
+
+export function featureToSearchResult(feature: GeoFeatureItem): EntitySearchResult {
+	return {
+		id: feature.id,
+		name: feature.name,
+		type: 'feature',
+		subtitle: feature.datasetName,
+		address: feature.address,
+		entity: feature,
+	}
+}
+
+// ── Filter configs (shared, extracted from GeoDatasetsPanel) ──────────
+
+export function createDatasetFilterConfig(
+	getDatasetName: (event: NDKGeoEvent) => string,
+): FilterConfig<NDKGeoEvent> {
+	return {
+		getSearchableText: (event) => [getDatasetName(event), getDatasetDescriptionText(event)],
+		getName: (event) => getDatasetName(event),
+	}
+}
+
+export const collectionFilterConfig: FilterConfig<NDKGeoCollectionEvent> = {
+	getSearchableText: (collection) => {
+		const metadata = collection.metadata
+		return [metadata.name, metadata.description, collection.collectionId, collection.id]
+	},
+	getName: (collection) =>
+		collection.metadata.name ?? collection.collectionId ?? collection.id ?? 'Untitled',
+}
+
+export const contextFilterConfig: FilterConfig<NDKMapContextEvent> = {
+	getSearchableText: (context) => {
+		const content = context.context
+		return [
+			content.name,
+			content.description,
+			content.contextUse,
+			content.validationMode,
+			context.contextId,
+			context.id,
+		]
+	},
+	getName: (context) => context.context.name || context.contextId || context.id || 'Untitled',
+}
