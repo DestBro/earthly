@@ -278,6 +278,13 @@ const EAST_GERMAN_STATES = [
 		area_km2: 29654,
 	},
 	{
+		name: "Sachsen",
+		file: "./data/east-germany/sachsen.geojson",
+		capital: "Dresden",
+		population: 4086582,
+		area_km2: 18450,
+	},
+	{
 		name: "Sachsen-Anhalt",
 		file: "./data/east-germany/sachsen-anhalt.geojson",
 		capital: "Magdeburg",
