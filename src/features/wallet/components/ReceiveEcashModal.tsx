@@ -1,5 +1,11 @@
 import { useState } from 'react'
-import { Dialog, DialogContent, DialogTitle, DialogHeader, DialogDescription } from '@/components/ui/dialog'
+import {
+	Dialog,
+	DialogContent,
+	DialogTitle,
+	DialogHeader,
+	DialogDescription,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useCashuStore } from '@/lib/stores/cashu'
 import { nip60Actions } from '@/lib/stores/nip60'
@@ -19,7 +25,6 @@ export function ReceiveEcashModal({ open, onClose }: ReceiveEcashModalProps) {
 	const [isSuccess, setIsSuccess] = useState(false)
 	const [showScanner, setShowScanner] = useState(false)
 	const [error, setError] = useState<string | null>(null)
-
 
 	const handleReceive = async () => {
 		if (!token.trim()) {
@@ -90,7 +95,9 @@ export function ReceiveEcashModal({ open, onClose }: ReceiveEcashModalProps) {
 							<Check className="w-6 h-6 text-green-600" />
 						</div>
 						<p className="text-lg font-medium text-green-600">eCash Received!</p>
-						<p className="text-sm text-muted-foreground mt-2">The tokens have been added to your wallet</p>
+						<p className="text-sm text-muted-foreground mt-2">
+							The tokens have been added to your wallet
+						</p>
 						<Button onClick={handleClose} className="mt-4">
 							Done
 						</Button>
@@ -124,7 +131,12 @@ export function ReceiveEcashModal({ open, onClose }: ReceiveEcashModalProps) {
 								className="w-full px-3 py-2 text-sm border rounded-md bg-background font-mono resize-none h-24"
 							/>
 							<div className="flex justify-end">
-								<Button variant="ghost" size="sm" onClick={() => setShowScanner(true)} className="gap-2">
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={() => setShowScanner(true)}
+									className="gap-2"
+								>
 									<ScanLine className="w-4 h-4" />
 									Scan QR
 								</Button>
@@ -144,7 +156,10 @@ export function ReceiveEcashModal({ open, onClose }: ReceiveEcashModalProps) {
 							<Button variant="outline" onClick={handleClose}>
 								Cancel
 							</Button>
-							<Button onClick={handleReceive} disabled={isReceiving || !token.trim() || cashuStatus === 'initializing'}>
+							<Button
+								onClick={handleReceive}
+								disabled={isReceiving || !token.trim() || cashuStatus === 'initializing'}
+							>
 								{isReceiving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
 								Receive
 							</Button>

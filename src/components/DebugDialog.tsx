@@ -20,9 +20,9 @@ export const DebugDialog: React.FC<DebugDialogProps> = ({ event, open, onOpenCha
 		? (event.metadata?.name ?? event.collectionId ?? event.id)
 		: isContext
 			? (event.context?.name ?? event.contextId ?? event.id)
-		: (((event.featureCollection as any)?.name as string | undefined) ??
-			event.datasetId ??
-			event.id)
+			: (((event.featureCollection as any)?.name as string | undefined) ??
+				event.datasetId ??
+				event.id)
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>

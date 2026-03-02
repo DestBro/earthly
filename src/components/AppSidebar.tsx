@@ -14,7 +14,7 @@ import {
 	User,
 	Wallet,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { FeatureCollection } from 'geojson'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
@@ -216,8 +216,51 @@ export function AppSidebar({
 }: AppSidebarProps) {
 	const { setOpen, sidebarExpanded, setSidebarExpanded } = useSidebar()
 	const viewMode = useEditorStore((state) => state.sidebarViewMode)
+	const focusedType = useEditorStore((state) => state.focusedType)
+	const focusedNaddr = useEditorStore((state) => state.focusedNaddr)
 	const { navigateToView } = useRouting()
 	const [splitWithEditor, setSplitWithEditor] = useState(viewMode === 'combined')
+
+	/** Derive a contextual subtitle from the focused/active item */
+	const contextSubtitle = useMemo(() => {
+		// Editor mode: show active dataset name
+		if (viewMode === 'edit' && activeDataset) {
+			return getDatasetName(activeDataset)
+		}
+		// Context editor: show editing context name
+		if (viewMode === 'context-editor' && editingContext) {
+			return editingContext.context.name || undefined
+		}
+		// Focused mode: resolve the focused item's name
+		if (focusedType && focusedNaddr) {
+			if (focusedType === 'geoevent') {
+				const event = geoEvents.find(
+					(e) => getDatasetKey(e) === focusedNaddr || e.encode() === focusedNaddr,
+				)
+				return event ? getDatasetName(event) : undefined
+			}
+			if (focusedType === 'collection') {
+				const col = collectionEvents.find((c) => c.encode() === focusedNaddr)
+				return col?.metadata.name || undefined
+			}
+			if (focusedType === 'mapcontext') {
+				const ctx = mapContextEvents.find((c) => c.encode() === focusedNaddr)
+				return ctx?.context.name || undefined
+			}
+		}
+		return undefined
+	}, [
+		viewMode,
+		activeDataset,
+		editingContext,
+		focusedType,
+		focusedNaddr,
+		geoEvents,
+		collectionEvents,
+		mapContextEvents,
+		getDatasetKey,
+		getDatasetName,
+	])
 
 	useEffect(() => {
 		if (viewMode === 'combined') {
@@ -538,12 +581,17 @@ export function AppSidebar({
 			<Sidebar collapsible="none" className="hidden flex-1 md:flex">
 				<SidebarHeader className="gap-3.5 border-b p-4">
 					<div className="flex w-full items-center justify-between">
-						<div className="text-foreground text-base font-medium flex items-center gap-2">
-							<span>{currentTitle}</span>
-							{showSplitCompanion && (
-								<span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-700">
-									Split
-								</span>
+						<div className="text-foreground flex flex-col min-w-0">
+							<div className="flex items-center gap-2 text-base font-medium">
+								<span>{currentTitle}</span>
+								{showSplitCompanion && (
+									<span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-700">
+										Split
+									</span>
+								)}
+							</div>
+							{contextSubtitle && (
+								<span className="text-xs text-muted-foreground truncate">{contextSubtitle}</span>
 							)}
 						</div>
 						<div className="flex items-center gap-1">

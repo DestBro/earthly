@@ -38,8 +38,7 @@ export const createPublishingSlice: StateCreator<EditorState, [], [], Publishing
 	setBlobDraftUrl: (blobDraftUrl) => set({ blobDraftUrl }),
 	setBlobDraftStatus: (blobDraftStatus) => set({ blobDraftStatus }),
 	setBlobDraftError: (blobDraftError) => set({ blobDraftError }),
-	setPreviewingBlobReferenceId: (previewingBlobReferenceId) =>
-		set({ previewingBlobReferenceId }),
+	setPreviewingBlobReferenceId: (previewingBlobReferenceId) => set({ previewingBlobReferenceId }),
 	setBlobPreviewCollection: (blobPreviewCollection) => set({ blobPreviewCollection }),
 
 	fetchBlobReference: async () => {
@@ -139,8 +138,7 @@ export const createPublishingSlice: StateCreator<EditorState, [], [], Publishing
 						? {
 								...ref,
 								status: 'error',
-								error:
-									error instanceof Error ? error.message : 'Failed to load external GeoJSON.',
+								error: error instanceof Error ? error.message : 'Failed to load external GeoJSON.',
 							}
 						: ref,
 				),

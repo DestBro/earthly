@@ -22,7 +22,9 @@ export function getBaseGeometryType(type: string): 'Point' | 'LineString' | 'Pol
 	return null
 }
 
-export function toMultiGeometryType(type: 'Point' | 'LineString' | 'Polygon'): Geometry['type'] | null {
+export function toMultiGeometryType(
+	type: 'Point' | 'LineString' | 'Polygon',
+): Geometry['type'] | null {
 	if (type === 'Point') return 'MultiPoint'
 	if (type === 'LineString') return 'MultiLineString'
 	if (type === 'Polygon') return 'MultiPolygon'
@@ -83,7 +85,10 @@ export function positionsEquivalent(a: Position, b: Position, tolerance: number)
 	return positionKey(a, tolerance) === positionKey(b, tolerance)
 }
 
-export function removeConsecutiveDuplicatePositions(coords: Position[], tolerance: number): Position[] {
+export function removeConsecutiveDuplicatePositions(
+	coords: Position[],
+	tolerance: number,
+): Position[] {
 	if (coords.length === 0) return coords
 	const deduped: Position[] = [coords[0]]
 	for (let i = 1; i < coords.length; i++) {
@@ -102,7 +107,10 @@ export function normalizeLineCoordinates(coords: Position[], tolerance: number):
 	return removeConsecutiveDuplicatePositions(snapped, tolerance)
 }
 
-export function mergeLinePartsBySharedEndpoints(lines: Position[][], tolerance: number): Position[][] {
+export function mergeLinePartsBySharedEndpoints(
+	lines: Position[][],
+	tolerance: number,
+): Position[][] {
 	const adjacency = new Map<string, Set<string>>()
 	const nodeCoords = new Map<string, Position>()
 	const allEdges = new Set<string>()

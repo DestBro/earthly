@@ -1,13 +1,7 @@
 import { useNDK, useNDKCurrentUser } from '@nostr-dev-kit/react'
 import { Edit3, Layers, Lock, LockOpen, Search, UploadCloud } from 'lucide-react'
 import type maplibregl from 'maplibre-gl'
-import {
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-} from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppSidebar } from '@/components/AppSidebar'
 import { BlossomUploadDialog } from '@/components/BlossomUploadDialog'
 import { DebugDialog } from '@/components/DebugDialog'

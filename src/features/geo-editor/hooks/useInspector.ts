@@ -7,9 +7,7 @@ type ReverseLookupResult = ReverseLookupOutput['result']
 
 export type { ReverseLookupResult }
 
-export function useInspector(
-	mapRef: React.RefObject<maplibregl.Map | null>,
-) {
+export function useInspector(mapRef: React.RefObject<maplibregl.Map | null>) {
 	const [reverseLookupResult, setReverseLookupResult] = useState<ReverseLookupResult | null>(null)
 	const [reverseLookupStatus, setReverseLookupStatus] = useState<'idle' | 'loading' | 'error'>(
 		'idle',

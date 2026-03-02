@@ -37,7 +37,10 @@ interface CashuActions {
 	reclaimToken: (tokenId: string) => Promise<boolean>
 	removePendingToken: (tokenId: string) => void
 	receive: (token: string) => Promise<void>
-	createMintQuote: (mintUrl: string, amount: number) => ReturnType<Manager['quotes']['createMintQuote']>
+	createMintQuote: (
+		mintUrl: string,
+		amount: number,
+	) => ReturnType<Manager['quotes']['createMintQuote']>
 	redeemMintQuote: (mintUrl: string, quoteId: string) => Promise<void>
 	melt: (mintUrl: string, invoice: string) => ReturnType<Manager['quotes']['createMeltQuote']>
 	getMints: () => ReturnType<Manager['mint']['getAllTrustedMints']>
@@ -304,7 +307,9 @@ export const useCashuStore = create<CashuState & CashuActions>()((set, get) => (
 			await manager.wallet.receive(pendingToken.token)
 
 			// Update status to reclaimed
-			const pendingTokens = get().pendingTokens.map((t) => (t.id === tokenId ? { ...t, status: 'reclaimed' as const } : t))
+			const pendingTokens = get().pendingTokens.map((t) =>
+				t.id === tokenId ? { ...t, status: 'reclaimed' as const } : t,
+			)
 			savePendingTokens(pendingTokens)
 
 			set({ pendingTokens })
@@ -319,7 +324,9 @@ export const useCashuStore = create<CashuState & CashuActions>()((set, get) => (
 			console.log('[cashu] Token already claimed:', err)
 
 			// Mark as claimed
-			const pendingTokens = get().pendingTokens.map((t) => (t.id === tokenId ? { ...t, status: 'claimed' as const } : t))
+			const pendingTokens = get().pendingTokens.map((t) =>
+				t.id === tokenId ? { ...t, status: 'claimed' as const } : t,
+			)
 			savePendingTokens(pendingTokens)
 
 			set({ pendingTokens })
@@ -449,8 +456,10 @@ export const cashuActions = {
 	reclaimToken: (tokenId: string) => useCashuStore.getState().reclaimToken(tokenId),
 	removePendingToken: (tokenId: string) => useCashuStore.getState().removePendingToken(tokenId),
 	receive: (token: string) => useCashuStore.getState().receive(token),
-	createMintQuote: (mintUrl: string, amount: number) => useCashuStore.getState().createMintQuote(mintUrl, amount),
-	redeemMintQuote: (mintUrl: string, quoteId: string) => useCashuStore.getState().redeemMintQuote(mintUrl, quoteId),
+	createMintQuote: (mintUrl: string, amount: number) =>
+		useCashuStore.getState().createMintQuote(mintUrl, amount),
+	redeemMintQuote: (mintUrl: string, quoteId: string) =>
+		useCashuStore.getState().redeemMintQuote(mintUrl, quoteId),
 	melt: (mintUrl: string, invoice: string) => useCashuStore.getState().melt(mintUrl, invoice),
 	getMints: () => useCashuStore.getState().getMints(),
 	reset: () => useCashuStore.getState().reset(),

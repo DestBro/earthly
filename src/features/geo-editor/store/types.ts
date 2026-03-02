@@ -271,9 +271,7 @@ export interface SearchSlice {
 
 	setOsmQueryMode: (mode: 'idle' | 'click' | 'loading') => void
 	setOsmQueryFilter: (filter: string) => void
-	setOsmQueryPosition: (
-		position: { x: number; y: number; lat: number; lon: number } | null,
-	) => void
+	setOsmQueryPosition: (position: { x: number; y: number; lat: number; lon: number } | null) => void
 	setOsmQueryResults: (results: GeoJSON.Feature[]) => void
 	setOsmQueryError: (error: string | null) => void
 	toggleOsmQuerySelection: (id: string) => void

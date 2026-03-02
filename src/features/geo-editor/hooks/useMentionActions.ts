@@ -67,8 +67,7 @@ export function useMentionActions({
 
 			if (featureId) {
 				const feature = collection?.features.find(
-					(f) =>
-						f.id === featureId || String(f.id) === featureId || f.properties?.id === featureId,
+					(f) => f.id === featureId || String(f.id) === featureId || f.properties?.id === featureId,
 				)
 				if (feature?.geometry) {
 					import('@turf/turf')

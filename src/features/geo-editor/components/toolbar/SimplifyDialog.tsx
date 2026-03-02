@@ -229,9 +229,8 @@ export function SimplifyDialog({ open, onOpenChange }: SimplifyDialogProps) {
 						<div className="rounded-md border border-gray-200 bg-gray-50 p-2">
 							<div className="font-medium text-gray-700">Selected geometries</div>
 							<div className="mt-1 text-gray-600">
-								{metrics.selectedFeatureCount} selected •{' '}
-								{metrics.updatedFeatureCount} will change •{' '}
-								{metrics.skippedFeatureCount} unchanged
+								{metrics.selectedFeatureCount} selected • {metrics.updatedFeatureCount} will change
+								• {metrics.skippedFeatureCount} unchanged
 							</div>
 						</div>
 
@@ -265,8 +264,7 @@ export function SimplifyDialog({ open, onOpenChange }: SimplifyDialogProps) {
 						>
 							<div className="font-medium text-gray-700">Dataset size estimate</div>
 							<div className="mt-1 text-gray-800">
-								{formatBytes(metrics.datasetBytesBefore)} →{' '}
-								{formatBytes(metrics.datasetBytesAfter)}
+								{formatBytes(metrics.datasetBytesBefore)} → {formatBytes(metrics.datasetBytesAfter)}
 							</div>
 							<div className="text-[10px] text-gray-500">
 								{datasetDeltaPercent <= 0

@@ -223,8 +223,8 @@ export function useViewMode({
 
 	const handleOpenDebug = useCallback(
 		(event: NDKGeoEvent | NDKGeoCollectionEvent | NDKMapContextEvent) => {
-		setDebugEvent(event)
-		setDebugDialogOpen(true)
+			setDebugEvent(event)
+			setDebugDialogOpen(true)
 		},
 		[],
 	)

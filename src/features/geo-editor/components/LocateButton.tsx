@@ -1,12 +1,7 @@
 import { Loader2, Locate, LocateFixed, LocateOff } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from '@/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 type LocateStatus = 'idle' | 'loading' | 'tracking' | 'error'
 

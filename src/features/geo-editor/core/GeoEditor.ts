@@ -993,9 +993,7 @@ export class GeoEditor {
 		return this.lineOps.canDissolve()
 	}
 
-	dissolveSelectedLines(
-		tolerance: number = 0.00001,
-	): {
+	dissolveSelectedLines(tolerance: number = 0.00001): {
 		sourceFeatureCount: number
 		createdCount: number
 		skippedPartCount: number
@@ -1007,9 +1005,7 @@ export class GeoEditor {
 		return this.simplifyManager.canSimplify()
 	}
 
-	simplifySelectedFeatures(
-		tolerance: number = 0.0001,
-	): {
+	simplifySelectedFeatures(tolerance: number = 0.0001): {
 		updatedCount: number
 		skippedCount: number
 	} {

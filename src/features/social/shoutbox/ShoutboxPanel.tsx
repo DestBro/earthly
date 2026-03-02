@@ -188,14 +188,6 @@ export function ShoutboxPanel() {
 
 	return (
 		<div className="flex flex-col h-full min-h-0">
-			{/* Header */}
-			<div className="flex items-center justify-between px-2 py-2 border-b flex-shrink-0">
-				<div className="flex flex-col">
-					<h3 className="font-medium text-sm">Earthly Shoutbox</h3>
-					<p className="text-xs text-muted-foreground">Community discussion</p>
-				</div>
-			</div>
-
 			{/* Tabs */}
 			<Tabs
 				value={activeTab}

@@ -1,5 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Dialog, DialogContent, DialogTitle, DialogHeader, DialogDescription } from '@/components/ui/dialog'
+import {
+	Dialog,
+	DialogContent,
+	DialogTitle,
+	DialogHeader,
+	DialogDescription,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useCashuStore, cashuActions } from '@/lib/stores/cashu'
 import { useNip60Store } from '@/lib/stores/nip60'
@@ -48,7 +54,9 @@ export function SendEcashModal({ open, onClose }: SendEcashModalProps) {
 		// Check balance at selected mint
 		const mintBalance = selectedMint ? (balances[selectedMint] ?? 0) : totalBalance
 		if (amountNum > mintBalance) {
-			toast.error(`Insufficient balance at ${selectedMint ? getMintHostname(selectedMint) : 'wallet'}`)
+			toast.error(
+				`Insufficient balance at ${selectedMint ? getMintHostname(selectedMint) : 'wallet'}`,
+			)
 			return
 		}
 
@@ -120,7 +128,9 @@ export function SendEcashModal({ open, onClose }: SendEcashModalProps) {
 						<Send className="w-5 h-5 text-purple-500" />
 						Send eCash
 					</DialogTitle>
-					<DialogDescription>Generate a Cashu token to send eCash (Balance: {totalBalance.toLocaleString()} sats)</DialogDescription>
+					<DialogDescription>
+						Generate a Cashu token to send eCash (Balance: {totalBalance.toLocaleString()} sats)
+					</DialogDescription>
 				</DialogHeader>
 
 				{view === 'token' && generatedToken ? (
@@ -146,7 +156,9 @@ export function SendEcashModal({ open, onClose }: SendEcashModalProps) {
 								</Button>
 							</div>
 						</div>
-						<p className="text-sm text-muted-foreground text-center">Share this token with the recipient. It can only be redeemed once.</p>
+						<p className="text-sm text-muted-foreground text-center">
+							Share this token with the recipient. It can only be redeemed once.
+						</p>
 						<p className="text-xs text-muted-foreground text-center">
 							Token saved to pending list. You can reclaim it if the recipient doesn't claim it.
 						</p>
@@ -202,7 +214,12 @@ export function SendEcashModal({ open, onClose }: SendEcashModalProps) {
 							<Button variant="outline" onClick={handleClose}>
 								Cancel
 							</Button>
-							<Button onClick={handleGenerate} disabled={isGenerating || !amount || !selectedMint || cashuStatus === 'initializing'}>
+							<Button
+								onClick={handleGenerate}
+								disabled={
+									isGenerating || !amount || !selectedMint || cashuStatus === 'initializing'
+								}
+							>
 								{isGenerating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
 								Generate Token
 							</Button>

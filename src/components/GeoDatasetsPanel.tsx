@@ -398,9 +398,6 @@ export function GeoDatasetsPanelContent({
 		<div className="space-y-3">
 			<div className="flex items-center justify-between gap-2">
 				<div>
-					<h3 className="text-base font-semibold text-gray-800">
-						{mode === 'datasets' ? 'Datasets' : mode === 'collections' ? 'Collections' : 'Contexts'}
-					</h3>
 					{isFocused ? (
 						<p className="text-xs text-amber-600">Focused view — others hidden</p>
 					) : (

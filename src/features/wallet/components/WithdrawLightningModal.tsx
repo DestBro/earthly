@@ -1,5 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Dialog, DialogContent, DialogTitle, DialogHeader, DialogDescription } from '@/components/ui/dialog'
+import {
+	Dialog,
+	DialogContent,
+	DialogTitle,
+	DialogHeader,
+	DialogDescription,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useCashuStore, cashuActions } from '@/lib/stores/cashu'
 import { useNip60Store, nip60Actions } from '@/lib/stores/nip60'
@@ -114,7 +120,9 @@ export function WithdrawLightningModal({ open, onClose }: WithdrawLightningModal
 						<Zap className="w-5 h-5 text-orange-500" />
 						Withdraw to Lightning
 					</DialogTitle>
-					<DialogDescription>Pay a Lightning invoice using your eCash (Balance: {balance.toLocaleString()} sats)</DialogDescription>
+					<DialogDescription>
+						Pay a Lightning invoice using your eCash (Balance: {balance.toLocaleString()} sats)
+					</DialogDescription>
 				</DialogHeader>
 
 				{isSuccess ? (
@@ -123,7 +131,9 @@ export function WithdrawLightningModal({ open, onClose }: WithdrawLightningModal
 							<Check className="w-6 h-6 text-green-600" />
 						</div>
 						<p className="text-lg font-medium text-green-600">Withdrawal Successful!</p>
-						<p className="text-sm text-muted-foreground mt-2">Your Lightning invoice has been paid</p>
+						<p className="text-sm text-muted-foreground mt-2">
+							Your Lightning invoice has been paid
+						</p>
 						<Button onClick={handleClose} className="mt-4">
 							Done
 						</Button>
@@ -176,7 +186,12 @@ export function WithdrawLightningModal({ open, onClose }: WithdrawLightningModal
 								/>
 							</div>
 							<div className="flex justify-end">
-								<Button variant="ghost" size="sm" onClick={() => setShowScanner(true)} className="gap-2">
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={() => setShowScanner(true)}
+									className="gap-2"
+								>
 									<ScanLine className="w-4 h-4" />
 									Scan QR
 								</Button>
@@ -198,7 +213,12 @@ export function WithdrawLightningModal({ open, onClose }: WithdrawLightningModal
 							</Button>
 							<Button
 								onClick={handleWithdraw}
-								disabled={isWithdrawing || !invoice.trim() || !selectedMint || cashuStatus === 'initializing'}
+								disabled={
+									isWithdrawing ||
+									!invoice.trim() ||
+									!selectedMint ||
+									cashuStatus === 'initializing'
+								}
 							>
 								{isWithdrawing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
 								Withdraw

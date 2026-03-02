@@ -6,20 +6,18 @@ export class SimplifyManager {
 	constructor(private ctx: EditorOperationContext) {}
 
 	canSimplify(): boolean {
-		return this.ctx.getSelectedFeatures().some((feature) =>
-			isSimplifiableGeometryType(feature.geometry.type),
-		)
+		return this.ctx
+			.getSelectedFeatures()
+			.some((feature) => isSimplifiableGeometryType(feature.geometry.type))
 	}
 
-	simplifySelectedFeatures(
-		tolerance: number = 0.0001,
-	): {
+	simplifySelectedFeatures(tolerance: number = 0.0001): {
 		updatedCount: number
 		skippedCount: number
 	} {
-		const selected = this.ctx.getSelectedFeatures().filter((feature) =>
-			isSimplifiableGeometryType(feature.geometry.type),
-		)
+		const selected = this.ctx
+			.getSelectedFeatures()
+			.filter((feature) => isSimplifiableGeometryType(feature.geometry.type))
 
 		if (selected.length === 0) {
 			return { updatedCount: 0, skippedCount: 0 }

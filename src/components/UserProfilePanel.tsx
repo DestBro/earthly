@@ -304,9 +304,7 @@ export function UserProfilePanel({
 					showNip05Badge={true}
 					showBio={true}
 				/>
-				{isOwnProfile && (
-					<p className="text-xs text-emerald-600 mt-2">This is your profile</p>
-				)}
+				{isOwnProfile && <p className="text-xs text-emerald-600 mt-2">This is your profile</p>}
 			</div>
 
 			{/* Tabs */}

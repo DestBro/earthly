@@ -37,9 +37,7 @@ export class CombineManager {
 		const multiType = toMultiGeometryType(baseType)
 		if (!multiType) return false
 
-		const parts = selected.flatMap((feature) =>
-			extractGeometryParts(feature.geometry, baseType),
-		)
+		const parts = selected.flatMap((feature) => extractGeometryParts(feature.geometry, baseType))
 		if (parts.length === 0) return false
 
 		const template = cloneFeature(selected[0])
@@ -69,9 +67,9 @@ export class CombineManager {
 	}
 
 	splitSelectedFeatures(): boolean {
-		const selected = this.ctx.getSelectedFeatures().filter((feature) =>
-			isMultiGeometry(feature.geometry.type),
-		)
+		const selected = this.ctx
+			.getSelectedFeatures()
+			.filter((feature) => isMultiGeometry(feature.geometry.type))
 		if (selected.length === 0) return false
 
 		const newFeatures: EditorFeature[] = []

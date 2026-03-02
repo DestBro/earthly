@@ -20,9 +20,9 @@ export class LineOperationsManager {
 	}
 
 	canDissolve(): boolean {
-		const selected = this.ctx.getSelectedFeatures().filter((feature) =>
-			isLineGeometryType(feature.geometry.type),
-		)
+		const selected = this.ctx
+			.getSelectedFeatures()
+			.filter((feature) => isLineGeometryType(feature.geometry.type))
 		if (selected.length === 0) return false
 
 		const partCount = selected.reduce(
@@ -118,16 +118,14 @@ export class LineOperationsManager {
 		return true
 	}
 
-	dissolveSelectedLines(
-		tolerance: number = 0.00001,
-	): {
+	dissolveSelectedLines(tolerance: number = 0.00001): {
 		sourceFeatureCount: number
 		createdCount: number
 		skippedPartCount: number
 	} {
-		const selected = this.ctx.getSelectedFeatures().filter((feature) =>
-			isLineGeometryType(feature.geometry.type),
-		)
+		const selected = this.ctx
+			.getSelectedFeatures()
+			.filter((feature) => isLineGeometryType(feature.geometry.type))
 		if (selected.length === 0) {
 			return { sourceFeatureCount: 0, createdCount: 0, skippedPartCount: 0 }
 		}

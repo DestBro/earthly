@@ -4,31 +4,31 @@
  */
 
 export interface ParseRequest {
-  id: string;
-  text: string;
+	id: string
+	text: string
 }
 
 export interface ParseResponse {
-  id: string;
-  success: boolean;
-  data?: unknown;
-  error?: string;
+	id: string
+	success: boolean
+	data?: unknown
+	error?: string
 }
 
 // Worker message handler
 self.onmessage = (event: MessageEvent<ParseRequest>) => {
-  const { id, text } = event.data;
+	const { id, text } = event.data
 
-  try {
-    const data = JSON.parse(text);
-    const response: ParseResponse = { id, success: true, data };
-    self.postMessage(response);
-  } catch (error) {
-    const response: ParseResponse = {
-      id,
-      success: false,
-      error: error instanceof Error ? error.message : "JSON parse failed",
-    };
-    self.postMessage(response);
-  }
-};
+	try {
+		const data = JSON.parse(text)
+		const response: ParseResponse = { id, success: true, data }
+		self.postMessage(response)
+	} catch (error) {
+		const response: ParseResponse = {
+			id,
+			success: false,
+			error: error instanceof Error ? error.message : 'JSON parse failed',
+		}
+		self.postMessage(response)
+	}
+}

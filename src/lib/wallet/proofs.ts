@@ -10,7 +10,10 @@ import type { ProofInfo } from './types'
  * @param knownMints Optional list of mints to query via getProofs() as fallback
  * @returns Map of mint URL to array of proofs
  */
-export function extractProofsByMint(wallet: NDKCashuWallet, knownMints?: string[]): Map<string, ProofInfo[]> {
+export function extractProofsByMint(
+	wallet: NDKCashuWallet,
+	knownMints?: string[],
+): Map<string, ProofInfo[]> {
 	const result = new Map<string, ProofInfo[]>()
 
 	try {

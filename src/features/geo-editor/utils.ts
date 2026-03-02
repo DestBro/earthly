@@ -260,10 +260,7 @@ export function featureStableId(feature: GeoJSON.Feature): string {
  * Convert a raw GeoJSON feature into an EditorFeature, normalizing properties
  * and mirroring non-internal keys into `customProperties`.
  */
-export function toEditorFeature(
-	feature: GeoJSON.Feature,
-	importSource?: string,
-): EditorFeature {
+export function toEditorFeature(feature: GeoJSON.Feature, importSource?: string): EditorFeature {
 	const stableId = featureStableId(feature)
 	const sourceProps =
 		feature.properties && typeof feature.properties === 'object'

@@ -7,9 +7,9 @@ import { getCurrentPubkey } from './currentUser'
  * @returns The full storage key, or null if no pubkey available
  */
 function getUserScopedKey(prefix: string, pubkey?: string): string | null {
-  const userPubkey = pubkey ?? getCurrentPubkey()
-  if (!userPubkey) return null
-  return `${prefix}_${userPubkey.slice(0, 8)}`
+	const userPubkey = pubkey ?? getCurrentPubkey()
+	if (!userPubkey) return null
+	return `${prefix}_${userPubkey.slice(0, 8)}`
 }
 
 /**
@@ -18,20 +18,16 @@ function getUserScopedKey(prefix: string, pubkey?: string): string | null {
  * @param defaultValue Default value if not found or parse fails
  * @param pubkey Optional pubkey override
  */
-export function loadUserData<T>(
-  prefix: string,
-  defaultValue: T,
-  pubkey?: string,
-): T {
-  try {
-    const key = getUserScopedKey(prefix, pubkey);
-    if (!key) return defaultValue;
+export function loadUserData<T>(prefix: string, defaultValue: T, pubkey?: string): T {
+	try {
+		const key = getUserScopedKey(prefix, pubkey)
+		if (!key) return defaultValue
 
-    const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) : defaultValue;
-  } catch {
-    return defaultValue;
-  }
+		const stored = localStorage.getItem(key)
+		return stored ? JSON.parse(stored) : defaultValue
+	} catch {
+		return defaultValue
+	}
 }
 
 /**
@@ -40,19 +36,15 @@ export function loadUserData<T>(
  * @param data The data to save
  * @param pubkey Optional pubkey override
  */
-export function saveUserData<T>(
-  prefix: string,
-  data: T,
-  pubkey?: string,
-): void {
-  try {
-    const key = getUserScopedKey(prefix, pubkey);
-    if (!key) return;
+export function saveUserData<T>(prefix: string, data: T, pubkey?: string): void {
+	try {
+		const key = getUserScopedKey(prefix, pubkey)
+		if (!key) return
 
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (e) {
-    console.error(`[wallet/storage] Failed to save ${prefix}:`, e);
-  }
+		localStorage.setItem(key, JSON.stringify(data))
+	} catch (e) {
+		console.error(`[wallet/storage] Failed to save ${prefix}:`, e)
+	}
 }
 
 /**
@@ -61,12 +53,12 @@ export function saveUserData<T>(
  * @param pubkey Optional pubkey override
  */
 export function removeUserData(prefix: string, pubkey?: string): void {
-  try {
-    const key = getUserScopedKey(prefix, pubkey);
-    if (!key) return;
+	try {
+		const key = getUserScopedKey(prefix, pubkey)
+		if (!key) return
 
-    localStorage.removeItem(key);
-  } catch {
-    // Silently ignore removal errors
-  }
+		localStorage.removeItem(key)
+	} catch {
+		// Silently ignore removal errors
+	}
 }

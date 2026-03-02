@@ -33,7 +33,10 @@ export const useMap = () => useContext(MapContext)
  * This enables Blossom map discovery to find which PMTiles file
  * contains tiles for a given region.
  */
-export type AnnouncementRecord = Record<string, { bbox: BBox; file: string; maxZoom: number; size?: number }>
+export type AnnouncementRecord = Record<
+	string,
+	{ bbox: BBox; file: string; maxZoom: number; size?: number }
+>
 
 export interface MapSource {
 	type: 'default' | 'pmtiles' | 'blossom'

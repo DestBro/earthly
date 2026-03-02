@@ -6,12 +6,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from '@/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 export interface FileDropdownProps {
 	onImportClick: () => void
@@ -21,7 +16,13 @@ export interface FileDropdownProps {
 	small?: boolean
 }
 
-export function FileDropdown({ onImportClick, onExport, canExport, disabled, small }: FileDropdownProps) {
+export function FileDropdown({
+	onImportClick,
+	onExport,
+	canExport,
+	disabled,
+	small,
+}: FileDropdownProps) {
 	const iconSize = small ? 'h-3.5 w-3.5' : 'h-4 w-4'
 	const buttonSize = small ? 'h-8' : 'h-9'
 

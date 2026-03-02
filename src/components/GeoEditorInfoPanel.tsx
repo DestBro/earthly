@@ -560,7 +560,6 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 			{/* Header */}
 			<div className="flex items-center justify-between gap-2 pb-1 border-b border-gray-100">
 				<div className="flex items-center gap-2">
-					<h2 className="text-base font-semibold text-gray-900">Editor</h2>
 					{activeDataset && (
 						<Button
 							size="sm"
