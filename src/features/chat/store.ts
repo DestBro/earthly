@@ -95,6 +95,81 @@ const EMPTY_CHAT_DIAGNOSTICS: ChatDiagnostics = {
 	completedAt: null,
 }
 
+const DEFAULT_CHAT_TITLE = 'New chat'
+const MAX_CHAT_TITLE_CHARS = 60
+
+export interface ChatSession {
+	id: string
+	title: string
+	messages: ChatMessage[]
+	createdAt: number
+	updatedAt: number
+}
+
+function createChatId(): string {
+	if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+		return crypto.randomUUID()
+	}
+	return `chat-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function trimChatTitle(title: string): string {
+	if (title.length <= MAX_CHAT_TITLE_CHARS) return title
+	return `${title.slice(0, MAX_CHAT_TITLE_CHARS)}...`
+}
+
+function buildChatTitle(messages: ChatMessage[]): string {
+	const firstUserMessage = messages.find((message) => message.role === 'user')
+	if (!firstUserMessage) return DEFAULT_CHAT_TITLE
+	const content = messageContentToText(firstUserMessage.content)
+	const normalized = content.replace(/\s+/g, ' ').trim()
+	if (!normalized) return DEFAULT_CHAT_TITLE
+	return trimChatTitle(normalized)
+}
+
+function createEmptyChatSession(): ChatSession {
+	const now = Date.now()
+	return {
+		id: createChatId(),
+		title: DEFAULT_CHAT_TITLE,
+		messages: [],
+		createdAt: now,
+		updatedAt: now,
+	}
+}
+
+function applyMessagesToActiveChat(
+	chatSessions: ChatSession[],
+	activeChatId: string | null,
+	messages: ChatMessage[],
+): ChatSession[] {
+	const nextSessions = chatSessions.map((chat) => {
+		if (chat.id !== activeChatId) return chat
+		return {
+			...chat,
+			messages,
+			title: buildChatTitle(messages),
+			updatedAt: Date.now(),
+		}
+	})
+	if (nextSessions.some((chat) => chat.id === activeChatId)) return nextSessions
+
+	const fallback = createEmptyChatSession()
+	return [
+		...nextSessions,
+		{
+			...fallback,
+			id: activeChatId ?? fallback.id,
+			messages,
+			title: buildChatTitle(messages),
+		},
+	]
+}
+
+function sortChatSessionsByRecent(chatSessions: ChatSession[]): ChatSession[] {
+	return [...chatSessions].sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
 function messageContentToText(content: ChatMessage['content']): string {
 	if (typeof content === 'string') return content
 	if (!content) return ''
@@ -436,6 +511,9 @@ interface ChatState {
 	provider: ProviderType
 	customEndpoint: string
 	customApiKey: string
+	// Sessions
+	chatSessions: ChatSession[]
+	activeChatId: string | null
 	// Messages
 	messages: ChatMessage[]
 	// Models
@@ -475,6 +553,9 @@ interface ChatActions {
 	// Message management
 	addMessage: (message: ChatMessage) => void
 	clearMessages: () => void
+	createChat: () => void
+	switchChat: (chatId: string) => void
+	deleteChat: (chatId: string) => void
 	// Chat actions
 	sendMessage: (content: string, options?: SendMessageOptions) => Promise<void>
 	cancelStream: () => void
@@ -488,30 +569,37 @@ interface SendMessageOptions {
 
 type ChatStore = ChatState & ChatActions
 
-const initialState: ChatState = {
-	provider: 'routstr',
-	customEndpoint: '',
-	customApiKey: '',
-	messages: [],
-	models: [],
-	selectedModel: null,
-	modelsLoading: false,
-	modelsError: null,
-	maxTokens: DEFAULT_MAX_TOKENS,
-	toolsEnabled: true,
-	isStreaming: false,
-	streamingContent: '',
-	pendingToolCalls: [],
-	executingTools: false,
-	streamPhase: 'idle',
-	streamWarning: null,
-	lastProgressAt: null,
-	lastProgressKind: null,
-	error: null,
-	diagnostics: EMPTY_CHAT_DIAGNOSTICS,
-	totalSpent: 0,
-	totalRefunded: 0,
+function createInitialState(): ChatState {
+	const initialChat = createEmptyChatSession()
+	return {
+		provider: 'routstr',
+		customEndpoint: '',
+		customApiKey: '',
+		chatSessions: [initialChat],
+		activeChatId: initialChat.id,
+		messages: [],
+		models: [],
+		selectedModel: null,
+		modelsLoading: false,
+		modelsError: null,
+		maxTokens: DEFAULT_MAX_TOKENS,
+		toolsEnabled: true,
+		isStreaming: false,
+		streamingContent: '',
+		pendingToolCalls: [],
+		executingTools: false,
+		streamPhase: 'idle',
+		streamWarning: null,
+		lastProgressAt: null,
+		lastProgressKind: null,
+		error: null,
+		diagnostics: EMPTY_CHAT_DIAGNOSTICS,
+		totalSpent: 0,
+		totalRefunded: 0,
+	}
 }
+
+const initialState: ChatState = createInitialState()
 
 // AbortController for canceling streams
 let streamAbortController: AbortController | null = null
@@ -572,11 +660,34 @@ export const useChatStore = create<ChatStore>()(
 			addMessage: (message: ChatMessage) => {
 				set((state) => ({
 					messages: [...state.messages, message],
+					chatSessions: applyMessagesToActiveChat(state.chatSessions, state.activeChatId, [
+						...state.messages,
+						message,
+					]),
 				}))
 			},
 
 			clearMessages: () => {
-				set({
+				set((state) => ({
+					messages: [],
+					chatSessions: applyMessagesToActiveChat(state.chatSessions, state.activeChatId, []),
+					totalSpent: 0,
+					totalRefunded: 0,
+					error: null,
+					streamWarning: null,
+					streamPhase: 'idle',
+					lastProgressAt: null,
+					lastProgressKind: null,
+					diagnostics: EMPTY_CHAT_DIAGNOSTICS,
+				}))
+			},
+
+			createChat: () => {
+				if (get().isStreaming) return
+				const chat = createEmptyChatSession()
+				set((state) => ({
+					chatSessions: sortChatSessionsByRecent([...state.chatSessions, chat]),
+					activeChatId: chat.id,
 					messages: [],
 					totalSpent: 0,
 					totalRefunded: 0,
@@ -586,6 +697,47 @@ export const useChatStore = create<ChatStore>()(
 					lastProgressAt: null,
 					lastProgressKind: null,
 					diagnostics: EMPTY_CHAT_DIAGNOSTICS,
+				}))
+			},
+
+			switchChat: (chatId: string) => {
+				if (get().isStreaming) return
+				set((state) => {
+					const target = state.chatSessions.find((chat) => chat.id === chatId)
+					if (!target) return {}
+					return {
+						activeChatId: target.id,
+						messages: target.messages,
+						error: null,
+						streamWarning: null,
+						streamPhase: 'idle',
+						lastProgressAt: null,
+						lastProgressKind: null,
+						diagnostics: EMPTY_CHAT_DIAGNOSTICS,
+					}
+				})
+			},
+
+			deleteChat: (chatId: string) => {
+				if (get().isStreaming) return
+				set((state) => {
+					const remaining = state.chatSessions.filter((chat) => chat.id !== chatId)
+					const ensured = remaining.length > 0 ? remaining : [createEmptyChatSession()]
+					const nextActiveId = ensured.some((chat) => chat.id === state.activeChatId)
+						? state.activeChatId
+						: (ensured[0]?.id ?? null)
+					const activeChat = ensured.find((chat) => chat.id === nextActiveId)
+					return {
+						chatSessions: sortChatSessionsByRecent(ensured),
+						activeChatId: nextActiveId,
+						messages: activeChat?.messages ?? [],
+						error: null,
+						streamWarning: null,
+						streamPhase: 'idle',
+						lastProgressAt: null,
+						lastProgressKind: null,
+						diagnostics: EMPTY_CHAT_DIAGNOSTICS,
+					}
 				})
 			},
 
@@ -630,6 +782,10 @@ export const useChatStore = create<ChatStore>()(
 				const userMessage: ChatMessage = { role: 'user', content }
 				set((state) => ({
 					messages: [...state.messages, userMessage],
+					chatSessions: applyMessagesToActiveChat(state.chatSessions, state.activeChatId, [
+						...state.messages,
+						userMessage,
+					]),
 					isStreaming: true,
 					streamingContent: '',
 					error: null,
@@ -1011,7 +1167,14 @@ export const useChatStore = create<ChatStore>()(
 									normalizedReasoningContent || (requiresReasoningContent ? '' : undefined),
 							}
 							conversationMessages = [...conversationMessages, assistantMessage]
-							set({ messages: conversationMessages })
+							set((state) => ({
+								messages: conversationMessages,
+								chatSessions: applyMessagesToActiveChat(
+									state.chatSessions,
+									state.activeChatId,
+									conversationMessages,
+								),
+							}))
 
 							// Execute each tool call
 							for (const toolCall of result.toolCalls) {
@@ -1025,7 +1188,14 @@ export const useChatStore = create<ChatStore>()(
 									tool_call_id: toolResult.tool_call_id,
 								}
 								conversationMessages = [...conversationMessages, toolMessage]
-								set({ messages: conversationMessages })
+								set((state) => ({
+									messages: conversationMessages,
+									chatSessions: applyMessagesToActiveChat(
+										state.chatSessions,
+										state.activeChatId,
+										conversationMessages,
+									),
+								}))
 								set({
 									lastProgressAt: Date.now(),
 									lastProgressKind: 'tool_result',
@@ -1072,6 +1242,11 @@ export const useChatStore = create<ChatStore>()(
 							conversationMessages = [...conversationMessages, assistantMessage]
 							set((state) => ({
 								messages: conversationMessages,
+								chatSessions: applyMessagesToActiveChat(
+									state.chatSessions,
+									state.activeChatId,
+									conversationMessages,
+								),
 								isStreaming: false,
 								streamingContent: '',
 								streamPhase: 'idle',
@@ -1156,18 +1331,44 @@ export const useChatStore = create<ChatStore>()(
 					streamAbortController.abort()
 					streamAbortController = null
 				}
-				set(initialState)
+				set(createInitialState())
 			},
 		}),
 		{
 			name: 'chat-store',
 			partialize: (state) => ({
+				chatSessions: state.chatSessions,
+				activeChatId: state.activeChatId,
 				selectedModel: state.selectedModel,
 				toolsEnabled: state.toolsEnabled,
 				provider: state.provider,
 				customEndpoint: state.customEndpoint,
 				customApiKey: state.customApiKey,
 			}),
+			merge: (persistedState, currentState) => {
+				const persisted = (persistedState as Partial<ChatState> | undefined) ?? {}
+				const merged = {
+					...currentState,
+					...persisted,
+				}
+				const persistedSessions = Array.isArray(persisted.chatSessions)
+					? persisted.chatSessions.filter((session) => typeof session?.id === 'string')
+					: []
+				const chatSessions =
+					persistedSessions.length > 0
+						? persistedSessions
+						: (merged.chatSessions ?? [createEmptyChatSession()])
+				const activeChatId = chatSessions.some((session) => session.id === merged.activeChatId)
+					? (merged.activeChatId ?? chatSessions[0]?.id ?? null)
+					: (chatSessions[0]?.id ?? null)
+				const activeChat = chatSessions.find((session) => session.id === activeChatId)
+				return {
+					...merged,
+					chatSessions: sortChatSessionsByRecent(chatSessions),
+					activeChatId,
+					messages: activeChat?.messages ?? [],
+				}
+			},
 		},
 	),
 )
@@ -1183,6 +1384,9 @@ export const chatActions = {
 	sendMessage: (content: string, options?: SendMessageOptions) =>
 		useChatStore.getState().sendMessage(content, options),
 	clearMessages: () => useChatStore.getState().clearMessages(),
+	createChat: () => useChatStore.getState().createChat(),
+	switchChat: (chatId: string) => useChatStore.getState().switchChat(chatId),
+	deleteChat: (chatId: string) => useChatStore.getState().deleteChat(chatId),
 	cancelStream: () => useChatStore.getState().cancelStream(),
 	reset: () => useChatStore.getState().reset(),
 }

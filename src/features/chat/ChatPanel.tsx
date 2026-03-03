@@ -23,6 +23,7 @@ import {
 	Loader2,
 	Send,
 	Trash2,
+	Plus,
 	Wallet,
 	Bot,
 	User,
@@ -83,6 +84,8 @@ export function ChatPanel({
 		messages,
 		models,
 		selectedModel,
+		chatSessions,
+		activeChatId,
 		modelsLoading,
 		modelsError,
 		isStreaming,
@@ -105,7 +108,9 @@ export function ChatPanel({
 		setSelectedModel,
 		setToolsEnabled,
 		sendMessage,
-		clearMessages,
+		createChat,
+		switchChat,
+		deleteChat,
 		cancelStream,
 	} = useChatStore()
 
@@ -204,6 +209,22 @@ export function ChatPanel({
 		setSelectedReferences([])
 	}
 
+	const handleCreateChat = () => {
+		setSelectedReferences([])
+		createChat()
+	}
+
+	const handleSwitchChat = (chatId: string) => {
+		setSelectedReferences([])
+		switchChat(chatId)
+	}
+
+	const handleDeleteChat = () => {
+		if (!activeChatId) return
+		setSelectedReferences([])
+		deleteChat(activeChatId)
+	}
+
 	const handleKeyDown = (e: React.KeyboardEvent) => {
 		if (e.key === 'Enter' && !e.shiftKey) {
 			e.preventDefault()
@@ -219,6 +240,10 @@ export function ChatPanel({
 	}
 
 	const selectedModelData = models.find((m) => m.id === selectedModel)
+	const sortedChatSessions = useMemo(
+		() => [...chatSessions].sort((a, b) => b.updatedAt - a.updatedAt),
+		[chatSessions],
+	)
 	const selectedModelLabel = selectedModelData?.name ?? 'No model selected'
 	const providerLabel = PROVIDER_LABELS[provider]
 	const isWalletRequired = provider === 'routstr'
@@ -262,6 +287,53 @@ export function ChatPanel({
 		<div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
 			{/* Header with provider, model picker and wallet info */}
 			<div className="p-3 border-b space-y-2">
+				<div className="flex items-center gap-2">
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						className="h-8 text-xs"
+						onClick={handleCreateChat}
+						disabled={isStreaming}
+					>
+						<Plus className="h-3.5 w-3.5 mr-1" />
+						New chat
+					</Button>
+					<Select
+						value={activeChatId ?? ''}
+						onValueChange={handleSwitchChat}
+						disabled={isStreaming || sortedChatSessions.length === 0}
+					>
+						<SelectTrigger className="h-auto min-h-8 flex-1 min-w-0 items-start text-xs whitespace-normal *:data-[slot=select-value]:line-clamp-none *:data-[slot=select-value]:whitespace-normal *:data-[slot=select-value]:break-all *:data-[slot=select-value]:text-left">
+							<SelectValue placeholder="Select chat" />
+						</SelectTrigger>
+						<SelectContent>
+							{sortedChatSessions.map((chat) => (
+								<SelectItem key={chat.id} value={chat.id}>
+									<div className="flex min-w-0 items-start gap-2">
+										<span className="min-w-0 break-all whitespace-normal">
+											{chat.title || 'New chat'}
+										</span>
+										<span className="shrink-0 text-[10px] text-muted-foreground">
+											{new Date(chat.updatedAt).toLocaleDateString()}
+										</span>
+									</div>
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon"
+						onClick={handleDeleteChat}
+						disabled={!activeChatId || isStreaming}
+						title="Delete chat"
+					>
+						<Trash2 className="h-4 w-4" />
+					</Button>
+				</div>
+
 				<div className="flex items-center gap-2">
 					<Collapsible
 						open={settingsOpen}
@@ -354,15 +426,6 @@ export function ChatPanel({
 							</Select>
 						</CollapsibleContent>
 					</Collapsible>
-					<Button
-						variant="ghost"
-						size="icon"
-						onClick={clearMessages}
-						disabled={messages.length === 0 || isStreaming}
-						title="Clear chat"
-					>
-						<Trash2 className="h-4 w-4" />
-					</Button>
 				</div>
 
 				{/* Wallet status / provider info and tools toggle */}
@@ -898,7 +961,7 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 										className="absolute right-1.5 top-1.5"
 										title="Copy assistant message"
 									/>
-									<p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+									<p className="whitespace-pre-wrap break-all [overflow-wrap:anywhere]">
 										{parsedAssistantContent.answerText}
 									</p>
 									<div className="mt-2 text-[10px] text-muted-foreground">
@@ -958,7 +1021,7 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 						className="absolute right-1.5 top-1.5"
 						title="Copy user message"
 					/>
-					<p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{contentText}</p>
+					<p className="whitespace-pre-wrap break-all [overflow-wrap:anywhere]">{contentText}</p>
 					<div className="mt-2 text-[10px] text-primary-foreground/80">
 						~{tokenEstimate.toLocaleString()} tok
 					</div>
@@ -986,7 +1049,7 @@ function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 							className="absolute right-1.5 top-1.5"
 							title="Copy assistant message"
 						/>
-						<p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+						<p className="whitespace-pre-wrap break-all [overflow-wrap:anywhere]">
 							{parsedAssistantContent.answerText}
 						</p>
 						<div className="mt-2 text-[10px] text-muted-foreground">
