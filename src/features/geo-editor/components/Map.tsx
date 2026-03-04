@@ -518,6 +518,8 @@ export const GeoEditorMap: React.FC<MapProps> = ({
 			center,
 			zoom,
 			maxZoom: 22,
+			// Required for reliable canvas snapshot exports (share image preview/export).
+			preserveDrawingBuffer: true,
 		})
 
 		mapRef.current = map

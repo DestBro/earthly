@@ -1225,6 +1225,239 @@ export class GeoEditor {
 		}
 	}
 
+	private isMapCanvasLikelyTransparent(sampleSize = 24): boolean {
+		const sourceCanvas = this.map.getCanvas()
+		if (!sourceCanvas || sourceCanvas.width < 1 || sourceCanvas.height < 1) return true
+
+		try {
+			const probeCanvas = document.createElement('canvas')
+			probeCanvas.width = sampleSize
+			probeCanvas.height = sampleSize
+			const probeCtx = probeCanvas.getContext('2d', { willReadFrequently: true })
+			if (!probeCtx) return false
+			probeCtx.clearRect(0, 0, sampleSize, sampleSize)
+			probeCtx.drawImage(sourceCanvas, 0, 0, sampleSize, sampleSize)
+			const pixels = probeCtx.getImageData(0, 0, sampleSize, sampleSize).data
+
+			let opaqueCount = 0
+			for (let index = 3; index < pixels.length; index += 4) {
+				if (pixels[index] > 12) opaqueCount += 1
+			}
+			return opaqueCount < sampleSize
+		} catch {
+			// If readback is blocked for any reason, don't treat it as blank.
+			return false
+		}
+	}
+
+	/**
+	 * Capture from the next render frame with retries to avoid transparent readbacks.
+	 */
+	private captureOnRenderedFrame<T>(
+		capture: () => T,
+		options?: { retries?: number; timeoutMs?: number },
+	): Promise<T> {
+		return new Promise((resolve, reject) => {
+			const retries = options?.retries ?? 2
+			const timeoutMs = options?.timeoutMs ?? 700
+			let attemptsLeft = retries
+			let settled = false
+			let timeoutId: ReturnType<typeof setTimeout> | null = null
+
+			const finalizeResolve = (value: T) => {
+				if (settled) return
+				settled = true
+				if (timeoutId) clearTimeout(timeoutId)
+				resolve(value)
+			}
+
+			const finalizeReject = (error: unknown) => {
+				if (settled) return
+				settled = true
+				if (timeoutId) clearTimeout(timeoutId)
+				reject(error)
+			}
+
+			const attempt = () => {
+				if (settled) return
+				try {
+					const result = capture()
+					const frameLikelyTransparent = this.isMapCanvasLikelyTransparent()
+					if (frameLikelyTransparent && attemptsLeft > 0) {
+						attemptsLeft -= 1
+						this.map.once('render', attempt)
+						this.map.triggerRepaint()
+						return
+					}
+					finalizeResolve(result)
+				} catch (error) {
+					finalizeReject(error)
+				}
+			}
+
+			this.map.once('render', attempt)
+			this.map.triggerRepaint()
+
+			timeoutId = setTimeout(() => {
+				if (settled) return
+				try {
+					finalizeResolve(capture())
+				} catch (error) {
+					finalizeReject(error)
+				}
+			}, timeoutMs)
+		})
+	}
+
+	/**
+	 * Capture snapshot after ensuring a fresh rendered frame.
+	 */
+	async captureMapSnapshotStable(options?: {
+		mimeType?: 'image/png' | 'image/jpeg'
+		quality?: number
+		maxWidth?: number
+		maxHeight?: number
+	}): Promise<{ dataUrl: string; width: number; height: number }> {
+		return this.captureOnRenderedFrame(() => this.captureMapSnapshot(options), {
+			retries: 3,
+			timeoutMs: 900,
+		})
+	}
+
+	/**
+	 * Capture a cropped map snapshot around a geographic bounding box.
+	 * The crop is computed in current screen space (no camera move).
+	 */
+	captureMapSnapshotForBoundingBox(
+		bbox: [number, number, number, number],
+		options?: {
+			mimeType?: 'image/png' | 'image/jpeg'
+			quality?: number
+			maxWidth?: number
+			maxHeight?: number
+			paddingPx?: number
+			targetAspect?: number
+		},
+	): { dataUrl: string; width: number; height: number } {
+		const [west, south, east, north] = bbox
+		if (
+			![west, south, east, north].every((value) => Number.isFinite(value)) ||
+			west === east ||
+			south === north
+		) {
+			return this.captureMapSnapshot(options)
+		}
+
+		const sourceCanvas = this.map.getCanvas()
+		const sourceWidth = sourceCanvas.width
+		const sourceHeight = sourceCanvas.height
+		if (sourceWidth <= 0 || sourceHeight <= 0) {
+			return this.captureMapSnapshot(options)
+		}
+
+		const corners: Array<{ x: number; y: number }> = [
+			this.map.project([west, south]),
+			this.map.project([west, north]),
+			this.map.project([east, south]),
+			this.map.project([east, north]),
+		]
+		const xs = corners.map((point) => point.x).filter((value) => Number.isFinite(value))
+		const ys = corners.map((point) => point.y).filter((value) => Number.isFinite(value))
+		if (xs.length === 0 || ys.length === 0) {
+			return this.captureMapSnapshot(options)
+		}
+
+		const paddingPx = options?.paddingPx ?? 24
+		let cropX = Math.min(...xs) - paddingPx
+		let cropY = Math.min(...ys) - paddingPx
+		let cropW = Math.max(...xs) - Math.min(...xs) + paddingPx * 2
+		let cropH = Math.max(...ys) - Math.min(...ys) + paddingPx * 2
+
+		const targetAspect =
+			typeof options?.targetAspect === 'number' && Number.isFinite(options.targetAspect)
+				? options.targetAspect
+				: null
+
+		if (targetAspect && targetAspect > 0) {
+			const currentAspect = cropW / cropH
+			if (currentAspect < targetAspect) {
+				cropW = cropH * targetAspect
+			} else {
+				cropH = cropW / targetAspect
+			}
+			const centerX = cropX + cropW / 2
+			const centerY = cropY + cropH / 2
+			cropX = centerX - cropW / 2
+			cropY = centerY - cropH / 2
+		}
+
+		cropW = Math.min(cropW, sourceWidth)
+		cropH = Math.min(cropH, sourceHeight)
+		cropX = Math.max(0, Math.min(cropX, sourceWidth - cropW))
+		cropY = Math.max(0, Math.min(cropY, sourceHeight - cropH))
+
+		const sx = Math.floor(cropX)
+		const sy = Math.floor(cropY)
+		const sw = Math.max(1, Math.floor(cropW))
+		const sh = Math.max(1, Math.floor(cropH))
+		if (!Number.isFinite(sw) || !Number.isFinite(sh) || sw < 4 || sh < 4) {
+			return this.captureMapSnapshot(options)
+		}
+
+		const mimeType = options?.mimeType === 'image/jpeg' ? 'image/jpeg' : 'image/png'
+		const quality =
+			typeof options?.quality === 'number' ? Math.max(0, Math.min(1, options.quality)) : 0.9
+		const maxWidth = options?.maxWidth && options.maxWidth > 0 ? options.maxWidth : sw
+		const maxHeight = options?.maxHeight && options.maxHeight > 0 ? options.maxHeight : sh
+		const widthScale = maxWidth / sw
+		const heightScale = maxHeight / sh
+		const scale = Math.min(1, widthScale, heightScale)
+		const targetWidth = Math.max(1, Math.floor(sw * scale))
+		const targetHeight = Math.max(1, Math.floor(sh * scale))
+
+		try {
+			const tempCanvas = document.createElement('canvas')
+			tempCanvas.width = targetWidth
+			tempCanvas.height = targetHeight
+			const ctx = tempCanvas.getContext('2d')
+			if (!ctx) {
+				throw new Error('2D canvas context is unavailable')
+			}
+			ctx.drawImage(sourceCanvas, sx, sy, sw, sh, 0, 0, targetWidth, targetHeight)
+			return {
+				dataUrl: tempCanvas.toDataURL(mimeType, quality),
+				width: targetWidth,
+				height: targetHeight,
+			}
+		} catch (error) {
+			throw new Error(
+				error instanceof Error
+					? `Failed to capture cropped map snapshot: ${error.message}`
+					: 'Failed to capture cropped map snapshot',
+			)
+		}
+	}
+
+	/**
+	 * Capture bbox snapshot after ensuring a fresh rendered frame.
+	 */
+	async captureMapSnapshotForBoundingBoxStable(
+		bbox: [number, number, number, number],
+		options?: {
+			mimeType?: 'image/png' | 'image/jpeg'
+			quality?: number
+			maxWidth?: number
+			maxHeight?: number
+			paddingPx?: number
+			targetAspect?: number
+		},
+	): Promise<{ dataUrl: string; width: number; height: number }> {
+		return this.captureOnRenderedFrame(() => this.captureMapSnapshotForBoundingBox(bbox, options), {
+			retries: 3,
+			timeoutMs: 900,
+		})
+	}
+
 	selectFeature(featureId: string, additive: boolean = false): void {
 		const feature = this.features.get(featureId)
 		if (!feature) return

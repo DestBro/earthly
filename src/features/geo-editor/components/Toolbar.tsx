@@ -1,17 +1,14 @@
 import {
-	Check,
 	Copy,
 	Crosshair,
 	Edit3,
 	Magnet,
 	MousePointer2,
 	Settings2,
-	Share2,
 	SquareDashedMousePointer,
 	Trash2,
 	Undo2,
 	Redo2,
-	X,
 } from 'lucide-react'
 import type React from 'react'
 import { useRef, useState } from 'react'
@@ -19,16 +16,16 @@ import { HelpPopover } from '@/components/HelpPopover'
 import { LoginSessionButtons } from '@/features/auth/LoginSessionButtons'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { SearchBar } from '@/components/ui/search-bar'
 import { SidebarTrigger } from '@/components/ui/sidebar'
+import { SearchBar } from '@/components/ui/search-bar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { canExecuteEditorCommand, executeEditorCommand, type EditorCommandId } from '../commands'
 import type { EditorMode } from '../core'
 import { useEditorStore } from '../store'
-import { useRouting } from '../hooks/useRouting'
 import type { GeoSearchResult } from '../types'
 import { CreateMapPopover } from './CreateMapPopover'
 import { MapSettingsPanel } from './MapSettingsPanel'
+import { ShareExportPopover } from './share/ShareExportPopover'
 import {
 	Divider,
 	DrawButtonGroup,
@@ -97,12 +94,6 @@ export function Toolbar({
 	const showMapSettings = useEditorStore((state) => state.showMapSettings)
 	const setShowMapSettings = useEditorStore((state) => state.setShowMapSettings)
 
-	// Focus state for share button
-	const focusedNaddr = useEditorStore((state) => state.focusedNaddr)
-	const focusedType = useEditorStore((state) => state.focusedType)
-	const { clearFocus } = useRouting()
-	const isFocused = Boolean(focusedNaddr && focusedType)
-
 	// OSM Query state
 	const osmQueryMode = useEditorStore((state) => state.osmQueryMode)
 	const osmQueryFilter = useEditorStore((state) => state.osmQueryFilter)
@@ -119,8 +110,6 @@ export function Toolbar({
 	const clearSearch = useEditorStore((state) => state.clearSearch)
 
 	const fileInputRef = useRef<HTMLInputElement>(null)
-	const [sharePopoverOpen, setSharePopoverOpen] = useState(false)
-	const [copiedUrl, setCopiedUrl] = useState(false)
 	const [magicPopoverOpen, setMagicPopoverOpen] = useState(false)
 	const [simplifyDialogOpen, setSimplifyDialogOpen] = useState(false)
 
@@ -165,22 +154,6 @@ export function Toolbar({
 		if (fileInputRef.current) {
 			fileInputRef.current.value = ''
 		}
-	}
-
-	const handleCopyShareUrl = async () => {
-		const url = window.location.href
-		try {
-			await navigator.clipboard.writeText(url)
-			setCopiedUrl(true)
-			setTimeout(() => setCopiedUrl(false), 2000)
-		} catch (error) {
-			console.error('Failed to copy URL:', error)
-		}
-	}
-
-	const handleExitFocus = () => {
-		clearFocus()
-		setSharePopoverOpen(false)
 	}
 
 	const handleOsmClickMode = () => {
@@ -586,73 +559,8 @@ export function Toolbar({
 							onPublishCopy={datasetActions?.onPublishCopy}
 						/>
 
-						{/* Share button - only visible when focused on a route */}
-						{isFocused && (
-							<>
-								<Divider />
-								<TooltipProvider delayDuration={500}>
-									<Popover open={sharePopoverOpen} onOpenChange={setSharePopoverOpen}>
-										<Tooltip>
-											<TooltipTrigger asChild>
-												<PopoverTrigger asChild>
-													<Button variant="default" size="icon" aria-label="Share">
-														<Share2 className="h-4 w-4" />
-													</Button>
-												</PopoverTrigger>
-											</TooltipTrigger>
-											<TooltipContent side="bottom" sideOffset={8}>
-												<p>Share this view</p>
-											</TooltipContent>
-										</Tooltip>
-										<PopoverContent className="w-64" side="bottom" align="end">
-											<div className="space-y-3">
-												<div>
-													<h4 className="text-sm font-semibold mb-1">Share this view</h4>
-													<p className="text-xs text-gray-500">
-														Others will see only this{' '}
-														{focusedType === 'collection'
-															? 'collection'
-															: focusedType === 'mapcontext'
-																? 'context'
-																: 'dataset'}
-														.
-													</p>
-												</div>
-												<div className="flex flex-col gap-2">
-													<Button
-														size="sm"
-														variant="outline"
-														className="w-full justify-start"
-														onClick={handleCopyShareUrl}
-													>
-														{copiedUrl ? (
-															<>
-																<Check className="h-4 w-4 mr-2 text-green-600" />
-																Copied!
-															</>
-														) : (
-															<>
-																<Copy className="h-4 w-4 mr-2" />
-																Copy link
-															</>
-														)}
-													</Button>
-													<Button
-														size="sm"
-														variant="ghost"
-														className="w-full justify-start text-gray-600"
-														onClick={handleExitFocus}
-													>
-														<X className="h-4 w-4 mr-2" />
-														Exit focus mode
-													</Button>
-												</div>
-											</div>
-										</PopoverContent>
-									</Popover>
-								</TooltipProvider>
-							</>
-						)}
+						<Divider />
+						<ShareExportPopover />
 					</div>
 
 					{fileInput}
