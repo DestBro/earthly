@@ -11,6 +11,7 @@ import { useEditorStore } from '../../store'
 
 type ShareAspect = '16:9' | '4:3' | '1:1' | '3:4'
 type ShareCaptureMode = 'viewport' | 'entity-bounds'
+type ShareResolution = 1 | 2 | 3
 
 const SHARE_ASPECTS: Array<{ id: ShareAspect; label: string; ratio: number }> = [
 	{ id: '16:9', label: '16:9', ratio: 16 / 9 },
@@ -175,34 +176,39 @@ async function buildShareImage(options: {
 	title: string
 	description?: string
 	routeUrl: string
+	resolution: ShareResolution
 	qrCanvas: HTMLCanvasElement | null
 }): Promise<{ dataUrl: string; width: number; height: number }> {
 	const mapImage = await loadImageElement(options.snapshotDataUrl)
+	const scale = options.resolution
 	const border = 24
 	const mapWidth = 1600
 	const mapHeight = Math.max(900, Math.round(mapWidth / options.aspectRatio))
 	const canvas = document.createElement('canvas')
-	canvas.width = mapWidth + border * 2
-	canvas.height = mapHeight + border * 2
+	const logicalWidth = mapWidth + border * 2
+	const logicalHeight = mapHeight + border * 2
+	canvas.width = Math.max(1, Math.floor(logicalWidth * scale))
+	canvas.height = Math.max(1, Math.floor(logicalHeight * scale))
 
 	const ctx = canvas.getContext('2d')
 	if (!ctx) throw new Error('2D canvas context is unavailable')
+	ctx.setTransform(scale, 0, 0, scale, 0, 0)
 
 	ctx.fillStyle = '#ffffff'
-	ctx.fillRect(0, 0, canvas.width, canvas.height)
+	ctx.fillRect(0, 0, logicalWidth, logicalHeight)
 
 	drawImageCover(ctx, mapImage, border, border, mapWidth, mapHeight)
 
 	ctx.save()
 	ctx.strokeStyle = 'rgba(255,255,255,0.98)'
 	ctx.lineWidth = 1
-	ctx.strokeRect(0.5, 0.5, canvas.width - 1, canvas.height - 1)
+	ctx.strokeRect(0.5, 0.5, logicalWidth - 1, logicalHeight - 1)
 	ctx.restore()
 
 	const topY = 16
-	const bottomY = canvas.height - 9
+	const bottomY = logicalHeight - 9
 	const leftX = border
-	const rightX = canvas.width - border
+	const rightX = logicalWidth - border
 
 	ctx.fillStyle = 'rgba(15, 23, 42, 0.94)'
 	ctx.font = '600 14px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
@@ -242,8 +248,8 @@ async function buildShareImage(options: {
 	const qrCanvas = options.qrCanvas
 	if (qrCanvas) {
 		const qrSize = 166
-		const qrX = canvas.width - border - qrSize - 10
-		const qrY = canvas.height - border - qrSize - 10
+		const qrX = logicalWidth - border - qrSize - 10
+		const qrY = logicalHeight - border - qrSize - 10
 		ctx.strokeStyle = 'rgba(255,255,255,0.95)'
 		ctx.lineWidth = 1
 		ctx.strokeRect(qrX - 6, qrY - 6, qrSize + 12, qrSize + 12)
@@ -276,6 +282,7 @@ export function ShareExportPopover() {
 	const [copiedUrl, setCopiedUrl] = useState(false)
 	const [shareAspect, setShareAspect] = useState<ShareAspect>('16:9')
 	const [shareCaptureMode, setShareCaptureMode] = useState<ShareCaptureMode>('viewport')
+	const [shareResolution, setShareResolution] = useState<ShareResolution>(1)
 	const [sharePreviewDataUrl, setSharePreviewDataUrl] = useState<string | null>(null)
 	const [sharePreviewLoading, setSharePreviewLoading] = useState(false)
 	const [sharePreviewError, setSharePreviewError] = useState<string | null>(null)
@@ -366,20 +373,21 @@ export function ShareExportPopover() {
 
 	const renderShareImage = useCallback(async () => {
 		if (!editor) throw new Error('Map is not ready yet.')
+		const captureMax = Math.min(8192, 2048 * shareResolution)
 
 		const mapSnapshot =
 			shareCaptureMode === 'entity-bounds' && focusedEntityBounds
 				? await editor.captureMapSnapshotForBoundingBoxStable(focusedEntityBounds, {
 						mimeType: 'image/png',
-						maxWidth: 2048,
-						maxHeight: 2048,
+						maxWidth: captureMax,
+						maxHeight: captureMax,
 						paddingPx: 36,
 						targetAspect: selectedAspect.ratio,
 					})
 				: await editor.captureMapSnapshotStable({
 						mimeType: 'image/png',
-						maxWidth: 2048,
-						maxHeight: 2048,
+						maxWidth: captureMax,
+						maxHeight: captureMax,
 					})
 
 		return buildShareImage({
@@ -388,11 +396,13 @@ export function ShareExportPopover() {
 			title: shareMeta.title,
 			description: shareMeta.description,
 			routeUrl: shareRouteUrl,
+			resolution: shareResolution,
 			qrCanvas: shareQrCanvasRef.current,
 		})
 	}, [
 		editor,
 		shareCaptureMode,
+		shareResolution,
 		focusedEntityBounds,
 		selectedAspect.ratio,
 		shareMeta.title,
@@ -580,6 +590,22 @@ export function ShareExportPopover() {
 											onClick={() => setShareAspect(aspect.id)}
 										>
 											{aspect.label}
+										</Button>
+									))}
+								</div>
+								<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500 mt-2">
+									Resolution
+								</p>
+								<div className="grid grid-cols-3 gap-1">
+									{([1, 2, 3] as const).map((multiplier) => (
+										<Button
+											key={multiplier}
+											size="sm"
+											variant={shareResolution === multiplier ? 'default' : 'outline'}
+											className="h-8 px-0 text-xs"
+											onClick={() => setShareResolution(multiplier)}
+										>
+											{multiplier}x
 										</Button>
 									))}
 								</div>
