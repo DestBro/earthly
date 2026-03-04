@@ -105,6 +105,7 @@ function ReadOnlyFeatureRow({
 
 interface DatasetFeaturesListProps {
 	featureCollection: FeatureCollection | null | undefined
+	hiddenFeatureIds?: Set<string>
 	className?: string
 }
 
@@ -112,7 +113,11 @@ interface DatasetFeaturesListProps {
  * Read-only list of features from a dataset's feature collection.
  * Used in view mode to display the contents of a dataset.
  */
-export function DatasetFeaturesList({ featureCollection, className }: DatasetFeaturesListProps) {
+export function DatasetFeaturesList({
+	featureCollection,
+	hiddenFeatureIds,
+	className,
+}: DatasetFeaturesListProps) {
 	const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
 
 	const toggleExpand = (index: number) => {
@@ -135,7 +140,15 @@ export function DatasetFeaturesList({ featureCollection, className }: DatasetFea
 		)
 	}
 
-	const features = featureCollection.features
+	const features = hiddenFeatureIds
+		? featureCollection.features.filter((feature, index) => {
+				const featureId =
+					typeof feature.id === 'string' || typeof feature.id === 'number'
+						? String(feature.id)
+						: String(index)
+				return !hiddenFeatureIds.has(featureId)
+			})
+		: featureCollection.features
 
 	return (
 		<div className={cn('space-y-1', className)}>

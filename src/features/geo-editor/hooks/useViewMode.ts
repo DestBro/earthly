@@ -9,6 +9,12 @@ import { useEditorStore } from '../store'
 interface UseViewModeOptions {
 	geoEvents: NDKGeoEvent[]
 	onEnsureInfoPanelVisible: () => void
+	onNavigateToFocus?: (
+		focusType: 'geoevent' | 'collection' | 'mapcontext',
+		naddr: string,
+		sidebarView?: 'datasets' | 'collections' | 'contexts',
+	) => void
+	onClearRouteFocus?: () => void
 	/** Callback to zoom/fly to a dataset's bounds */
 	onZoomToDataset?: (event: NDKGeoEvent) => void
 	/** Callback to zoom/fly to a collection's bounds */
@@ -54,6 +60,8 @@ function encodeCollectionNaddr(event: NDKGeoCollectionEvent): string | null {
 export function useViewMode({
 	geoEvents,
 	onEnsureInfoPanelVisible,
+	onNavigateToFocus,
+	onClearRouteFocus,
 	onZoomToDataset,
 	onZoomToCollection,
 }: UseViewModeOptions) {
@@ -106,7 +114,7 @@ export function useViewMode({
 		setSidebarMode('editor')
 		// Clear URL and focus state
 		clearFocused()
-		window.location.hash = '/'
+		onClearRouteFocus?.()
 	}, [
 		setViewingDataset,
 		setViewingCollection,
@@ -116,6 +124,7 @@ export function useViewMode({
 		setViewingContextCollections,
 		setViewMode,
 		clearFocused,
+		onClearRouteFocus,
 	])
 
 	const handleInspectDataset = useCallback(
@@ -134,7 +143,7 @@ export function useViewMode({
 			// Update URL with naddr
 			const naddr = encodeGeoEventNaddr(event)
 			if (naddr) {
-				window.location.hash = `/geoevent/${naddr}`
+				onNavigateToFocus?.('geoevent', naddr, 'datasets')
 			}
 
 			// Fly to the dataset bounds
@@ -149,6 +158,7 @@ export function useViewMode({
 			setViewingContextCollections,
 			setViewMode,
 			onEnsureInfoPanelVisible,
+			onNavigateToFocus,
 			onZoomToDataset,
 		],
 	)
@@ -201,7 +211,7 @@ export function useViewMode({
 			// Update URL with naddr
 			const naddr = encodeCollectionNaddr(collection)
 			if (naddr) {
-				window.location.hash = `/collection/${naddr}`
+				onNavigateToFocus?.('collection', naddr, 'collections')
 			}
 
 			// Fly to the collection bounds
@@ -217,6 +227,7 @@ export function useViewMode({
 			setViewingContextCollections,
 			setViewMode,
 			onEnsureInfoPanelVisible,
+			onNavigateToFocus,
 			onZoomToCollection,
 		],
 	)

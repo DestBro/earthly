@@ -184,6 +184,8 @@ export interface ViewModeSlice {
 	viewContextDatasets: NDKGeoEvent[]
 	viewContextCollections: NDKGeoCollectionEvent[]
 	contextFilterMode: ContextFilterMode
+	activeContextScopeNaddr: string | null
+	activeContextScopeCoordinate: string | null
 
 	focusedNaddr: string | null
 	focusedType: 'geoevent' | 'collection' | 'mapcontext' | null
@@ -202,6 +204,8 @@ export interface ViewModeSlice {
 	setViewContextDatasets: (events: NDKGeoEvent[]) => void
 	setViewContextCollections: (collections: NDKGeoCollectionEvent[]) => void
 	setContextFilterMode: (mode: ContextFilterMode) => void
+	setActiveContextScope: (naddr: string | null, coordinate: string | null) => void
+	clearActiveContextScope: () => void
 
 	setFocused: (type: 'geoevent' | 'collection' | 'mapcontext', naddr: string) => void
 	clearFocused: () => void

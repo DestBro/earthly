@@ -9,7 +9,7 @@ interface UseMentionActionsParams {
 	zoomToDataset: (event: NDKGeoEvent) => void
 	getDatasetKey: (event: NDKGeoEvent) => string
 	isFocused: boolean
-	navigateHome: () => void
+	clearFocus: () => void
 	toggleDatasetVisibility: (event: NDKGeoEvent) => void
 	toggleAllDatasetVisibility: (visible: boolean) => void
 }
@@ -21,7 +21,7 @@ export function useMentionActions({
 	zoomToDataset,
 	getDatasetKey,
 	isFocused,
-	navigateHome,
+	clearFocus,
 	toggleDatasetVisibility,
 	toggleAllDatasetVisibility,
 }: UseMentionActionsParams) {
@@ -109,21 +109,21 @@ export function useMentionActions({
 	const handleToggleVisibilityWithExitFocus = useCallback(
 		(event: NDKGeoEvent) => {
 			if (isFocused) {
-				navigateHome()
+				clearFocus()
 			}
 			toggleDatasetVisibility(event)
 		},
-		[isFocused, navigateHome, toggleDatasetVisibility],
+		[isFocused, clearFocus, toggleDatasetVisibility],
 	)
 
 	const handleToggleAllVisibilityWithExitFocus = useCallback(
 		(visible: boolean) => {
 			if (isFocused) {
-				navigateHome()
+				clearFocus()
 			}
 			toggleAllDatasetVisibility(visible)
 		},
-		[isFocused, navigateHome, toggleAllDatasetVisibility],
+		[isFocused, clearFocus, toggleAllDatasetVisibility],
 	)
 
 	return {

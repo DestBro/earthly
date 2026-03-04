@@ -6,13 +6,12 @@ import { useEditorStore, type SidebarViewMode } from '../store'
 
 interface UseCollectionContextEditorParams {
 	isMobile: boolean
-	isFocused: boolean
 	exitViewMode: () => void
 	ensureInfoPanelVisible: () => void
 	encodeContextNaddr: (context: NDKMapContextEvent) => string | null
+	navigateToContext: (contextNaddr: string, sidebarView?: SidebarViewMode) => void
 	navigateToView: (view: SidebarViewMode) => void
 	clearFocus: () => void
-	navigateHome: () => void
 	handleInspectDataset: (event: NDKGeoEvent) => void
 	handleInspectCollection: (collection: NDKGeoCollectionEvent, events: NDKGeoEvent[]) => void
 	loadDatasetForEditing: (event: NDKGeoEvent) => void
@@ -23,6 +22,7 @@ export function useCollectionContextEditor({
 	exitViewMode,
 	ensureInfoPanelVisible,
 	encodeContextNaddr,
+	navigateToContext,
 	navigateToView,
 	clearFocus,
 	loadDatasetForEditing,
@@ -54,13 +54,6 @@ export function useCollectionContextEditor({
 	}, [])
 
 	// Collection handlers
-	const handleCreateCollection = useCallback(() => {
-		clearEditorModes()
-		exitViewMode()
-		if (!isMobile) setShowInfoPanel(true)
-	}, [isMobile, setShowInfoPanel, exitViewMode, clearEditorModes])
-
-	// Override: after clearing, set create mode
 	const handleCreateCollectionFull = useCallback(() => {
 		setCollectionEditorMode('create')
 		setEditingCollection(null)
@@ -113,7 +106,7 @@ export function useCollectionContextEditor({
 
 			const naddr = encodeContextNaddr(context)
 			if (naddr) {
-				window.location.hash = `/context/${naddr}`
+				navigateToContext(naddr, 'contexts')
 			}
 		},
 		[
@@ -123,6 +116,7 @@ export function useCollectionContextEditor({
 			setViewContext,
 			ensureInfoPanelVisible,
 			encodeContextNaddr,
+			navigateToContext,
 			clearEditorModes,
 		],
 	)

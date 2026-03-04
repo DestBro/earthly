@@ -3,6 +3,7 @@ import { bbox, centroid } from '@turf/turf'
 import type { FeatureCollection, Position } from 'geojson'
 import { GEO_EVENT_KIND } from './kinds'
 import { normalizeGeoJsonToFeatureCollection } from '../geo/normalizeGeoJSON'
+import { generateShortDTag } from './dTag'
 
 export type GeoBoundingBox = [number, number, number, number]
 
@@ -238,11 +239,11 @@ export class NDKGeoEvent extends NDKEvent {
 	}
 
 	/**
-	 * Ensures the event has a d tag. Generates a new UUID if missing.
+	 * Ensures the event has a d tag. Generates a compact random identifier if missing.
 	 */
 	ensureDatasetId(): string {
 		if (!this.datasetId) {
-			this.datasetId = crypto.randomUUID()
+			this.datasetId = generateShortDTag()
 		}
 		return this.datasetId
 	}

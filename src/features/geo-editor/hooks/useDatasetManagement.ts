@@ -20,6 +20,29 @@ interface ResolvedCache {
 	featureCollection: FeatureCollection
 }
 
+function getCollectionName(collection: FeatureCollection): string | undefined {
+	const maybeName = (collection as FeatureCollection & { name?: unknown }).name
+	return typeof maybeName === 'string' ? maybeName : undefined
+}
+
+function getCollectionBbox(
+	collection: FeatureCollection | undefined,
+): [number, number, number, number] | undefined {
+	if (!collection) return undefined
+	const rawBbox = (collection as FeatureCollection & { bbox?: unknown }).bbox
+	if (!Array.isArray(rawBbox) || rawBbox.length !== 4) return undefined
+	const [west, south, east, north] = rawBbox
+	if (
+		!Number.isFinite(west) ||
+		!Number.isFinite(south) ||
+		!Number.isFinite(east) ||
+		!Number.isFinite(north)
+	) {
+		return undefined
+	}
+	return [west, south, east, north]
+}
+
 export function useDatasetManagement(
 	mapRef: React.MutableRefObject<maplibregl.Map | null>,
 	geoEvents: NDKGeoEvent[],
@@ -54,6 +77,7 @@ export function useDatasetManagement(
 	const setViewCollection = useEditorStore((state) => state.setViewCollection)
 	const setDatasetResolving = useEditorStore((state) => state.setDatasetResolving)
 	const setDatasetResolvingProgress = useEditorStore((state) => state.setDatasetResolvingProgress)
+	const activeContextScopeCoordinate = useEditorStore((state) => state.activeContextScopeCoordinate)
 
 	const getDatasetKey = useCallback(
 		(event: NDKGeoEvent) => `${event.pubkey}:${event.datasetId ?? event.id}`,
@@ -62,7 +86,7 @@ export function useDatasetManagement(
 
 	const getDatasetName = useCallback(
 		(event: NDKGeoEvent) =>
-			((event.featureCollection as any)?.name as string | undefined) ?? event.datasetId ?? event.id,
+			getCollectionName(event.featureCollection) ?? event.datasetId ?? event.id,
 		[],
 	)
 
@@ -147,8 +171,9 @@ export function useDatasetManagement(
 			if (!mapRef.current) return
 			const resolvedCollection = resolvedCollectionResolver(event)
 			const bbox =
-				event.boundingBox ||
-				((resolvedCollection as any)?.bbox ?? (event.featureCollection as any)?.bbox)
+				event.boundingBox ??
+				getCollectionBbox(resolvedCollection) ??
+				getCollectionBbox(event.featureCollection)
 			if (bbox && Array.isArray(bbox) && bbox.length === 4) {
 				mapRef.current.fitBounds(
 					[
@@ -366,7 +391,7 @@ export function useDatasetManagement(
 		editor.setFeatures([])
 		setFeatures([])
 		setActiveDataset(null)
-		setActiveDatasetContextRefs([])
+		setActiveDatasetContextRefs(activeContextScopeCoordinate ? [activeContextScopeCoordinate] : [])
 		setPublishMessage(null)
 		setPublishError(null)
 		setSelectedFeatureIds([])
@@ -382,6 +407,7 @@ export function useDatasetManagement(
 		editor,
 		setFeatures,
 		setActiveDataset,
+		activeContextScopeCoordinate,
 		setActiveDatasetContextRefs,
 		setPublishMessage,
 		setPublishError,

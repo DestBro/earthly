@@ -1,6 +1,7 @@
 import NDK, { NDKEvent, NDKKind, type NDKSigner, registerEventClass } from '@nostr-dev-kit/react'
 import { GEO_COLLECTION_KIND } from './kinds'
 import type { GeoBoundingBox } from './NDKGeoEvent'
+import { generateShortDTag } from './dTag'
 
 export interface GeoCollectionMetadata {
 	name?: string
@@ -129,7 +130,7 @@ export class NDKGeoCollectionEvent extends NDKEvent {
 
 	ensureCollectionId(): string {
 		if (!this.collectionId) {
-			this.collectionId = crypto.randomUUID()
+			this.collectionId = generateShortDTag()
 		}
 		return this.collectionId
 	}

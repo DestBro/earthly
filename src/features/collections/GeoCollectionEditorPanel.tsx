@@ -80,6 +80,7 @@ export function GeoCollectionEditorPanel({
 	const saveGeoEditDraft = useEditorStore((state) => state.saveGeoEditDraft)
 	const loadGeoEditDraft = useEditorStore((state) => state.loadGeoEditDraft)
 	const deleteGeoEditDraft = useEditorStore((state) => state.deleteGeoEditDraft)
+	const activeContextScopeCoordinate = useEditorStore((state) => state.activeContextScopeCoordinate)
 
 	const selectedFeatures = useMemo(() => {
 		if (selectedFeatureIds.length === 0) return []
@@ -338,6 +339,23 @@ export function GeoCollectionEditorPanel({
 		[mapContextEvents],
 	)
 
+	const scopeAwareAttachableContexts = useMemo(() => {
+		if (!activeContextScopeCoordinate) return attachableContexts
+		return attachableContexts.filter(
+			(context) =>
+				context.coordinate === activeContextScopeCoordinate ||
+				selectedContextRefs.includes(context.coordinate),
+		)
+	}, [activeContextScopeCoordinate, attachableContexts, selectedContextRefs])
+
+	// Auto-attach scope context for new collections only.
+	useEffect(() => {
+		if (initialCollection) return
+		if (!activeContextScopeCoordinate) return
+		if (selectedContextRefs.includes(activeContextScopeCoordinate)) return
+		setSelectedContextRefs((prev) => Array.from(new Set([...prev, activeContextScopeCoordinate])))
+	}, [initialCollection, activeContextScopeCoordinate, selectedContextRefs])
+
 	const selectedDraftId =
 		activeDraft && activeDraft.sourceId === draftSourceId ? activeDraft.id : draftsForSource[0]?.id
 
@@ -594,11 +612,11 @@ export function GeoCollectionEditorPanel({
 							<div className="text-xs text-gray-500">
 								Collections attach as references (reference lane) in context view.
 							</div>
-							{attachableContexts.length === 0 ? (
+							{scopeAwareAttachableContexts.length === 0 ? (
 								<p className="text-xs text-gray-500">No map contexts available yet.</p>
 							) : (
 								<div className="space-y-1">
-									{attachableContexts.map((context) => (
+									{scopeAwareAttachableContexts.map((context) => (
 										<label
 											key={context.coordinate}
 											className="flex items-center justify-between gap-2 rounded border border-gray-100 px-2 py-1"

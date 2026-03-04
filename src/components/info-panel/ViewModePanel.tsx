@@ -6,10 +6,10 @@ import type { NDKGeoCollectionEvent } from '@/lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
 import type { NDKGeoCommentEvent } from '@/lib/ndk/NDKGeoCommentEvent'
 import { cn } from '@/lib/utils'
+import { validateDatasetForContext } from '@/lib/context/validation'
 import { Button } from '../ui/button'
 import { DataTable } from '../ui/data-table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
-import { DatasetActionCard } from './DatasetActionCard'
 import { CommentsPanel } from '@/features/social/comments'
 import { GeoRichTextEditor, type GeoFeatureItem } from '../editor/GeoRichTextEditor'
 import {
@@ -69,10 +69,10 @@ export function ViewModePanel({
 	onLoadDataset,
 	onToggleVisibility,
 	onZoomToDataset,
-	onDeleteDataset,
+	onDeleteDataset: _onDeleteDataset,
 	onZoomToCollection,
-	deletingKey,
-	onExitViewMode,
+	deletingKey: _deletingKey,
+	onExitViewMode: _onExitViewMode,
 	getDatasetKey,
 	getDatasetName,
 	onCommentGeometryVisibility,
@@ -91,6 +91,8 @@ export function ViewModePanel({
 	const viewCollection = useEditorStore((state) => state.viewCollection)
 	const viewDataset = useEditorStore((state) => state.viewDataset)
 	const viewCollectionEvents = useEditorStore((state) => state.viewCollectionEvents)
+	const viewContext = useEditorStore((state) => state.viewContext)
+	const contextFilterMode = useEditorStore((state) => state.contextFilterMode)
 	const features = useEditorStore((state) => state.features)
 	const selectedFeatureIds = useEditorStore((state) => state.selectedFeatureIds)
 	const setViewMode = useEditorStore((state) => state.setViewMode)
@@ -216,29 +218,30 @@ export function ViewModePanel({
 		[linkedEventsColumnsContext],
 	)
 
-	const renderDatasetCard = (event: NDKGeoEvent) => {
-		const datasetKey = getDatasetKey(event)
-		const datasetName = getDatasetName(event)
-		const isVisible = datasetVisibility[datasetKey] !== false
-		const isOwned = currentUserPubkey === event.pubkey
+	const hiddenFeatureIds = useMemo(() => {
+		if (!viewDataset || !viewContext || contextFilterMode !== 'strict') return undefined
+		const contextCoordinate = viewContext.contextCoordinate
+		if (!contextCoordinate || !viewDataset.contextReferences.includes(contextCoordinate)) {
+			return undefined
+		}
+		if (viewContext.context.contextUse === 'taxonomy') return undefined
 
-		return (
-			<DatasetActionCard
-				key={`${event.id}-${datasetKey}`}
-				event={event}
-				datasetKey={datasetKey}
-				datasetName={datasetName}
-				isVisible={isVisible}
-				isOwned={isOwned}
-				isPublishing={isPublishing}
-				deletingKey={deletingKey}
-				onLoadDataset={onLoadDataset}
-				onToggleVisibility={onToggleVisibility}
-				onZoomToDataset={onZoomToDataset}
-				onDeleteDataset={onDeleteDataset}
-			/>
+		const validation = validateDatasetForContext(
+			viewDataset,
+			viewContext,
+			viewDataset.featureCollection,
+			'strict',
 		)
-	}
+		if (validation.status !== 'invalid') return undefined
+
+		const hidden = new Set<string>()
+		validation.errors.forEach((error) => {
+			if (error.featureId) {
+				hidden.add(String(error.featureId))
+			}
+		})
+		return hidden.size > 0 ? hidden : undefined
+	}, [viewDataset, viewContext, contextFilterMode])
 
 	return (
 		<div className="flex flex-col h-full text-sm">
@@ -453,6 +456,7 @@ export function ViewModePanel({
 									</h4>
 									<DatasetFeaturesList
 										featureCollection={viewDataset.featureCollection}
+										hiddenFeatureIds={hiddenFeatureIds}
 										className="max-h-[40vh] overflow-y-auto"
 									/>
 								</section>

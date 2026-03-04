@@ -13,6 +13,7 @@ import {
 	Settings2,
 	User,
 	Wallet,
+	X,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { FeatureCollection } from 'geojson'
@@ -45,6 +46,7 @@ import { useEditorStore } from '../features/geo-editor/store'
 import { useRouting, type SidebarViewMode } from '../features/geo-editor/hooks/useRouting'
 import type { GeoFeatureItem } from './editor/GeoRichTextEditor'
 import type { EditorFeature } from '../features/geo-editor/core'
+import { EntitySearchPopover, type EntitySearchResult } from './entity-search'
 
 type SidebarContentMode = Exclude<SidebarViewMode, 'combined'>
 
@@ -218,8 +220,33 @@ export function AppSidebar({
 	const viewMode = useEditorStore((state) => state.sidebarViewMode)
 	const focusedType = useEditorStore((state) => state.focusedType)
 	const focusedNaddr = useEditorStore((state) => state.focusedNaddr)
-	const { navigateToView } = useRouting()
+	const { navigateToView, navigateToContext, clearContextScope, contextNaddr, encodeContextNaddr } =
+		useRouting()
 	const [splitWithEditor, setSplitWithEditor] = useState(viewMode === 'combined')
+
+	const activeContextScope = useMemo(() => {
+		if (!contextNaddr) return null
+		return (
+			mapContextEvents.find((context) => {
+				const contextRouteNaddr = encodeContextNaddr(context)
+				return contextRouteNaddr === contextNaddr
+			}) ?? null
+		)
+	}, [contextNaddr, mapContextEvents, encodeContextNaddr])
+
+	const activeContextScopeLabel =
+		activeContextScope?.context.name ||
+		activeContextScope?.contextId ||
+		activeContextScope?.id ||
+		undefined
+
+	const handleContextScopeSelect = (result: EntitySearchResult) => {
+		if (result.type !== 'context') return
+		const context = result.entity as NDKMapContextEvent
+		const naddr = encodeContextNaddr(context)
+		if (!naddr) return
+		navigateToContext(naddr)
+	}
 
 	/** Derive a contextual subtitle from the focused/active item */
 	const contextSubtitle = useMemo(() => {
@@ -588,34 +615,62 @@ export function AppSidebar({
 			{/* Content sidebar (second nested sidebar) */}
 			<Sidebar collapsible="none" className="hidden flex-1 md:flex">
 				<SidebarHeader className="gap-3.5 border-b p-4">
-					<div className="flex w-full items-center justify-between">
-						<div className="text-foreground flex flex-col min-w-0">
-							<div className="flex items-center gap-2 text-base font-medium">
-								<span>{currentTitle}</span>
-								{showSplitCompanion && (
-									<span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-700">
-										Split
-									</span>
+					<div className="flex w-full flex-col gap-2">
+						<div className="flex w-full items-center justify-between">
+							<div className="text-foreground flex flex-col min-w-0">
+								<div className="flex items-center gap-2 text-base font-medium">
+									<span>{currentTitle}</span>
+									{showSplitCompanion && (
+										<span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-700">
+											Split
+										</span>
+									)}
+								</div>
+								{contextSubtitle && (
+									<span className="text-xs text-muted-foreground truncate">{contextSubtitle}</span>
 								)}
 							</div>
-							{contextSubtitle && (
-								<span className="text-xs text-muted-foreground truncate">{contextSubtitle}</span>
-							)}
+							<div className="flex items-center gap-1">
+								<button
+									type="button"
+									onClick={() => setSidebarExpanded(!sidebarExpanded)}
+									title={sidebarExpanded ? 'Shrink sidebar' : 'Expand sidebar'}
+									className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+								>
+									{sidebarExpanded ? (
+										<PanelLeftClose className="h-4 w-4" />
+									) : (
+										<PanelLeftOpen className="h-4 w-4" />
+									)}
+								</button>
+								<LoginSessionButtons />
+							</div>
 						</div>
-						<div className="flex items-center gap-1">
-							<button
-								type="button"
-								onClick={() => setSidebarExpanded(!sidebarExpanded)}
-								title={sidebarExpanded ? 'Shrink sidebar' : 'Expand sidebar'}
-								className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
-							>
-								{sidebarExpanded ? (
-									<PanelLeftClose className="h-4 w-4" />
-								) : (
-									<PanelLeftOpen className="h-4 w-4" />
-								)}
-							</button>
-							<LoginSessionButtons />
+
+						<div className="flex items-center gap-1.5">
+							<div className="w-full">
+								<EntitySearchPopover
+									sources={{ contexts: mapContextEvents }}
+									entityTypes={['context']}
+									onSelect={handleContextScopeSelect}
+									placeholder={
+										activeContextScopeLabel ? activeContextScopeLabel : 'No context filter'
+									}
+									searchMode="local"
+									compact
+								/>
+							</div>
+							{contextNaddr && (
+								<button
+									type="button"
+									onClick={clearContextScope}
+									title="Leave context scope"
+									aria-label="Leave context scope"
+									className="inline-flex items-center justify-center h-7 w-7 rounded-md border text-muted-foreground hover:bg-muted hover:text-foreground"
+								>
+									<X className="h-3.5 w-3.5" />
+								</button>
+							)}
 						</div>
 					</div>
 				</SidebarHeader>

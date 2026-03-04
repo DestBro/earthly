@@ -14,7 +14,7 @@ tags Metadata and discovery (see below).
 1.1 Mandatory Tags
 
 Tag Example Notes
-d ["d", "a9d5ea20-2e3f-4b67-93e9-7c60a9f9f4f4"] Random UUID – new unique identifier generated for each dataset event.
+d ["d", "87a12b72"] Compact random identifier (base32 lowercase, default length 8). Stable per lineage for updates.
 bbox ["bbox", "16.1,48.1,16.7,48.4"] West-South-East-North (WGS-84) comma-separated.
 
 1.2 Recommended Tags
@@ -42,7 +42,7 @@ Free-form tags permitted for domain-specific metadata, e.g. srid, license, sourc
 "kind": 37515,
 "content": "{\"type\":\"FeatureCollection\",\"name\":\"Vienna Trailheads 2025\",…}",
 "tags": [
-["d","a9d5ea20-2e3f-4b67-93e9-7c60a9f9f4f4"],
+["d","87a12b72"],
 ["bbox","16.1,48.1,16.7,48.4"],
 ["g","u2yh7"],
 ["crs","EPSG:4326"],

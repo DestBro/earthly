@@ -25,6 +25,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { canExecuteEditorCommand, executeEditorCommand, type EditorCommandId } from '../commands'
 import type { EditorMode } from '../core'
 import { useEditorStore } from '../store'
+import { useRouting } from '../hooks/useRouting'
 import type { GeoSearchResult } from '../types'
 import { CreateMapPopover } from './CreateMapPopover'
 import { MapSettingsPanel } from './MapSettingsPanel'
@@ -99,7 +100,7 @@ export function Toolbar({
 	// Focus state for share button
 	const focusedNaddr = useEditorStore((state) => state.focusedNaddr)
 	const focusedType = useEditorStore((state) => state.focusedType)
-	const clearFocused = useEditorStore((state) => state.clearFocused)
+	const { clearFocus } = useRouting()
 	const isFocused = Boolean(focusedNaddr && focusedType)
 
 	// OSM Query state
@@ -178,8 +179,7 @@ export function Toolbar({
 	}
 
 	const handleExitFocus = () => {
-		clearFocused()
-		window.location.hash = '/'
+		clearFocus()
 		setSharePopoverOpen(false)
 	}
 
@@ -610,7 +610,12 @@ export function Toolbar({
 													<h4 className="text-sm font-semibold mb-1">Share this view</h4>
 													<p className="text-xs text-gray-500">
 														Others will see only this{' '}
-														{focusedType === 'collection' ? 'collection' : 'dataset'}.
+														{focusedType === 'collection'
+															? 'collection'
+															: focusedType === 'mapcontext'
+																? 'context'
+																: 'dataset'}
+														.
 													</p>
 												</div>
 												<div className="flex flex-col gap-2">

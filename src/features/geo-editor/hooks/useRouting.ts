@@ -26,6 +26,10 @@ const VIEW_ALIASES: Record<string, SidebarViewMode> = {
 }
 
 export interface RouteState {
+	/** Active context scope (when present, all views are scoped) */
+	contextNaddr?: string
+	/** Active context coordinate derived from naddr */
+	contextCoordinate?: string
 	/** Focus type for deep-linking to specific content */
 	focusType: 'none' | 'geoevent' | 'collection' | 'mapcontext'
 	/** Nostr address for focused content */
@@ -43,19 +47,30 @@ function isSidebarViewMode(value: string): value is SidebarViewMode {
 	return SIDEBAR_VIEW_MODES.includes(value as SidebarViewMode)
 }
 
+function isFocusType(value: string): value is 'geoevent' | 'collection' | 'mapcontext' {
+	return value === 'geoevent' || value === 'collection' || value === 'mapcontext'
+}
+
+function decodeContextCoordinateFromNaddr(naddr: string): string | undefined {
+	try {
+		const decoded = nip19.decode(naddr)
+		if (decoded.type !== 'naddr') return undefined
+		const { kind, pubkey, identifier } = decoded.data
+		return `${kind}:${pubkey}:${identifier}`
+	} catch {
+		return undefined
+	}
+}
+
 /**
  * Parse the current hash into a RouteState
  *
  * URL patterns:
- * - #/ or #/datasets → datasets view, no focus
- * - #/posts or #/shoutbox → posts view, no focus
- * - #/{sidebarView} → specified sidebar view, no focus
- * - #/geoevent/{naddr} → datasets view (backward compat), geoevent focus
- * - #/collection/{naddr} → collections view (backward compat), collection focus
- * - #/context/{naddr} → contexts view (backward compat), context focus
- * - #/{sidebarView}/geoevent/{naddr} → specified sidebar + geoevent focus
- * - #/{sidebarView}/collection/{naddr} → specified sidebar + collection focus
- * - #/{sidebarView}/mapcontext/{naddr} → specified sidebar + context focus
+ * - #/ or #/datasets → datasets view, no focus, no context scope
+ * - #/{sidebarView} → specified sidebar view, no focus, no context scope
+ * - #/{sidebarView}/{focusType}/{naddr} → specified sidebar + focus, no context scope
+ * - #/context/{contextNaddr}/{sidebarView?} → context scope + sidebar
+ * - #/context/{contextNaddr}/{sidebarView?}/{focusType}/{naddr} → context scope + sidebar + focus
  */
 function parseHash(): RouteState {
 	const hash = window.location.hash.slice(1) // Remove leading #
@@ -70,35 +85,9 @@ function parseHash(): RouteState {
 		return { focusType: 'none', sidebarView: 'datasets' }
 	}
 
-	const first = segments[0]!
-
-	// Check for backward-compatible focus-only routes: #/geoevent/{naddr} or #/collection/{naddr}
-	if (first === 'geoevent' && segments[1]) {
-		return {
-			focusType: 'geoevent',
-			naddr: segments[1],
-			sidebarView: 'datasets', // Default sidebar for geoevent focus
-		}
-	}
-	if (first === 'collection' && segments[1]) {
-		return {
-			focusType: 'collection',
-			naddr: segments[1],
-			sidebarView: 'collections', // Default sidebar for collection focus
-		}
-	}
-	if (first === 'context' && segments[1]) {
-		return {
-			focusType: 'mapcontext',
-			naddr: segments[1],
-			sidebarView: 'contexts',
-		}
-	}
-	if (first === 'context') {
-		return {
-			focusType: 'none',
-			sidebarView: 'contexts',
-		}
+	const first = segments[0]
+	if (!first) {
+		return { focusType: 'none', sidebarView: 'datasets' }
 	}
 
 	// Handle user profile route: #/user/{npub_or_pubkey}
@@ -122,29 +111,49 @@ function parseHash(): RouteState {
 		}
 	}
 
+	// Scoped context route:
+	// #/context/{contextNaddr}/{sidebarView?}/{focusType?}/{focusNaddr?}
+	if (first === 'context' && segments[1]) {
+		const contextNaddr = segments[1]
+		const contextCoordinate = decodeContextCoordinateFromNaddr(contextNaddr)
+		const scopedViewCandidate = segments[2]
+		const resolvedScopedView = scopedViewCandidate
+			? (VIEW_ALIASES[scopedViewCandidate] ?? scopedViewCandidate)
+			: 'datasets'
+		const sidebarView = isSidebarViewMode(resolvedScopedView) ? resolvedScopedView : 'datasets'
+		const focusTypeCandidate = isSidebarViewMode(resolvedScopedView) ? segments[3] : segments[2]
+		const focusNaddr = isSidebarViewMode(resolvedScopedView) ? segments[4] : segments[3]
+
+		if (focusTypeCandidate && focusNaddr && isFocusType(focusTypeCandidate)) {
+			return {
+				contextNaddr,
+				contextCoordinate,
+				focusType: focusTypeCandidate,
+				naddr: focusNaddr,
+				sidebarView,
+			}
+		}
+
+		return {
+			contextNaddr,
+			contextCoordinate,
+			focusType: 'none',
+			sidebarView,
+		}
+	}
+	if (first === 'context') {
+		return { focusType: 'none', sidebarView: 'contexts' }
+	}
+
 	// Resolve alias (e.g., shoutbox → posts)
 	const resolvedFirst = VIEW_ALIASES[first] ?? first
 
 	// Check if first segment is a sidebar view mode
 	if (isSidebarViewMode(resolvedFirst)) {
-		// Check for focus in remaining segments: #/{sidebarView}/geoevent/{naddr}
-		if (segments[1] === 'geoevent' && segments[2]) {
+		// Check for focus in remaining segments: #/{sidebarView}/{focusType}/{naddr}
+		if (segments[1] && segments[2] && isFocusType(segments[1])) {
 			return {
-				focusType: 'geoevent',
-				naddr: segments[2],
-				sidebarView: resolvedFirst,
-			}
-		}
-		if (segments[1] === 'collection' && segments[2]) {
-			return {
-				focusType: 'collection',
-				naddr: segments[2],
-				sidebarView: resolvedFirst,
-			}
-		}
-		if (segments[1] === 'mapcontext' && segments[2]) {
-			return {
-				focusType: 'mapcontext',
+				focusType: segments[1],
 				naddr: segments[2],
 				sidebarView: resolvedFirst,
 			}
@@ -161,29 +170,32 @@ function parseHash(): RouteState {
 /**
  * Build a hash string from route components
  */
-function buildHash(
-	sidebarView: SidebarViewMode,
-	focusType?: 'geoevent' | 'collection' | 'mapcontext',
-	naddr?: string,
-): string {
+function buildHash({
+	sidebarView,
+	contextNaddr,
+	focusType,
+	naddr,
+}: {
+	sidebarView: SidebarViewMode
+	contextNaddr?: string
+	focusType?: 'geoevent' | 'collection' | 'mapcontext'
+	naddr?: string
+}): string {
+	const root = contextNaddr ? `/context/${contextNaddr}/${sidebarView}` : `/${sidebarView}`
 	if (focusType && naddr) {
-		return `/${sidebarView}/${focusType}/${naddr}`
+		return `${root}/${focusType}/${naddr}`
 	}
-	return `/${sidebarView}`
+	return root
 }
 
 /**
- * Hook for managing hash-based routing for sidebar views and focused content.
+ * Hook for managing hash-based routing for sidebar views, focused content, and context scope.
  *
  * Supports routes:
- * - #/ or #/datasets → datasets view, no focus
- * - #/{sidebarView} → specified sidebar view, no focus
- * - #/geoevent/{naddr} → backward-compatible geoevent focus
- * - #/collection/{naddr} → backward-compatible collection focus
- * - #/context/{naddr} → backward-compatible context focus
- * - #/{sidebarView}/geoevent/{naddr} → sidebar view + geoevent focus
- * - #/{sidebarView}/collection/{naddr} → sidebar view + collection focus
- * - #/{sidebarView}/mapcontext/{naddr} → sidebar view + context focus
+ * - #/{sidebarView} → sidebar view, no focus, no context scope
+ * - #/{sidebarView}/{focusType}/{naddr} → sidebar view + focus
+ * - #/context/{contextNaddr}/{sidebarView?} → context scope + sidebar
+ * - #/context/{contextNaddr}/{sidebarView?}/{focusType}/{naddr} → context scope + sidebar + focus
  */
 export function useRouting() {
 	const [route, setRoute] = useState<RouteState>(parseHash)
@@ -192,6 +204,7 @@ export function useRouting() {
 	const setFocused = useEditorStore((state) => state.setFocused)
 	const clearFocused = useEditorStore((state) => state.clearFocused)
 	const setSidebarViewMode = useEditorStore((state) => state.setSidebarViewMode)
+	const setActiveContextScope = useEditorStore((state) => state.setActiveContextScope)
 
 	// Sync route state on hash change
 	useEffect(() => {
@@ -208,6 +221,7 @@ export function useRouting() {
 			} else if (newRoute.naddr) {
 				setFocused(newRoute.focusType, newRoute.naddr)
 			}
+			setActiveContextScope(newRoute.contextNaddr ?? null, newRoute.contextCoordinate ?? null)
 		}
 
 		window.addEventListener('hashchange', handleHashChange)
@@ -218,15 +232,20 @@ export function useRouting() {
 		if (initialRoute.focusType !== 'none' && initialRoute.naddr) {
 			setFocused(initialRoute.focusType, initialRoute.naddr)
 		}
+		setActiveContextScope(initialRoute.contextNaddr ?? null, initialRoute.contextCoordinate ?? null)
 
 		return () => window.removeEventListener('hashchange', handleHashChange)
-	}, [setFocused, clearFocused, setSidebarViewMode])
+	}, [setFocused, clearFocused, setSidebarViewMode, setActiveContextScope])
 
 	/**
 	 * Navigate to a sidebar view (without focus)
 	 */
 	const navigateToView = useCallback((view: SidebarViewMode) => {
-		window.location.hash = buildHash(view)
+		const currentRoute = parseHash()
+		window.location.hash = buildHash({
+			sidebarView: view,
+			contextNaddr: currentRoute.contextNaddr,
+		})
 	}, [])
 
 	/**
@@ -240,24 +259,58 @@ export function useRouting() {
 		) => {
 			const currentRoute = parseHash()
 			const view = sidebarView ?? currentRoute.sidebarView
-			window.location.hash = buildHash(view, focusType, naddr)
+			window.location.hash = buildHash({
+				sidebarView: view,
+				contextNaddr: currentRoute.contextNaddr,
+				focusType,
+				naddr,
+			})
 		},
 		[],
 	)
+
+	/**
+	 * Set or change active context scope while preserving current sidebar/focus.
+	 */
+	const navigateToContext = useCallback((contextNaddr: string, sidebarView?: SidebarViewMode) => {
+		const currentRoute = parseHash()
+		const view = sidebarView ?? currentRoute.sidebarView
+		window.location.hash = buildHash({
+			sidebarView: view,
+			contextNaddr,
+			focusType: currentRoute.focusType !== 'none' ? currentRoute.focusType : undefined,
+			naddr: currentRoute.naddr,
+		})
+	}, [])
 
 	/**
 	 * Clear focus but stay on current sidebar view
 	 */
 	const clearFocus = useCallback(() => {
 		const currentRoute = parseHash()
-		window.location.hash = buildHash(currentRoute.sidebarView)
+		window.location.hash = buildHash({
+			sidebarView: currentRoute.sidebarView,
+			contextNaddr: currentRoute.contextNaddr,
+		})
+	}, [])
+
+	/**
+	 * Leave context scope while preserving sidebar view and focus.
+	 */
+	const clearContextScope = useCallback(() => {
+		const currentRoute = parseHash()
+		window.location.hash = buildHash({
+			sidebarView: currentRoute.sidebarView,
+			focusType: currentRoute.focusType !== 'none' ? currentRoute.focusType : undefined,
+			naddr: currentRoute.naddr,
+		})
 	}, [])
 
 	/**
 	 * Navigate to datasets view with no focus (home)
 	 */
 	const navigateHome = useCallback(() => {
-		window.location.hash = '/datasets'
+		window.location.hash = buildHash({ sidebarView: 'datasets' })
 	}, [])
 
 	/**
@@ -345,8 +398,10 @@ export function useRouting() {
 		route,
 		navigateToView,
 		navigateTo,
+		navigateToContext,
 		navigateToUser,
 		clearFocus,
+		clearContextScope,
 		navigateHome,
 		encodeGeoEventNaddr,
 		encodeCollectionNaddr,
@@ -355,6 +410,10 @@ export function useRouting() {
 		isFocused: route.focusType !== 'none',
 		/** Current sidebar view mode from the route */
 		sidebarView: route.sidebarView,
+		/** Active context scope naddr from route, if any */
+		contextNaddr: route.contextNaddr,
+		/** Active context scope coordinate from route, if any */
+		contextCoordinate: route.contextCoordinate,
 		/** User pubkey from route (for user profile pages) */
 		userPubkey: route.userPubkey,
 	}

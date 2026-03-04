@@ -3,6 +3,7 @@ import { bbox, centroid } from '@turf/turf'
 import type { FeatureCollection, Position } from 'geojson'
 import { GEO_COMMENT_KIND } from './kinds'
 import type { GeoBoundingBox } from './NDKGeoEvent'
+import { generateShortDTag } from './dTag'
 
 export interface GeoCommentContent {
 	text: string
@@ -210,11 +211,11 @@ export class NDKGeoCommentEvent extends NDKEvent {
 	}
 
 	/**
-	 * Ensures the event has a d tag. Generates a new UUID if missing.
+	 * Ensures the event has a d tag. Generates a compact random identifier if missing.
 	 */
 	ensureCommentId(): string {
 		if (!this.commentId) {
-			this.commentId = crypto.randomUUID()
+			this.commentId = generateShortDTag()
 		}
 		return this.commentId
 	}

@@ -7,6 +7,8 @@ import { DatasetFeaturesList } from '@/components/info-panel/DatasetFeaturesList
 import { UserProfile } from '@/components/user-profile/UserProfile'
 import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
 import { cn } from '@/lib/utils'
+import { useEditorStore } from '@/features/geo-editor/store'
+import { validateDatasetForContext } from '@/lib/context/validation'
 
 export interface FeaturePopupData {
 	/** The dataset containing the clicked feature */
@@ -68,6 +70,8 @@ export function FeaturePopup({
 	onClose,
 }: FeaturePopupProps) {
 	const popupRef = useRef<HTMLDivElement>(null)
+	const viewContext = useEditorStore((state) => state.viewContext)
+	const contextFilterMode = useEditorStore((state) => state.contextFilterMode)
 	const [position, setPosition] = useState<{ x: number; y: number; anchor: 'top' | 'bottom' }>({
 		x: 0,
 		y: 0,
@@ -115,6 +119,28 @@ export function FeaturePopup({
 	const isAnnotation = props.featureType === 'annotation'
 	const featureName = getFeatureName(feature)
 	const featureCount = dataset.featureCollection?.features?.length ?? 0
+
+	const hiddenFeatureIds =
+		viewContext &&
+		contextFilterMode === 'strict' &&
+		viewContext.contextCoordinate &&
+		dataset.contextReferences.includes(viewContext.contextCoordinate) &&
+		viewContext.context.contextUse !== 'taxonomy'
+			? (() => {
+					const validation = validateDatasetForContext(
+						dataset,
+						viewContext,
+						dataset.featureCollection,
+						'strict',
+					)
+					if (validation.status !== 'invalid') return undefined
+					const hidden = new Set<string>()
+					validation.errors.forEach((error) => {
+						if (error.featureId) hidden.add(String(error.featureId))
+					})
+					return hidden.size > 0 ? hidden : undefined
+				})()
+			: undefined
 
 	return (
 		<div
@@ -222,6 +248,7 @@ export function FeaturePopup({
 				<div className="text-xs font-semibold text-gray-700 mb-1.5">Features ({featureCount})</div>
 				<DatasetFeaturesList
 					featureCollection={dataset.featureCollection}
+					hiddenFeatureIds={hiddenFeatureIds}
 					className="max-h-[25vh]"
 				/>
 			</div>

@@ -1,6 +1,7 @@
 import { NDKEvent, type NDKSigner, registerEventClass } from '@nostr-dev-kit/react'
 import { MAP_CONTEXT_KIND } from './kinds'
 import type { GeoBoundingBox } from './NDKGeoEvent'
+import { generateShortDTag } from './dTag'
 
 export type MapContextUse = 'taxonomy' | 'validation' | 'hybrid'
 export type MapContextValidationMode = 'none' | 'optional' | 'required'
@@ -142,7 +143,7 @@ export class NDKMapContextEvent extends NDKEvent {
 
 	ensureContextId(): string {
 		if (!this.contextId) {
-			this.contextId = crypto.randomUUID()
+			this.contextId = generateShortDTag()
 		}
 		return this.contextId
 	}

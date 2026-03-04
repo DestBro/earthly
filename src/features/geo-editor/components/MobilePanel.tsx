@@ -12,6 +12,7 @@ import {
 	Settings2,
 	User,
 	Wallet,
+	X,
 } from 'lucide-react'
 import { GeoDatasetsPanelContent } from '@/components/GeoDatasetsPanel'
 import { GeoEditorInfoPanelContent } from '@/components/GeoEditorInfoPanel'
@@ -24,12 +25,14 @@ import type { NDKGeoCollectionEvent } from '@/lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
 import type { NDKMapContextEvent } from '@/lib/ndk/NDKMapContextEvent'
 import type { GeoFeatureItem } from '@/components/editor/GeoRichTextEditor'
+import { EntitySearchPopover, type EntitySearchResult } from '@/components/entity-search'
 import type { EditorFeature } from '../core'
 import type { BlossomUploadResult } from '@/lib/blossom/blossomUpload'
 import { useEditorStore } from '../store'
 import { MapSettingsPanel } from './MapSettingsPanel'
 import { ChatPanel } from '@/features/chat'
 import { Nip60Wallet } from '@/features/wallet/components/Nip60Wallet'
+import { useRouting } from '../hooks/useRouting'
 
 export type MobilePanelTab =
 	| 'datasets'
@@ -191,6 +194,22 @@ export function MobilePanel(props: MobilePanelProps) {
 		ndk,
 		onFilteredDatasetKeysChange,
 	} = props
+	const { contextNaddr, encodeContextNaddr, navigateToContext, clearContextScope } = useRouting()
+
+	const activeContextScope = mapContextEvents.find((context) => {
+		if (!contextNaddr) return false
+		return encodeContextNaddr(context) === contextNaddr
+	})
+	const activeContextScopeLabel =
+		activeContextScope?.context.name || activeContextScope?.contextId || activeContextScope?.id
+
+	const handleContextScopeSelect = (result: EntitySearchResult) => {
+		if (result.type !== 'context') return
+		const context = result.entity as NDKMapContextEvent
+		const naddr = encodeContextNaddr(context)
+		if (!naddr) return
+		navigateToContext(naddr)
+	}
 
 	// Store state for panel
 	const mobilePanelOpen = useEditorStore((state) => state.mobilePanelOpen)
@@ -283,6 +302,31 @@ export function MobilePanel(props: MobilePanelProps) {
 					>
 						<span className="h-1.5 w-12 rounded-full bg-gray-300" />
 					</button>
+				</div>
+
+				<div className="shrink-0 border-b border-gray-200 bg-white px-3 py-1.5">
+					<div className="flex items-center gap-1.5">
+						<div className="w-full">
+							<EntitySearchPopover
+								sources={{ contexts: mapContextEvents }}
+								entityTypes={['context']}
+								onSelect={handleContextScopeSelect}
+								placeholder={activeContextScopeLabel ?? 'No context filter'}
+								searchMode="local"
+								compact
+							/>
+						</div>
+						{contextNaddr && (
+							<button
+								type="button"
+								onClick={clearContextScope}
+								aria-label="Leave context scope"
+								className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-gray-600"
+							>
+								<X className="h-3.5 w-3.5" />
+							</button>
+						)}
+					</div>
 				</div>
 
 				{/* Scrollable Tab Bar */}
