@@ -17,12 +17,7 @@ export const createViewModeSlice: StateCreator<EditorState, [], [], ViewModeSlic
 	focusedType: null,
 	focusedMapGeometry: null,
 
-	setViewMode: (viewMode) => {
-		set({ viewMode })
-		if (viewMode === 'edit') {
-			set({ sidebarViewMode: 'combined' })
-		}
-	},
+	setViewMode: (viewMode) => set({ viewMode }),
 	setViewDataset: (viewDataset) => set({ viewDataset }),
 	setViewCollection: (viewCollection) => set({ viewCollection }),
 	setViewCollectionEvents: (viewCollectionEvents) => set({ viewCollectionEvents }),

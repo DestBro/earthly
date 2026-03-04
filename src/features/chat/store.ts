@@ -40,7 +40,6 @@ const MESSAGE_TOKEN_OVERHEAD = 24
 const MIN_CONTEXT_TOKENS_FOR_INLINE_IMAGE = 16000
 const STREAM_STALL_WARNING_MS = 15000
 const STREAM_STALL_TIMEOUT_MS = 45000
-const MAX_TOOL_CALL_ROUNDS = 10
 const MIN_TOOL_ENABLED_MAX_TOKENS = 1024
 
 type StreamProgressKind =
@@ -1008,7 +1007,7 @@ export const useChatStore = create<ChatStore>()(
 					let conversationMessages = [...get().messages]
 					let oneShotVisionMessages: ChatMessage[] = []
 					let totalToolCalls = 0
-					let completed = false
+					let round = 0
 					const effectiveContextTokens = getEffectiveContextTokens(model, providerConfig)
 					const requiresReasoningContent = providerMayRequireReasoningContent(
 						providerConfig,
@@ -1044,9 +1043,10 @@ export const useChatStore = create<ChatStore>()(
 						},
 					})
 
-					// Loop to handle tool calls (bounded to prevent infinite tool loops)
-					for (let round = 0; round < MAX_TOOL_CALL_ROUNDS; round++) {
-						const roundNumber = round + 1
+					// Loop to handle tool calls until the model returns a final answer.
+					while (true) {
+						round += 1
+						const roundNumber = round
 						let requestMessages: ChatMessage[] = [...conversationMessages]
 						if (oneShotVisionMessages.length > 0) {
 							requestMessages.push(...oneShotVisionMessages)
@@ -1278,14 +1278,7 @@ export const useChatStore = create<ChatStore>()(
 								},
 							}))
 						}
-						completed = true
 						break
-					}
-
-					if (!completed) {
-						throw new Error(
-							`Reached maximum tool-call rounds (${MAX_TOOL_CALL_ROUNDS}) without a final response. Please retry with a more specific prompt.`,
-						)
 					}
 				} catch (err) {
 					const message = err instanceof Error ? err.message : 'Failed to send message'

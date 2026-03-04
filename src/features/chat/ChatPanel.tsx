@@ -1,17 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useChatStore } from './store'
 import { useNip60Store } from '@/lib/stores/nip60'
+import { useEditorStore } from '@/features/geo-editor/store'
+import { createDefaultCollectionMeta } from '@/features/geo-editor/utils'
 import type { NDKGeoCollectionEvent } from '@/lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
 import type { NDKMapContextEvent } from '@/lib/ndk/NDKMapContextEvent'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { GeoFeatureItem } from '@/components/editor/GeoRichTextEditor'
-import {
-	EntityReferenceToolbar,
-	getEntityReferenceKey,
-	type EntitySearchResult,
-} from '@/components/entity-search'
 import {
 	Select,
 	SelectContent,
@@ -73,12 +70,40 @@ interface ChatPanelProps {
 const defaultGetDatasetName = (event: NDKGeoEvent): string =>
 	event.datasetId ?? event.dTag ?? event.id ?? 'Untitled'
 
+function ensureChatEditSession(): void {
+	const store = useEditorStore.getState()
+	if (store.viewMode === 'edit') return
+
+	// Mirror `startNewDataset` behavior so chat tools always have a clean edit session.
+	store.editor?.setFeatures([])
+	store.setFeatures([])
+	store.setActiveDataset(null)
+	store.setActiveDatasetContextRefs(
+		store.activeContextScopeCoordinate ? [store.activeContextScopeCoordinate] : [],
+	)
+	store.setPublishMessage(null)
+	store.setPublishError(null)
+	store.setSelectedFeatureIds([])
+	store.setCollectionMeta(createDefaultCollectionMeta())
+	store.setNewCollectionProp({ key: '', value: '' })
+	store.setNewFeatureProp({ key: '', value: '' })
+	store.setBlobReferences([])
+	store.setBlobPreviewCollection(null)
+	store.setPreviewingBlobReferenceId(null)
+	store.setBlobDraftUrl('')
+	store.setBlobDraftStatus('idle')
+	store.setBlobDraftError(null)
+	store.setViewMode('edit')
+	store.setViewDataset(null)
+	store.setViewCollection(null)
+}
+
 export function ChatPanel({
-	geoEvents = [],
-	collectionEvents = [],
-	mapContextEvents = [],
-	availableFeatures = [],
-	getDatasetName = defaultGetDatasetName,
+	geoEvents: _geoEvents = [],
+	collectionEvents: _collectionEvents = [],
+	mapContextEvents: _mapContextEvents = [],
+	availableFeatures: _availableFeatures = [],
+	getDatasetName: _getDatasetName = defaultGetDatasetName,
 }: ChatPanelProps) {
 	const {
 		messages,
@@ -117,31 +142,10 @@ export function ChatPanel({
 	const { status: walletStatus, balance: walletBalance } = useNip60Store()
 
 	const [input, setInput] = useState('')
-	const [selectedReferences, setSelectedReferences] = useState<EntitySearchResult[]>([])
 	const [settingsOpen, setSettingsOpen] = useState(false)
 	const [nowMs, setNowMs] = useState(Date.now())
 	const messagesEndRef = useRef<HTMLDivElement>(null)
 	const textareaRef = useRef<HTMLTextAreaElement>(null)
-	const datasetNameByIdentity = useMemo(() => {
-		const map = new Map<string, string>()
-		for (const event of geoEvents) {
-			const name = getDatasetName(event)
-			if (event.id) map.set(`id:${event.id}`, name)
-			if (event.datasetId) map.set(`dataset:${event.datasetId}`, name)
-			if (event.dTag) map.set(`d:${event.dTag}`, name)
-		}
-		return map
-	}, [geoEvents, getDatasetName])
-
-	const entitySources = useMemo(
-		() => ({
-			datasets: geoEvents,
-			collections: collectionEvents,
-			contexts: mapContextEvents,
-			features: availableFeatures,
-		}),
-		[geoEvents, collectionEvents, mapContextEvents, availableFeatures],
-	)
 
 	// Load models on mount
 	useEffect(() => {
@@ -179,49 +183,21 @@ export function ChatPanel({
 
 		const message = input.trim()
 		setInput('')
-		const referenceContextMessage = buildReferenceContextSystemMessage(
-			selectedReferences,
-			geoEvents,
-			collectionEvents,
-			mapContextEvents,
-			datasetNameByIdentity,
-		)
-		await sendMessage(message, referenceContextMessage ? { referenceContextMessage } : undefined)
-	}
-
-	const handleAddReference = (result: EntitySearchResult) => {
-		const nextKey = getEntityReferenceKey(result)
-		setSelectedReferences((current) => {
-			if (current.some((entry) => getEntityReferenceKey(entry) === nextKey)) {
-				return current
-			}
-			return [...current, result]
-		})
-	}
-
-	const handleRemoveReference = (referenceKey: string) => {
-		setSelectedReferences((current) =>
-			current.filter((entry) => getEntityReferenceKey(entry) !== referenceKey),
-		)
-	}
-
-	const handleClearReferences = () => {
-		setSelectedReferences([])
+		ensureChatEditSession()
+		await sendMessage(message)
 	}
 
 	const handleCreateChat = () => {
-		setSelectedReferences([])
+		ensureChatEditSession()
 		createChat()
 	}
 
 	const handleSwitchChat = (chatId: string) => {
-		setSelectedReferences([])
 		switchChat(chatId)
 	}
 
 	const handleDeleteChat = () => {
 		if (!activeChatId) return
-		setSelectedReferences([])
 		deleteChat(activeChatId)
 	}
 
@@ -535,18 +511,6 @@ export function ChatPanel({
 				)}
 			</div>
 
-			<div className="px-3 py-2 border-b">
-				<EntityReferenceToolbar
-					sources={entitySources}
-					references={selectedReferences}
-					onAddReference={handleAddReference}
-					onRemoveReference={handleRemoveReference}
-					onClearReferences={handleClearReferences}
-					placeholder="Add references (geometries, contexts, collections)…"
-					getDatasetName={getDatasetName}
-				/>
-			</div>
-
 			{/* Messages */}
 			<div className="min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto p-3">
 				{messages.length === 0 && !isStreaming ? (
@@ -715,193 +679,6 @@ function contentToDisplayText(content: ChatMessage['content']): string {
 		})
 		.filter((part) => part.length > 0)
 		.join('\n')
-}
-
-const MAX_REFERENCE_CONTEXT_ITEMS = 12
-const MAX_REFERENCE_CONTEXT_CHARS = 8000
-
-function truncateContextValue(value: string | undefined, maxChars = 240): string | undefined {
-	if (!value) return undefined
-	if (value.length <= maxChars) return value
-	return `${value.slice(0, maxChars)}...`
-}
-
-function asCoordinateTag(
-	kind: number | undefined,
-	pubkey: string | undefined,
-	identifier: string | undefined,
-): string | null {
-	if (typeof kind !== 'number' || !pubkey || !identifier) return null
-	return `${kind}:${pubkey}:${identifier}`
-}
-
-function parseCoordinateTag(
-	reference: string,
-): { kind: number; pubkey: string; identifier: string } | null {
-	const [kindPart, pubkey, ...identifierParts] = reference.split(':')
-	if (!kindPart || !pubkey || identifierParts.length === 0) return null
-	const kind = Number.parseInt(kindPart, 10)
-	if (!Number.isFinite(kind)) return null
-	return {
-		kind,
-		pubkey,
-		identifier: identifierParts.join(':'),
-	}
-}
-
-function buildReferenceContextSystemMessage(
-	selectedReferences: EntitySearchResult[],
-	geoEvents: NDKGeoEvent[],
-	collectionEvents: NDKGeoCollectionEvent[],
-	mapContextEvents: NDKMapContextEvent[],
-	datasetNameByIdentity: Map<string, string>,
-): string | null {
-	if (selectedReferences.length === 0) return null
-
-	const datasetByAnyId = new Map<string, NDKGeoEvent>()
-	for (const event of geoEvents) {
-		if (event.id) datasetByAnyId.set(`id:${event.id}`, event)
-		if (event.datasetId) datasetByAnyId.set(`dataset:${event.datasetId}`, event)
-		if (event.dTag) datasetByAnyId.set(`d:${event.dTag}`, event)
-	}
-	const collectionByAnyId = new Map<string, NDKGeoCollectionEvent>()
-	for (const event of collectionEvents) {
-		if (event.id) collectionByAnyId.set(`id:${event.id}`, event)
-		if (event.collectionId) collectionByAnyId.set(`collection:${event.collectionId}`, event)
-		if (event.dTag) collectionByAnyId.set(`d:${event.dTag}`, event)
-	}
-	const contextByAnyId = new Map<string, NDKMapContextEvent>()
-	for (const event of mapContextEvents) {
-		if (event.id) contextByAnyId.set(`id:${event.id}`, event)
-		if (event.contextId) contextByAnyId.set(`context:${event.contextId}`, event)
-		if (event.dTag) contextByAnyId.set(`d:${event.dTag}`, event)
-	}
-
-	const references = selectedReferences.slice(0, MAX_REFERENCE_CONTEXT_ITEMS).map((reference) => {
-		if (reference.type === 'dataset') {
-			const selectedEvent = reference.entity as NDKGeoEvent
-			const resolvedEvent =
-				datasetByAnyId.get(`id:${reference.id}`) ??
-				datasetByAnyId.get(`dataset:${reference.id}`) ??
-				datasetByAnyId.get(`d:${reference.id}`) ??
-				selectedEvent
-			const collection = resolvedEvent.featureCollection
-			const geometryTypeCounts = collection.features.reduce(
-				(acc, feature) => {
-					const geometryType = feature.geometry?.type ?? 'Unknown'
-					acc[geometryType] = (acc[geometryType] ?? 0) + 1
-					return acc
-				},
-				{} as Record<string, number>,
-			)
-			const datasetId = resolvedEvent.datasetId ?? resolvedEvent.dTag ?? undefined
-			return {
-				type: 'dataset',
-				name: reference.name,
-				coordinate: asCoordinateTag(resolvedEvent.kind, resolvedEvent.pubkey, datasetId),
-				id: resolvedEvent.id ?? reference.id,
-				datasetId,
-				featureCount: collection.features.length,
-				geometryTypeCounts,
-				boundingBox: resolvedEvent.boundingBox,
-				contextReferences: resolvedEvent.contextReferences.slice(0, 8),
-				collectionReferences: resolvedEvent.collectionReferences.slice(0, 8),
-				description: truncateContextValue(reference.subtitle),
-			}
-		}
-
-		if (reference.type === 'collection') {
-			const selectedEvent = reference.entity as NDKGeoCollectionEvent
-			const resolvedEvent =
-				collectionByAnyId.get(`id:${reference.id}`) ??
-				collectionByAnyId.get(`collection:${reference.id}`) ??
-				collectionByAnyId.get(`d:${reference.id}`) ??
-				selectedEvent
-			const datasetReferences = resolvedEvent.datasetReferences.slice(0, 12).map((datasetRef) => {
-				const parsed = parseCoordinateTag(datasetRef)
-				const datasetName = parsed
-					? (datasetNameByIdentity.get(`dataset:${parsed.identifier}`) ??
-						datasetNameByIdentity.get(`d:${parsed.identifier}`) ??
-						undefined)
-					: undefined
-				return {
-					reference: datasetRef,
-					datasetName,
-				}
-			})
-
-			return {
-				type: 'collection',
-				name: reference.name,
-				coordinate: asCoordinateTag(
-					resolvedEvent.kind,
-					resolvedEvent.pubkey,
-					resolvedEvent.collectionId ?? resolvedEvent.dTag,
-				),
-				id: resolvedEvent.id ?? reference.id,
-				description: truncateContextValue(resolvedEvent.metadata.description ?? reference.subtitle),
-				datasetReferences,
-				contextReferences: resolvedEvent.contextReferences.slice(0, 8),
-				boundingBox: resolvedEvent.boundingBox,
-			}
-		}
-
-		if (reference.type === 'context') {
-			const selectedEvent = reference.entity as NDKMapContextEvent
-			const resolvedEvent =
-				contextByAnyId.get(`id:${reference.id}`) ??
-				contextByAnyId.get(`context:${reference.id}`) ??
-				contextByAnyId.get(`d:${reference.id}`) ??
-				selectedEvent
-			const content = resolvedEvent.context
-			return {
-				type: 'context',
-				name: content.name || reference.name,
-				coordinate: resolvedEvent.contextCoordinate ?? null,
-				id: resolvedEvent.id ?? reference.id,
-				contextUse: content.contextUse,
-				validationMode: content.validationMode,
-				allowedGeometryTypes: content.geometryConstraints?.allowedTypes ?? [],
-				description: truncateContextValue(content.description ?? reference.subtitle),
-				schemaPropertyKeys:
-					content.schema &&
-					typeof content.schema === 'object' &&
-					!Array.isArray(content.schema) &&
-					content.schema.properties &&
-					typeof content.schema.properties === 'object' &&
-					!Array.isArray(content.schema.properties)
-						? Object.keys(content.schema.properties as Record<string, unknown>).slice(0, 24)
-						: [],
-			}
-		}
-
-		const feature = reference.entity as GeoFeatureItem
-		return {
-			type: 'feature',
-			name: feature.name || reference.name,
-			id: feature.id || reference.id,
-			address: feature.address,
-			featureId: feature.featureId ?? null,
-			geometryType: feature.geometryType ?? null,
-			datasetName: feature.datasetName ?? null,
-		}
-	})
-
-	const payload = {
-		selectedCount: selectedReferences.length,
-		includedCount: references.length,
-		references,
-	}
-	let payloadJson = JSON.stringify(payload, null, 2)
-	if (payloadJson.length > MAX_REFERENCE_CONTEXT_CHARS) {
-		payloadJson = `${payloadJson.slice(0, MAX_REFERENCE_CONTEXT_CHARS)}\n...[reference context truncated]`
-	}
-
-	return [
-		'Use the following user-selected entity references as high-priority grounding context for this conversation.',
-		'Prefer these identifiers when choosing datasets, collections, contexts, and geometries for tool calls.',
-		`Reference context JSON:\n${payloadJson}`,
-	].join('\n\n')
 }
 
 function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
