@@ -67,7 +67,8 @@ const SERVER_PRIVATE_KEY =
   "0000000000000000000000000000000000000000000000000000000000000001"; // Dev fallback
 const RELAYS = [
   serverConfig.relayUrl || "ws://localhost:3334",
-  "wss://relay.contextvm.org/",
+  "wss://relay2.contextvm.org",
+  "wss://relay.wavefunc.live",
 ];
 const TEXT_ENCODER = new TextEncoder();
 const NOSTR_PLAINTEXT_LIMIT_BYTES = 65535;
@@ -578,10 +579,10 @@ async function main() {
               normalizedCountryCode === "de"
                 ? `${normalizedQuery}, Germany`
                 : null,
-              normalizedCountryCode === "de"
-                ? `Land ${normalizedQuery}`
+              normalizedCountryCode === "de" ? `Land ${normalizedQuery}` : null,
+              boundaryMode
+                ? `${normalizedQuery} administrative boundary`
                 : null,
-              boundaryMode ? `${normalizedQuery} administrative boundary` : null,
             ].filter((value): value is string => Boolean(value?.trim())),
           ),
         );
@@ -593,7 +594,9 @@ async function main() {
             }),
           ),
         );
-        const mergedResults = searchResponses.flatMap((response) => response.results);
+        const mergedResults = searchResponses.flatMap(
+          (response) => response.results,
+        );
         const dedupedResults = Array.from(
           new Map(
             mergedResults.map((candidate) => {
@@ -629,7 +632,8 @@ async function main() {
         };
 
         const evaluated = dedupedResults.map((candidate) => {
-          const candidateCountry = candidate.address?.country_code?.toLowerCase() ?? null;
+          const candidateCountry =
+            candidate.address?.country_code?.toLowerCase() ?? null;
           const countryMatches = normalizedCountryCode
             ? candidateCountry
               ? candidateCountry === normalizedCountryCode
@@ -639,7 +643,9 @@ async function main() {
             ? candidate.osmType === preferredOsmType
             : true;
           const adminMatch = classifyAdminMatch(candidate);
-          const nameMatches = candidate.displayName.toLowerCase().includes(queryNeedle);
+          const nameMatches = candidate.displayName
+            .toLowerCase()
+            .includes(queryNeedle);
 
           let score = 0;
           if (preferredOsmType) {
@@ -879,15 +885,21 @@ async function main() {
       inputSchema: getCountryBoundaryInputSchema,
       outputSchema: getCountryBoundaryOutputSchema,
     },
-    async ({ countryCode, name, adminLevel, coordinatePrecision, maxPointsPerRing }) => {
+    async ({
+      countryCode,
+      name,
+      adminLevel,
+      coordinatePrecision,
+      maxPointsPerRing,
+    }) => {
       try {
         if (!countryCode && !name) {
           throw new Error("countryCode or name is required.");
         }
 
-        let relationLookup:
-          | Awaited<ReturnType<typeof findAdministrativeBoundaryRelation>>
-          | null = null;
+        let relationLookup: Awaited<
+          ReturnType<typeof findAdministrativeBoundaryRelation>
+        > | null = null;
         let queryLabel = "";
 
         if (countryCode) {

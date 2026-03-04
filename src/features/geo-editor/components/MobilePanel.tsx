@@ -6,10 +6,12 @@ import {
 	FolderOpen,
 	Globe,
 	HelpCircle,
+	MessageCircle,
 	MessageSquare,
 	Pencil,
 	Settings2,
 	User,
+	Wallet,
 } from 'lucide-react'
 import { GeoDatasetsPanelContent } from '@/components/GeoDatasetsPanel'
 import { GeoEditorInfoPanelContent } from '@/components/GeoEditorInfoPanel'
@@ -26,6 +28,8 @@ import type { EditorFeature } from '../core'
 import type { BlossomUploadResult } from '@/lib/blossom/blossomUpload'
 import { useEditorStore } from '../store'
 import { MapSettingsPanel } from './MapSettingsPanel'
+import { ChatPanel } from '@/features/chat'
+import { Nip60Wallet } from '@/features/wallet/components/Nip60Wallet'
 
 export type MobilePanelTab =
 	| 'datasets'
@@ -33,8 +37,10 @@ export type MobilePanelTab =
 	| 'contexts'
 	| 'context-editor'
 	| 'edit'
+	| 'chat'
 	| 'profile'
 	| 'posts'
+	| 'wallet'
 	| 'settings'
 	| 'help'
 
@@ -111,8 +117,10 @@ const TAB_CONFIG: { id: MobilePanelTab; label: string; icon: typeof Database }[]
 	{ id: 'contexts', label: 'Contexts', icon: Globe },
 	{ id: 'context-editor', label: 'Ctx Editor', icon: FilePenLine },
 	{ id: 'edit', label: 'Editor', icon: Pencil },
+	{ id: 'chat', label: 'AI Chat', icon: MessageCircle },
 	{ id: 'profile', label: 'Profile', icon: User },
 	{ id: 'posts', label: 'Posts', icon: MessageSquare },
+	{ id: 'wallet', label: 'Wallet', icon: Wallet },
 	{ id: 'settings', label: 'Settings', icon: Settings2 },
 	{ id: 'help', label: 'Help', icon: HelpCircle },
 ]
@@ -493,6 +501,18 @@ export function MobilePanel(props: MobilePanelProps) {
 						/>
 					)}
 
+					{mobilePanelTab === 'chat' && (
+						<div className="h-full -mx-3 -mt-2 -mb-4">
+							<ChatPanel
+								geoEvents={geoEvents}
+								collectionEvents={collectionEvents}
+								mapContextEvents={mapContextEvents}
+								availableFeatures={availableFeatures}
+								getDatasetName={getDatasetName}
+							/>
+						</div>
+					)}
+
 					{mobilePanelTab === 'profile' && (
 						<MobileProfileContent
 							pubkey={userPubkey ?? currentUserPubkey}
@@ -523,6 +543,12 @@ export function MobilePanel(props: MobilePanelProps) {
 					{mobilePanelTab === 'posts' && (
 						<div className="h-full -mx-3 -mt-2 -mb-4">
 							<ShoutboxPanel />
+						</div>
+					)}
+
+					{mobilePanelTab === 'wallet' && (
+						<div className="h-full -mx-3 -mt-2 -mb-4 p-4">
+							<Nip60Wallet />
 						</div>
 					)}
 

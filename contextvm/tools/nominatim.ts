@@ -94,9 +94,9 @@ function normalizeResult(result: NominatimResult): NominatimLocation {
 		type: result.type,
 		class: result.class,
 		importance: result.importance,
-		address: result.address,
-		extratags: result.extratags,
-		geojson: result.geojson,
+		address: result.address ?? undefined,
+		extratags: result.extratags ?? undefined,
+		geojson: result.geojson ?? undefined,
 	};
 }
 

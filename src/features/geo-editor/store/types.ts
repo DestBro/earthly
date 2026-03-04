@@ -51,8 +51,10 @@ export type MobilePanelTab =
 	| 'contexts'
 	| 'context-editor'
 	| 'edit'
+	| 'chat'
 	| 'profile'
 	| 'posts'
+	| 'wallet'
 	| 'settings'
 	| 'help'
 
