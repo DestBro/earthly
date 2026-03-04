@@ -1,5 +1,5 @@
 import { useNDK, useNDKCurrentUser } from '@nostr-dev-kit/react'
-import { Edit3, Layers, Lock, LockOpen, Search, UploadCloud } from 'lucide-react'
+import { Edit3, Globe, Layers, Lock, LockOpen, Search, UploadCloud, X } from 'lucide-react'
 import type maplibregl from 'maplibre-gl'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppSidebar } from '@/components/AppSidebar'
@@ -272,6 +272,7 @@ export function GeoEditorView() {
 		navigateToContext,
 		navigateToView,
 		clearFocus,
+		clearContextScope,
 		encodeGeoEventNaddr,
 		encodeCollectionNaddr,
 		encodeContextNaddr,
@@ -327,6 +328,19 @@ export function GeoEditorView() {
 			}) ?? null
 		)
 	}, [contextNaddr, mapContextEvents, encodeContextNaddr])
+
+	const activeContextScopeLabel = useMemo(() => {
+		if (!contextNaddr) return null
+		if (activeContextScope) {
+			return (
+				activeContextScope.context.name ||
+				activeContextScope.contextId ||
+				activeContextScope.id ||
+				'Context scope'
+			)
+		}
+		return `Context ${contextNaddr.slice(0, 12)}…`
+	}, [activeContextScope, contextNaddr])
 
 	const focusedContext = useMemo(() => {
 		if (focusedType !== 'mapcontext' || !focusedNaddr) return null
@@ -1344,6 +1358,29 @@ export function GeoEditorView() {
 									onOsmQueryView={handleOsmQueryView}
 									onOsmAdvanced={() => setImportOsmDialogOpen(true)}
 								/>
+							</div>
+						</div>
+					)}
+
+					{contextNaddr && activeContextScopeLabel && (
+						<div
+							className={`absolute left-2 right-2 z-20 pointer-events-none flex justify-center ${
+								mounted && editor ? 'top-16' : 'top-3'
+							}`}
+						>
+							<div className="pointer-events-auto inline-flex max-w-[min(90vw,520px)] items-center gap-2 rounded-full border border-sky-200 bg-white/95 px-3 py-1.5 shadow-lg backdrop-blur">
+								<Globe className="h-3.5 w-3.5 text-sky-700 shrink-0" />
+								<span className="truncate text-xs font-medium text-sky-900">
+									{activeContextScopeLabel}
+								</span>
+								<button
+									type="button"
+									onClick={clearContextScope}
+									aria-label="Leave context scope"
+									className="inline-flex h-5 w-5 items-center justify-center rounded-full text-sky-700 hover:bg-sky-100"
+								>
+									<X className="h-3.5 w-3.5" />
+								</button>
 							</div>
 						</div>
 					)}

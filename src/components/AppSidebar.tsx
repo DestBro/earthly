@@ -218,8 +218,6 @@ export function AppSidebar({
 }: AppSidebarProps) {
 	const { setOpen, sidebarExpanded, setSidebarExpanded } = useSidebar()
 	const viewMode = useEditorStore((state) => state.sidebarViewMode)
-	const focusedType = useEditorStore((state) => state.focusedType)
-	const focusedNaddr = useEditorStore((state) => state.focusedNaddr)
 	const { navigateToView, navigateToContext, clearContextScope, contextNaddr, encodeContextNaddr } =
 		useRouting()
 	const [splitWithEditor, setSplitWithEditor] = useState(viewMode === 'combined')
@@ -247,47 +245,6 @@ export function AppSidebar({
 		if (!naddr) return
 		navigateToContext(naddr)
 	}
-
-	/** Derive a contextual subtitle from the focused/active item */
-	const contextSubtitle = useMemo(() => {
-		// Editor mode: show active dataset name
-		if (viewMode === 'edit' && activeDataset) {
-			return getDatasetName(activeDataset)
-		}
-		// Context editor: show editing context name
-		if (viewMode === 'context-editor' && editingContext) {
-			return editingContext.context.name || undefined
-		}
-		// Focused mode: resolve the focused item's name
-		if (focusedType && focusedNaddr) {
-			if (focusedType === 'geoevent') {
-				const event = geoEvents.find(
-					(e) => getDatasetKey(e) === focusedNaddr || e.encode() === focusedNaddr,
-				)
-				return event ? getDatasetName(event) : undefined
-			}
-			if (focusedType === 'collection') {
-				const col = collectionEvents.find((c) => c.encode() === focusedNaddr)
-				return col?.metadata.name || undefined
-			}
-			if (focusedType === 'mapcontext') {
-				const ctx = mapContextEvents.find((c) => c.encode() === focusedNaddr)
-				return ctx?.context.name || undefined
-			}
-		}
-		return undefined
-	}, [
-		viewMode,
-		activeDataset,
-		editingContext,
-		focusedType,
-		focusedNaddr,
-		geoEvents,
-		collectionEvents,
-		mapContextEvents,
-		getDatasetKey,
-		getDatasetName,
-	])
 
 	useEffect(() => {
 		if (viewMode === 'combined') {
@@ -615,51 +572,30 @@ export function AppSidebar({
 			{/* Content sidebar (second nested sidebar) */}
 			<Sidebar collapsible="none" className="hidden flex-1 md:flex">
 				<SidebarHeader className="gap-3.5 border-b p-4">
-					<div className="flex w-full flex-col gap-2">
-						<div className="flex w-full items-center justify-between">
-							<div className="text-foreground flex flex-col min-w-0">
-								<div className="flex items-center gap-2 text-base font-medium">
-									<span>{currentTitle}</span>
-									{showSplitCompanion && (
-										<span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-700">
-											Split
-										</span>
-									)}
-								</div>
-								{contextSubtitle && (
-									<span className="text-xs text-muted-foreground truncate">{contextSubtitle}</span>
-								)}
-							</div>
-							<div className="flex items-center gap-1">
-								<button
-									type="button"
-									onClick={() => setSidebarExpanded(!sidebarExpanded)}
-									title={sidebarExpanded ? 'Shrink sidebar' : 'Expand sidebar'}
-									className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
-								>
-									{sidebarExpanded ? (
-										<PanelLeftClose className="h-4 w-4" />
-									) : (
-										<PanelLeftOpen className="h-4 w-4" />
-									)}
-								</button>
-								<LoginSessionButtons />
-							</div>
+					<div className="flex w-full items-center gap-2">
+						<div className="text-foreground flex items-center gap-2 text-base font-medium shrink-0 min-w-0">
+							<span className="truncate">{currentTitle}</span>
+							{showSplitCompanion && (
+								<span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-700">
+									Split
+								</span>
+							)}
 						</div>
 
-						<div className="flex items-center gap-1.5">
-							<div className="w-full">
-								<EntitySearchPopover
-									sources={{ contexts: mapContextEvents }}
-									entityTypes={['context']}
-									onSelect={handleContextScopeSelect}
-									placeholder={
-										activeContextScopeLabel ? activeContextScopeLabel : 'No context filter'
-									}
-									searchMode="local"
-									compact
-								/>
-							</div>
+						<div className="min-w-0 flex-1">
+							<EntitySearchPopover
+								sources={{ contexts: mapContextEvents }}
+								entityTypes={['context']}
+								onSelect={handleContextScopeSelect}
+								placeholder={
+									activeContextScopeLabel ? activeContextScopeLabel : 'No context filter'
+								}
+								searchMode="local"
+								compact
+							/>
+						</div>
+
+						<div className="flex items-center gap-1 shrink-0">
 							{contextNaddr && (
 								<button
 									type="button"
@@ -671,6 +607,19 @@ export function AppSidebar({
 									<X className="h-3.5 w-3.5" />
 								</button>
 							)}
+							<button
+								type="button"
+								onClick={() => setSidebarExpanded(!sidebarExpanded)}
+								title={sidebarExpanded ? 'Shrink sidebar' : 'Expand sidebar'}
+								className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+							>
+								{sidebarExpanded ? (
+									<PanelLeftClose className="h-4 w-4" />
+								) : (
+									<PanelLeftOpen className="h-4 w-4" />
+								)}
+							</button>
+							<LoginSessionButtons />
 						</div>
 					</div>
 				</SidebarHeader>
