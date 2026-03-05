@@ -158,6 +158,7 @@ export class NDKMapContextEvent extends NDKEvent {
 	private async prepareForPublish(signer?: NDKSigner): Promise<void> {
 		this.kind = MAP_CONTEXT_KIND
 		this.ensureContextId()
+		this.created_at = Math.floor(Date.now() / 1000)
 		await this.sign(signer)
 	}
 

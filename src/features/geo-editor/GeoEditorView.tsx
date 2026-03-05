@@ -975,7 +975,16 @@ export function GeoEditorView() {
 	})
 
 	// Handle initial route on page load (direct URL navigation)
+	const focusHandledRef = useRef<string | null>(null)
 	useEffect(() => {
+		const routeKey =
+			route.focusType !== 'none' && route.naddr ? `${route.focusType}:${route.naddr}` : null
+		if (!routeKey) {
+			focusHandledRef.current = null
+			return
+		}
+		if (focusHandledRef.current === routeKey) return
+
 		// Skip if no focus route (just sidebar view change)
 		// If there's a specific focus route (e.g. /datasets/geoevent/...), handle zoom
 		if (route.focusType === 'none' || !route.naddr) return
@@ -991,6 +1000,7 @@ export function GeoEditorView() {
 			})
 			if (dataset) {
 				handleInspectDataset(dataset)
+				focusHandledRef.current = routeKey
 			}
 		} else if (route.focusType === 'collection') {
 			// Find the collection matching the naddr
@@ -1000,11 +1010,13 @@ export function GeoEditorView() {
 			})
 			if (collection) {
 				handleInspectCollection(collection, [])
+				focusHandledRef.current = routeKey
 			}
 		} else if (route.focusType === 'mapcontext') {
 			const context = mapContextEvents.find((ctx) => encodeContextNaddr(ctx) === route.naddr)
 			if (context) {
 				handleInspectContext(context)
+				focusHandledRef.current = routeKey
 			}
 		}
 	}, [

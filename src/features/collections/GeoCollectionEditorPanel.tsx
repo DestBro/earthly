@@ -102,6 +102,19 @@ export function GeoCollectionEditorPanel({
 	const [isSaving, setIsSaving] = useState(false)
 	const [lastAutoSavedAt, setLastAutoSavedAt] = useState<number | null>(null)
 
+	useEffect(() => {
+		const nextContextRefs = initialCollection?.contextReferences ?? []
+		setSelectedContextRefs((prev) => {
+			if (
+				prev.length === nextContextRefs.length &&
+				prev.every((value, index) => value === nextContextRefs[index])
+			) {
+				return prev
+			}
+			return nextContextRefs
+		})
+	}, [initialCollection])
+
 	const draftsForSource = useMemo(
 		() =>
 			Object.values(geoEditDrafts)

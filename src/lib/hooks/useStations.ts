@@ -18,7 +18,51 @@ export function useStations(additionalFilters: Omit<NDKFilter, 'kinds'>[] = [{}]
 	}))
 
 	const { events, eose } = useSubscribe(filters)
-	const geoEvents = events.map((event) => wrapEvent(event) as NDKGeoEvent)
+	const geoEvents = useMemo(() => {
+		const latestByCoordinate = new Map<string, NDKGeoEvent>()
+
+		for (const event of events) {
+			const maybeWrapped = wrapEvent(event)
+			if (maybeWrapped instanceof Promise) continue
+			const wrapped =
+				maybeWrapped instanceof NDKGeoEvent ? maybeWrapped : NDKGeoEvent.from(maybeWrapped)
+
+			const datasetId = wrapped.datasetId ?? wrapped.dTag
+			const coordinate =
+				datasetId && wrapped.pubkey
+					? `${wrapped.kind ?? NDKGeoEvent.kinds[0]}:${wrapped.pubkey}:${datasetId}`
+					: `${wrapped.kind ?? NDKGeoEvent.kinds[0]}:${wrapped.pubkey ?? ''}:${
+							wrapped.id ?? wrapped.created_at ?? ''
+						}`
+
+			const existing = latestByCoordinate.get(coordinate)
+			if (!existing) {
+				latestByCoordinate.set(coordinate, wrapped)
+				continue
+			}
+
+			const existingCreatedAt = existing.created_at ?? 0
+			const wrappedCreatedAt = wrapped.created_at ?? 0
+			if (wrappedCreatedAt > existingCreatedAt) {
+				latestByCoordinate.set(coordinate, wrapped)
+				continue
+			}
+
+			if (wrappedCreatedAt === existingCreatedAt) {
+				const existingId = existing.id ?? ''
+				const wrappedId = wrapped.id ?? ''
+				if (wrappedId > existingId) {
+					latestByCoordinate.set(coordinate, wrapped)
+				}
+			}
+		}
+
+		return Array.from(latestByCoordinate.values()).sort((a, b) => {
+			const createdDiff = (b.created_at ?? 0) - (a.created_at ?? 0)
+			if (createdDiff !== 0) return createdDiff
+			return (b.id ?? '').localeCompare(a.id ?? '')
+		})
+	}, [events])
 
 	return {
 		events: geoEvents,
@@ -33,7 +77,53 @@ export function useGeoCollections(additionalFilters: Omit<NDKFilter, 'kinds'>[] 
 	}))
 
 	const { events, eose } = useSubscribe(filters)
-	const collections = events.map((event) => wrapEvent(event) as NDKGeoCollectionEvent)
+	const collections = useMemo(() => {
+		const latestByCoordinate = new Map<string, NDKGeoCollectionEvent>()
+
+		for (const event of events) {
+			const maybeWrapped = wrapEvent(event)
+			if (maybeWrapped instanceof Promise) continue
+			const wrapped =
+				maybeWrapped instanceof NDKGeoCollectionEvent
+					? maybeWrapped
+					: NDKGeoCollectionEvent.from(maybeWrapped)
+
+			const collectionId = wrapped.collectionId ?? wrapped.dTag
+			const coordinate =
+				collectionId && wrapped.pubkey
+					? `${wrapped.kind ?? NDKGeoCollectionEvent.kinds[0]}:${wrapped.pubkey}:${collectionId}`
+					: `${wrapped.kind ?? NDKGeoCollectionEvent.kinds[0]}:${wrapped.pubkey ?? ''}:${
+							wrapped.id ?? wrapped.created_at ?? ''
+						}`
+
+			const existing = latestByCoordinate.get(coordinate)
+			if (!existing) {
+				latestByCoordinate.set(coordinate, wrapped)
+				continue
+			}
+
+			const existingCreatedAt = existing.created_at ?? 0
+			const wrappedCreatedAt = wrapped.created_at ?? 0
+			if (wrappedCreatedAt > existingCreatedAt) {
+				latestByCoordinate.set(coordinate, wrapped)
+				continue
+			}
+
+			if (wrappedCreatedAt === existingCreatedAt) {
+				const existingId = existing.id ?? ''
+				const wrappedId = wrapped.id ?? ''
+				if (wrappedId > existingId) {
+					latestByCoordinate.set(coordinate, wrapped)
+				}
+			}
+		}
+
+		return Array.from(latestByCoordinate.values()).sort((a, b) => {
+			const createdDiff = (b.created_at ?? 0) - (a.created_at ?? 0)
+			if (createdDiff !== 0) return createdDiff
+			return (b.id ?? '').localeCompare(a.id ?? '')
+		})
+	}, [events])
 
 	return {
 		events: collections,

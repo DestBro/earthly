@@ -150,6 +150,7 @@ export class NDKGeoCollectionEvent extends NDKEvent {
   private async prepareForPublish(signer?: NDKSigner): Promise<void> {
     this.kind = GEO_COLLECTION_KIND;
     this.ensureCollectionId();
+    this.created_at = Math.floor(Date.now() / 1000);
     await this.sign(signer);
   }
 
