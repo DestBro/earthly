@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type maplibregl from 'maplibre-gl'
 import type { Feature, Geometry } from 'geojson'
 import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
@@ -41,6 +41,7 @@ export function useMapInteractions({
 	const setFocusedMapGeometry = useEditorStore((state) => state.setFocusedMapGeometry)
 	const mapInstance = mapRef.current
 	const isInDrawingMode = currentMode.startsWith('draw_')
+	const hoveredFeatureKeyRef = useRef<string | null>(null)
 
 	useEffect(() => {
 		if (!mapInstance || !remoteLayersReady) return
@@ -102,6 +103,7 @@ export function useMapInteractions({
 
 			// Do not inspect other datasets while in edit mode
 			if (viewMode === 'edit') {
+				hoveredFeatureKeyRef.current = null
 				setFeaturePopupData(null)
 				return
 			}
@@ -121,26 +123,38 @@ export function useMapInteractions({
 		const handleMapDatasetHover = (event: maplibregl.MapLayerMouseEvent) => {
 			const feature = event.features?.[0]
 			if (!feature || viewMode === 'edit') {
+				hoveredFeatureKeyRef.current = null
 				setFeaturePopupData(null)
 				return
 			}
 
 			if (!feature?.properties) {
+				hoveredFeatureKeyRef.current = null
 				setFeaturePopupData(null)
 				return
 			}
 
 			const sourceEventId = feature.properties.sourceEventId as string | undefined
 			const datasetId = feature.properties.datasetId as string | undefined
+			const featureId =
+				(feature.properties.featureId as string | undefined) ??
+				(feature.properties.id as string | undefined) ??
+				(feature.id != null ? String(feature.id) : undefined)
+			const hoverKey = `${sourceEventId ?? datasetId ?? 'unknown'}:${featureId ?? 'feature'}`
+
+			if (hoverKey === hoveredFeatureKeyRef.current) return
+
 			const dataset =
 				geoEventsRef.current.find((ev) => ev.id === sourceEventId) ??
 				geoEventsRef.current.find((ev) => (ev.datasetId ?? ev.id) === datasetId)
 
 			if (!dataset) {
+				hoveredFeatureKeyRef.current = null
 				setFeaturePopupData(null)
 				return
 			}
 
+			hoveredFeatureKeyRef.current = hoverKey
 			setFeaturePopupData({
 				dataset,
 				feature: feature as unknown as Feature<Geometry>,
@@ -158,6 +172,7 @@ export function useMapInteractions({
 		const handleMouseLeave = () => {
 			if (isInDrawingMode) return
 			mapInstance.getCanvas().style.cursor = ''
+			hoveredFeatureKeyRef.current = null
 			setFeaturePopupData(null)
 		}
 

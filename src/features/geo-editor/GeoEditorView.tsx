@@ -22,9 +22,9 @@ import {
 import { Editor } from './components/Editor'
 import { ImportOsmDialog } from './components/ImportOsmDialog'
 import { LocateButton } from './components/LocateButton'
-import { FeaturePopup } from './components/FeaturePopup'
 import { LocationInspectorPopup } from './components/LocationInspectorPopup'
 import { Magnifier } from './components/Magnifier'
+import { MapFeatureHoverOverlay } from './components/MapFeatureHoverOverlay'
 import { MobilePanel } from './components/MobilePanel'
 import { UserLocationMarker } from './components/UserLocationMarker'
 import { GeoEditorMap as MapComponent } from './components/Map'
@@ -37,10 +37,8 @@ import {
 	useCollectionContextEditor,
 	useCommentGeometry,
 	useDatasetManagement,
-	useFeaturePopup,
 	useInspector,
 	useMagnifier,
-	useMapInteractions,
 	useMapLayers,
 	useMentionActions,
 	useOsmQuery,
@@ -1023,9 +1021,6 @@ export function GeoEditorView() {
 		handleInspectContext,
 	])
 
-	// Feature popup handlers
-	const { featurePopupData, setFeaturePopupData } = useFeaturePopup()
-
 	// Pan lock and magnifier
 	const togglePanLock = useCallback(() => {
 		if (!editor) return
@@ -1034,18 +1029,6 @@ export function GeoEditorView() {
 		editor.setPanLocked(next)
 		setPanLocked(next)
 	}, [editor, isDrawingMode, panLocked, setPanLocked])
-
-	// Remote dataset click and hover handling
-	useMapInteractions({
-		mapRef: map,
-		remoteLayersReady,
-		CLUSTERED_SOURCE_ID,
-		geoEventsRef,
-		currentUserPubkey: currentUser?.pubkey,
-		getDatasetName,
-		handleInspectDatasetWithoutFocus,
-		setFeaturePopupData,
-	})
 
 	// Search result handling
 	const zoomToSearchResult = useCallback((result: GeoSearchResult) => {
@@ -1283,8 +1266,17 @@ export function GeoEditorView() {
 						}}
 					/>
 
-					{/* Feature Popup - appears when hovering a geometry on the map */}
-					<FeaturePopup data={featurePopupData} containerRef={mapContainerRef} />
+					{/* Feature Popup + remote geometry interaction handling */}
+					<MapFeatureHoverOverlay
+						mapRef={map}
+						containerRef={mapContainerRef}
+						remoteLayersReady={remoteLayersReady}
+						clusteredSourceId={CLUSTERED_SOURCE_ID}
+						geoEventsRef={geoEventsRef}
+						currentUserPubkey={currentUser?.pubkey}
+						getDatasetName={getDatasetName}
+						handleInspectDatasetWithoutFocus={handleInspectDatasetWithoutFocus}
+					/>
 
 					{mapError && (
 						<div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded z-50">

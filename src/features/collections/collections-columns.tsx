@@ -75,7 +75,12 @@ export const createCollectionColumns = (
 					<div className="text-xs font-semibold text-gray-900 truncate" title={collectionName}>
 						{collectionName}
 					</div>
-					<UserProfile pubkey={collection.pubkey} mode="avatar-name" size="xs" showNip05Badge />
+					<UserProfile
+						pubkey={collection.pubkey}
+						mode="avatar-name"
+						size="xs"
+						showNip05Badge={false}
+					/>
 					<div className="text-[10px] text-gray-500">
 						{datasetCount} dataset{datasetCount === 1 ? '' : 's'}
 					</div>

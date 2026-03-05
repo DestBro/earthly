@@ -354,6 +354,7 @@ export function ViewModePanel({
 										<DataTable
 											columns={linkedEventsColumns}
 											data={linkedEventsTableData}
+											getRowId={(row) => row.datasetKey}
 											getRowClassName={(row) => (!row.isVisible ? 'opacity-60' : undefined)}
 										/>
 									)}

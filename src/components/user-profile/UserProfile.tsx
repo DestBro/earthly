@@ -1,5 +1,5 @@
 import { useNDK, useProfileValue, useUser } from '@nostr-dev-kit/react'
-import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
+import { memo, useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { User, BadgeCheck, BadgeX, Globe, Loader2 } from 'lucide-react'
 import { nip19 } from 'nostr-tools'
 import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar'
@@ -15,6 +15,8 @@ type ProfileData = {
 	nip05?: string
 	website?: string
 }
+
+const profileCache = new Map<string, ProfileData>()
 
 // Calculate how "complete" a profile is (used to prevent flickering)
 function getProfileScore(p: ProfileData | null | undefined): number {
@@ -79,7 +81,7 @@ export interface UserProfileProps {
  * Automatically fetches and displays profile data including avatar,
  * name, bio, and validates NIP-05 verification.
  */
-export function UserProfile({
+function UserProfileComponent({
 	pubkey,
 	mode = 'avatar-name',
 	size = 'md',
@@ -100,19 +102,25 @@ export function UserProfile({
 	// Track the best profile data we've received to prevent flickering
 	// Only update when we get "better" data (more fields filled)
 	const committedProfileRef = useRef<ProfileData | null>(null)
+	const profileCacheKey = user?.pubkey || pubkey
 
 	// Commit new profile data only if it's better than what we have
 	const profile = useMemo(() => {
+		const cachedProfile = profileCache.get(profileCacheKey) ?? null
+		const baselineProfile = committedProfileRef.current ?? cachedProfile
 		const newScore = getProfileScore(rawProfile)
-		const oldScore = getProfileScore(committedProfileRef.current)
+		const oldScore = getProfileScore(baselineProfile)
 
 		// Always accept new data if it's at least as good
 		if (rawProfile && newScore >= oldScore) {
 			committedProfileRef.current = rawProfile
+			profileCache.set(profileCacheKey, rawProfile)
+		} else if (!committedProfileRef.current && cachedProfile) {
+			committedProfileRef.current = cachedProfile
 		}
 
-		return committedProfileRef.current ?? rawProfile
-	}, [rawProfile])
+		return committedProfileRef.current ?? cachedProfile ?? rawProfile
+	}, [rawProfile, profileCacheKey])
 
 	// Validate NIP-05 if present
 	useEffect(() => {
@@ -127,7 +135,8 @@ export function UserProfile({
 		const validateNip05 = async () => {
 			try {
 				if (!user) return
-				const isValid = await user.validateNip05(profile.nip05!)
+				if (!profile.nip05) return
+				const isValid = await user.validateNip05(profile.nip05)
 				if (!cancelled) {
 					setNip05Valid(isValid)
 				}
@@ -397,3 +406,6 @@ export function UserProfile({
 			return null
 	}
 }
+
+export const UserProfile = memo(UserProfileComponent)
+UserProfile.displayName = 'UserProfile'

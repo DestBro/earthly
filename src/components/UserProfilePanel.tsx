@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
 import { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
 import {
@@ -189,9 +189,9 @@ export function UserProfilePanel({
 	}, [datasetTableData])
 
 	// Collection key helper
-	const getCollectionKey = (collection: NDKGeoCollectionEvent): string => {
+	const getCollectionKey = useCallback((collection: NDKGeoCollectionEvent): string => {
 		return collection.dTag ?? collection.id ?? collection.collectionId ?? ''
-	}
+	}, [])
 
 	// Collection table data
 	const collectionTableData: CollectionRowData[] = useMemo(() => {
@@ -215,7 +215,13 @@ export function UserProfilePanel({
 				isVisible,
 			}
 		})
-	}, [filteredCollections, datasetReferenceMap, onZoomToCollection, collectionVisibility])
+	}, [
+		filteredCollections,
+		datasetReferenceMap,
+		onZoomToCollection,
+		collectionVisibility,
+		getCollectionKey,
+	])
 
 	// Visibility state for collections
 	const allCollectionVisibleState = useMemo((): 'all' | 'none' | 'some' => {
@@ -346,6 +352,7 @@ export function UserProfilePanel({
 					<DataTable
 						columns={datasetColumns}
 						data={datasetTableData}
+						getRowId={(row) => row.datasetKey}
 						getRowClassName={(row) => (!row.isVisible ? 'opacity-60' : undefined)}
 					/>
 				)
@@ -357,6 +364,12 @@ export function UserProfilePanel({
 				<DataTable
 					columns={collectionColumns}
 					data={collectionTableData}
+					getRowId={(row) =>
+						row.collection.dTag ??
+						row.collection.collectionId ??
+						row.collection.id ??
+						row.collection.pubkey
+					}
 					getRowClassName={(row) => (!row.isVisible ? 'opacity-60' : undefined)}
 				/>
 			)}

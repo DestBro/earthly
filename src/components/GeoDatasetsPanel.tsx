@@ -1,5 +1,5 @@
 import { Plus, Eye } from 'lucide-react'
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import type { NDKGeoCollectionEvent } from '../lib/ndk/NDKGeoCollectionEvent'
 import type { NDKGeoEvent } from '../lib/ndk/NDKGeoEvent'
@@ -256,9 +256,9 @@ export function GeoDatasetsPanelContent({
 	}, [datasetTableData])
 
 	// Get collection key for visibility
-	const getCollectionKey = (collection: NDKGeoCollectionEvent): string => {
+	const getCollectionKey = useCallback((collection: NDKGeoCollectionEvent): string => {
 		return collection.dTag ?? collection.id ?? collection.collectionId ?? ''
-	}
+	}, [])
 
 	// Prepare collection table data
 	const collectionTableData: CollectionRowData[] = useMemo(() => {
@@ -282,7 +282,13 @@ export function GeoDatasetsPanelContent({
 				isVisible,
 			}
 		})
-	}, [filteredCollections, datasetReferenceMap, onZoomToCollection, collectionVisibility])
+	}, [
+		filteredCollections,
+		datasetReferenceMap,
+		onZoomToCollection,
+		collectionVisibility,
+		getCollectionKey,
+	])
 
 	// Compute visibility state for all filtered collections (for header checkbox)
 	const allCollectionVisibleState = useMemo((): 'all' | 'none' | 'some' => {
@@ -467,6 +473,7 @@ export function GeoDatasetsPanelContent({
 					<DataTable
 						columns={datasetColumns}
 						data={datasetTableData}
+						getRowId={(row) => row.datasetKey}
 						getRowClassName={(row) => (!row.isVisible ? 'opacity-60' : undefined)}
 					/>
 				)
@@ -479,6 +486,12 @@ export function GeoDatasetsPanelContent({
 					<DataTable
 						columns={collectionColumns}
 						data={collectionTableData}
+						getRowId={(row) =>
+							row.collection.dTag ??
+							row.collection.collectionId ??
+							row.collection.id ??
+							row.collection.pubkey
+						}
 						getRowClassName={(row) => (!row.isVisible ? 'opacity-60' : undefined)}
 					/>
 				)
@@ -487,7 +500,11 @@ export function GeoDatasetsPanelContent({
 			) : filteredContexts.length === 0 ? (
 				<p className="text-xs text-gray-500">No contexts match your filters.</p>
 			) : (
-				<DataTable columns={contextColumns} data={contextTableData} />
+				<DataTable
+					columns={contextColumns}
+					data={contextTableData}
+					getRowId={(row) => row.context.contextId ?? row.context.dTag ?? row.context.id}
+				/>
 			)}
 		</div>
 	)

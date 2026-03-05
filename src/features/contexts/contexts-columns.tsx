@@ -32,7 +32,12 @@ export const createContextColumns = (
 					<div className="text-xs font-semibold text-gray-900 truncate" title={contextName}>
 						{contextName}
 					</div>
-					<UserProfile pubkey={context.pubkey} mode="avatar-name" size="sm" showNip05Badge />
+					<UserProfile
+						pubkey={context.pubkey}
+						mode="avatar-name"
+						size="sm"
+						showNip05Badge={false}
+					/>
 					{content.description && (
 						<div className="text-[10px] text-gray-500 line-clamp-2">{content.description}</div>
 					)}

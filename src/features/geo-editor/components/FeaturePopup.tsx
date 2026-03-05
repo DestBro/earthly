@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import type { Feature, Geometry } from 'geojson'
-import { UserProfile } from '@/components/user-profile/UserProfile'
 import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
 
 export interface FeaturePopupData {
@@ -23,7 +22,7 @@ interface FeaturePopupProps {
 }
 
 const POPUP_WIDTH = 320
-const POPUP_HEIGHT_ESTIMATE = 170
+const POPUP_HEIGHT_ESTIMATE = 240
 const OFFSET = 12
 
 function getDatasetDescription(dataset: NDKGeoEvent): string | null {
@@ -49,6 +48,42 @@ function getDatasetDescription(dataset: NDKGeoEvent): string | null {
 function formatCreatedAt(createdAt?: number): string {
 	if (!createdAt || !Number.isFinite(createdAt)) return 'Unknown'
 	return new Date(createdAt * 1000).toLocaleString()
+}
+
+function shortPubkey(pubkey: string): string {
+	if (!pubkey) return 'Unknown'
+	if (pubkey.length <= 16) return pubkey
+	return `${pubkey.slice(0, 8)}…${pubkey.slice(-4)}`
+}
+
+function getFeatureLabel(feature: Feature<Geometry>): string | null {
+	const props = (feature.properties ?? {}) as Record<string, unknown>
+	const labelCandidates = [
+		props.name,
+		props.title,
+		props.label,
+		props.text,
+		props.featureId,
+		props.id,
+		feature.id,
+	]
+	for (const value of labelCandidates) {
+		if (typeof value === 'string' && value.trim().length > 0) return value.trim()
+		if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+	}
+	return null
+}
+
+function countGeometryVertices(geometry: Geometry): number {
+	const walk = (coords: unknown): number => {
+		if (!Array.isArray(coords)) return 0
+		if (coords.length === 0) return 0
+		if (typeof coords[0] === 'number') return 1
+		let count = 0
+		for (const child of coords) count += walk(child)
+		return count
+	}
+	return walk(geometry.coordinates)
 }
 
 export function FeaturePopup({ data, containerRef }: FeaturePopupProps) {
@@ -91,8 +126,10 @@ export function FeaturePopup({ data, containerRef }: FeaturePopupProps) {
 
 	if (!data) return null
 
-	const { dataset, datasetName } = data
+	const { dataset, datasetName, feature } = data
 	const description = getDatasetDescription(dataset)
+	const featureLabel = getFeatureLabel(feature)
+	const vertexCount = countGeometryVertices(feature.geometry)
 
 	return (
 		<div
@@ -107,17 +144,26 @@ export function FeaturePopup({ data, containerRef }: FeaturePopupProps) {
 		>
 			<div className="border-b border-gray-100 bg-gray-50/80 px-3 py-2">
 				<div className="font-semibold text-sm text-gray-900 truncate">{datasetName}</div>
-				<UserProfile
-					pubkey={dataset.pubkey}
-					mode="avatar-name"
-					size="xs"
-					showNip05Badge={false}
-					className="mt-0.5"
-				/>
+				<div className="mt-0.5 text-[11px] text-gray-600">
+					<span className="text-gray-400">Author:</span> {shortPubkey(dataset.pubkey)}
+				</div>
 			</div>
 
 			<div className="px-3 py-2 space-y-2">
 				{description && <p className="text-xs text-gray-700 line-clamp-3">{description}</p>}
+				<div className="rounded-md border border-gray-100 bg-gray-50 px-2 py-1.5 text-[11px] text-gray-700 space-y-0.5">
+					<div>
+						<span className="text-gray-400">Geometry:</span> {feature.geometry.type}
+					</div>
+					{featureLabel && (
+						<div className="truncate">
+							<span className="text-gray-400">Feature:</span> {featureLabel}
+						</div>
+					)}
+					<div>
+						<span className="text-gray-400">Vertices:</span> {vertexCount}
+					</div>
+				</div>
 				<div className="text-[11px] text-gray-600">
 					<span className="text-gray-400">Created:</span> {formatCreatedAt(dataset.created_at)}
 				</div>

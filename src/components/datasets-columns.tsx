@@ -203,7 +203,7 @@ export const createDatasetColumns = (
 					<div className="text-xs font-semibold text-gray-900 truncate" title={datasetName}>
 						{datasetName}
 					</div>
-					<UserProfile pubkey={event.pubkey} mode="avatar-name" size="xs" showNip05Badge />
+					<UserProfile pubkey={event.pubkey} mode="avatar-name" size="xs" showNip05Badge={false} />
 					{event.hashtags.length > 0 && (
 						<div className="flex flex-wrap gap-0.5">
 							{event.hashtags.slice(0, 2).map((tag) => (

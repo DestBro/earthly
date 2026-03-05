@@ -21,6 +21,7 @@ interface DataTableProps<TData, TValue> {
   data: TData[];
   emptyMessage?: string;
   getRowClassName?: (row: TData) => string | undefined;
+  getRowId?: (row: TData, index: number) => string;
 }
 
 export function DataTable<TData, TValue>({
@@ -28,10 +29,12 @@ export function DataTable<TData, TValue>({
   data,
   emptyMessage = "No results.",
   getRowClassName,
+  getRowId,
 }: DataTableProps<TData, TValue>) {
   const table = useReactTable({
     data,
     columns,
+    getRowId,
     getCoreRowModel: getCoreRowModel(),
   });
 
