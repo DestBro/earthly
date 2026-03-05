@@ -23,7 +23,7 @@ export const envSchema = z.object({
 	RELAY_URL: z
 		.string()
 		.default(
-			process.env.NODE_ENV === 'production' ? 'wss://relay.wavefunc.live' : 'ws://localhost:3334',
+			process.env.NODE_ENV === 'production' ? 'wss://relay.earthly.city' : 'ws://localhost:3334',
 		),
 
 	// ─────────────────────────────────────────────────────────────────────────

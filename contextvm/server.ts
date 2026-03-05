@@ -68,7 +68,7 @@ const SERVER_PRIVATE_KEY =
 const RELAYS = [
   serverConfig.relayUrl || "ws://localhost:3334",
   "wss://relay2.contextvm.org",
-  "wss://relay.wavefunc.live",
+  "wss://relay.earthly.city",
 ];
 const TEXT_ENCODER = new TextEncoder();
 const NOSTR_PLAINTEXT_LIMIT_BYTES = 65535;

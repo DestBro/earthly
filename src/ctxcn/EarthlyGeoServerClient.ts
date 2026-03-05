@@ -737,7 +737,7 @@ export class EarthlyGeoServerClient implements EarthlyGeoServer {
     "ceadb7d5b739189fb3ecb7023a0c3f55d8995404d7750f5068865decf8b304cc";
   static readonly DEFAULT_RELAYS = [
     // "ws://localhost:3334",
-    "wss://relay.wavefunc.live",
+    "wss://relay.earthly.city",
     "wss://relay2.contextvm.org",
   ];
   private client: Client;

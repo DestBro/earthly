@@ -9,7 +9,7 @@
 
 // Development defaults (used when process.env is not available)
 const DEV_DEFAULTS = {
-  RELAY_URL: "wss://relay.wavefunc.live",
+  RELAY_URL: "wss://relay.earthly.city",
   SERVER_PUBKEY:
     "ceadb7d5b739189fb3ecb7023a0c3f55d8995404d7750f5068865decf8b304cc",
   CLIENT_KEY:

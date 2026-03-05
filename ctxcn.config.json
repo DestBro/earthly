@@ -1,7 +1,7 @@
 {
   "source": "src/ctxcn",
   "relays": [
-    "wss://relay.wavefunc.live",
+    "wss://relay.earthly.city",
     "wss://relay2.contextvm.org"
   ],
   "addedClients": [

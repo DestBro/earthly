@@ -32,7 +32,7 @@ type TabType = 'scan' | 'paste'
 
 // Common NIP-46 relays
 const DEFAULT_RELAYS = [
-	{ value: 'wss://relay.wavefunc.live', label: 'relay.wavefunc.live' },
+	{ value: 'wss://relay.earthly.city', label: 'relay.earthly.city' },
 	{ value: 'wss://relay.nsec.app', label: 'relay.nsec.app' },
 	{ value: 'wss://relay.damus.io', label: 'relay.damus.io' },
 	{ value: 'wss://nos.lol', label: 'nos.lol' },

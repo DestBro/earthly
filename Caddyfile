@@ -18,6 +18,17 @@ www.earthly.city {
 }
 
 
+# Nostr relay (WebSocket)
+relay.earthly.city {
+    reverse_proxy 127.0.0.1:3334
+    encode gzip
+
+    log {
+        output file /var/log/caddy/relay-access.log
+        format json
+    }
+}
+
 # Blossom server for map chunks
 blossom.earthly.city {
     reverse_proxy 127.0.0.1:3001

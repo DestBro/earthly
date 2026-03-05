@@ -55,7 +55,7 @@ func main() {
 	// Initialize relay
 	relay := khatru.NewRelay()
 	relay.Info.Name = "Earthly City Relay"
-	relay.Info.Description = "A Nostr relay for internet radio stations with full-text search"
+	relay.Info.Description = "A Nostr relay for collaborative geographic mapping with full-text search"
 	relay.Info.PubKey = "96c727f4d1ea18a80d03621520ebfe3c9be1387033009a4f5b65959d09222eec"
 	relay.Info.Icon = "https://earthly.city/icons/logo.png"
 	relay.Info.Contact = "https://github.com/schlaus/earthly-rewrite"

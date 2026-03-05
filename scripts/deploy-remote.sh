@@ -22,15 +22,18 @@ echo "📦 Extracting files..."
 tar -xzf deploy.tar.gz
 rm deploy.tar.gz
 
-# Install dependencies (only if node_modules missing)
-if [ ! -d "node_modules" ]; then
-    echo "📦 Installing dependencies..."
-    bun install --production
-fi
+# Install dependencies
+echo "📦 Installing dependencies..."
+bun install
 
 # Stop running processes before updating binaries
 echo "🔄 Stopping services..."
 pm2 delete all 2>/dev/null || true
+
+# Build the Go relay binary
+echo "🔨 Building Go relay..."
+(cd relay && CGO_ENABLED=1 go build -o relay .)
+echo "✅ Relay binary built"
 
 # Always download the latest mapnolia server binary
 echo "📦 Downloading latest mapnolia server..."
@@ -80,6 +83,14 @@ pm2 start ./mapnolia-server \
     --log-date-format 'YYYY-MM-DD HH:mm:ss Z' \
     -e logs/mapnolia-error.log \
     -o logs/mapnolia-out.log \
+    --merge-logs
+
+PORT=3334 pm2 start relay/relay \
+    --name earthly-relay \
+    --max-memory-restart 500M \
+    --log-date-format 'YYYY-MM-DD HH:mm:ss Z' \
+    -e logs/relay-error.log \
+    -o logs/relay-out.log \
     --merge-logs
 
 pm2 save

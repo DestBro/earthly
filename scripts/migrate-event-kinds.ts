@@ -51,7 +51,7 @@ const NOSTR_CONNECT_URIS: string[] = [
 /**
  * Source relay to fetch events from
  */
-const SOURCE_RELAY = "wss://relay.wavefunc.live";
+const SOURCE_RELAY = "wss://relay.earthly.city";
 
 /**
  * Target relay(s) to publish migrated events to
