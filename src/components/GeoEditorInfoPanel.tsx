@@ -136,6 +136,8 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 	const publishMessage = useEditorStore((state) => state.publishMessage)
 	const publishError = useEditorStore((state) => state.publishError)
 	const viewMode = useEditorStore((state) => state.viewMode)
+	const viewDataset = useEditorStore((state) => state.viewDataset)
+	const viewCollection = useEditorStore((state) => state.viewCollection)
 	const setViewMode = useEditorStore((state) => state.setViewMode)
 	const setViewDataset = useEditorStore((state) => state.setViewDataset)
 	const setViewCollection = useEditorStore((state) => state.setViewCollection)
@@ -552,6 +554,19 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 							: undefined
 					}
 				/>
+			)
+		}
+
+		if (!viewDataset && !viewCollection) {
+			return (
+				<div className="h-full flex items-center justify-center p-6">
+					<div className="max-w-sm text-center space-y-2">
+						<p className="text-sm font-medium text-gray-900">Nothing selected</p>
+						<p className="text-xs text-gray-500">
+							Choose a geometry, collection, or context to inspect.
+						</p>
+					</div>
+				</div>
 			)
 		}
 

@@ -1,6 +1,5 @@
 import {
 	Database,
-	FilePenLine,
 	FolderOpen,
 	Globe,
 	HelpCircle,
@@ -49,39 +48,38 @@ import type { EditorFeature } from '../features/geo-editor/core'
 import { EntitySearchPopover, type EntitySearchResult } from './entity-search'
 
 type SidebarContentMode = Exclude<SidebarViewMode, 'combined'>
+type EntityWorkspace = 'geometry' | 'collection' | 'context'
+type WorkViewMode = 'datasets' | 'collections' | 'contexts' | 'chat' | 'user'
+type MetaViewMode = 'posts' | 'wallet' | 'settings' | 'help'
 
-const META_VIEW_MODES: SidebarContentMode[] = ['posts', 'wallet', 'settings']
-const SPLIT_COMPANION_ALLOWED_MODES = new Set<SidebarContentMode>([
-	'datasets',
-	'collections',
-	'chat',
-	'user',
-	'help',
-])
+const WORK_VIEW_MODES: WorkViewMode[] = ['datasets', 'collections', 'contexts', 'chat', 'user']
+const META_VIEW_MODES: MetaViewMode[] = ['posts', 'wallet', 'settings', 'help']
 
-/** Navigation items for primary view modes (top icon list) */
-const editorNavItem: {
-	mode: SidebarViewMode
+const entityNavItems: {
+	entity: EntityWorkspace
 	title: string
 	icon: typeof Database
-} = { mode: 'edit', title: 'Editor', icon: Pencil }
+}[] = [
+	{ entity: 'geometry', title: 'Geometry', icon: Pencil },
+	{ entity: 'collection', title: 'Collection', icon: FolderOpen },
+	{ entity: 'context', title: 'Context', icon: Globe },
+]
 
-const primaryNavItems: {
-	mode: SidebarViewMode
+const workNavItems: {
+	mode: WorkViewMode
 	title: string
 	icon: typeof Database
 }[] = [
 	{ mode: 'datasets', title: 'Datasets', icon: Database },
 	{ mode: 'collections', title: 'Collections', icon: FolderOpen },
 	{ mode: 'contexts', title: 'Contexts', icon: Globe },
-	{ mode: 'context-editor', title: 'Context Editor', icon: FilePenLine },
 	{ mode: 'chat', title: 'AI Chat', icon: MessageCircle },
-	{ mode: 'user', title: 'Profile', icon: User },
+	{ mode: 'user', title: 'My Entities', icon: User },
 ]
 
 /** Navigation items for utility/meta modes (footer icon list) */
 const metaNavItems: {
-	mode: SidebarViewMode
+	mode: MetaViewMode
 	title: string
 	icon: typeof Settings2
 }[] = [
@@ -91,8 +89,13 @@ const metaNavItems: {
 	{ mode: 'help', title: 'Help', icon: HelpCircle },
 ]
 
-/** All view mode items for header title lookup */
-const allViewModeItems = [editorNavItem, ...primaryNavItems, ...metaNavItems]
+function isWorkMode(mode: SidebarContentMode): mode is WorkViewMode {
+	return (WORK_VIEW_MODES as SidebarContentMode[]).includes(mode)
+}
+
+function isMetaMode(mode: SidebarContentMode): mode is MetaViewMode {
+	return (META_VIEW_MODES as SidebarContentMode[]).includes(mode)
+}
 
 interface AppSidebarProps {
 	geoEvents: NDKGeoEvent[]
@@ -218,9 +221,28 @@ export function AppSidebar({
 }: AppSidebarProps) {
 	const { setOpen, sidebarExpanded, setSidebarExpanded } = useSidebar()
 	const viewMode = useEditorStore((state) => state.sidebarViewMode)
+	const editorViewMode = useEditorStore((state) => state.viewMode)
+	const viewDataset = useEditorStore((state) => state.viewDataset)
+	const viewCollection = useEditorStore((state) => state.viewCollection)
+	const viewContext = useEditorStore((state) => state.viewContext)
+	const setEditorViewMode = useEditorStore((state) => state.setViewMode)
+	const setViewDatasetState = useEditorStore((state) => state.setViewDataset)
+	const setViewCollectionState = useEditorStore((state) => state.setViewCollection)
+	const setViewCollectionEventsState = useEditorStore((state) => state.setViewCollectionEvents)
+	const setViewContextState = useEditorStore((state) => state.setViewContext)
+	const setViewContextDatasetsState = useEditorStore((state) => state.setViewContextDatasets)
+	const setViewContextCollectionsState = useEditorStore((state) => state.setViewContextCollections)
 	const { navigateToView, navigateToContext, clearContextScope, contextNaddr, encodeContextNaddr } =
 		useRouting()
 	const [splitWithEditor, setSplitWithEditor] = useState(viewMode === 'combined')
+	const [activeEntity, setActiveEntity] = useState<EntityWorkspace>('geometry')
+	const [activeWorkMode, setActiveWorkMode] = useState<WorkViewMode>('datasets')
+	const [showEntityAsFullPanel, setShowEntityAsFullPanel] = useState(viewMode === 'edit')
+	const [entityIntent, setEntityIntent] = useState<Record<EntityWorkspace, 'inspect' | 'edit'>>({
+		geometry: 'edit',
+		collection: 'edit',
+		context: 'edit',
+	})
 
 	const activeContextScope = useMemo(() => {
 		if (!contextNaddr) return null
@@ -256,18 +278,266 @@ export function AppSidebar({
 		mode === 'combined' ? 'datasets' : mode
 
 	const contentMode = resolveContentMode(viewMode)
-	const canUseSplitCompanion =
-		SPLIT_COMPANION_ALLOWED_MODES.has(contentMode) && !META_VIEW_MODES.includes(contentMode)
+	const metaModeActive = isMetaMode(contentMode)
+
 	useEffect(() => {
-		if (!canUseSplitCompanion && splitWithEditor) {
-			setSplitWithEditor(false)
+		if (isWorkMode(contentMode)) {
+			setActiveWorkMode(contentMode)
 		}
-	}, [canUseSplitCompanion, splitWithEditor])
-	const showSplitCompanion = canUseSplitCompanion && splitWithEditor && contentMode !== 'edit'
-	const currentTitle =
-		viewMode === 'combined'
-			? 'Datasets + Editor'
-			: allViewModeItems.find((i) => i.mode === viewMode)?.title
+	}, [contentMode])
+
+	useEffect(() => {
+		if (!splitWithEditor && (isWorkMode(contentMode) || isMetaMode(contentMode))) {
+			setShowEntityAsFullPanel(false)
+		}
+	}, [contentMode, splitWithEditor])
+
+	useEffect(() => {
+		if (contextEditorMode !== 'none' || viewContext) {
+			setActiveEntity('context')
+			if (!splitWithEditor) {
+				setShowEntityAsFullPanel(true)
+			}
+			return
+		}
+
+		if (collectionEditorMode !== 'none' || viewCollection) {
+			setActiveEntity('collection')
+			if (!splitWithEditor) {
+				setShowEntityAsFullPanel(true)
+			}
+			return
+		}
+
+		if (viewDataset || editorViewMode === 'view') {
+			setActiveEntity('geometry')
+			if (!splitWithEditor) {
+				setShowEntityAsFullPanel(true)
+			}
+		}
+	}, [
+		collectionEditorMode,
+		contextEditorMode,
+		editorViewMode,
+		splitWithEditor,
+		viewCollection,
+		viewContext,
+		viewDataset,
+	])
+
+	const leaveMetaOverrideIfNeeded = () => {
+		if (metaModeActive) {
+			navigateToView(activeWorkMode)
+		}
+	}
+
+	const openGeometryWorkspace = () => {
+		leaveMetaOverrideIfNeeded()
+		setActiveEntity('geometry')
+		setEntityIntent((prev) => ({ ...prev, geometry: 'edit' }))
+		setShowEntityAsFullPanel(true)
+		onOpenGeometryEditor?.()
+	}
+
+	const openCollectionWorkspace = () => {
+		leaveMetaOverrideIfNeeded()
+		setActiveEntity('collection')
+		setEntityIntent((prev) => ({ ...prev, collection: 'edit' }))
+		setShowEntityAsFullPanel(true)
+		if (editingCollection) {
+			onEditCollection(editingCollection)
+			return
+		}
+		if (viewCollection) {
+			onEditCollection(viewCollection)
+			return
+		}
+		onCreateCollection()
+	}
+
+	const openContextWorkspace = () => {
+		leaveMetaOverrideIfNeeded()
+		setActiveEntity('context')
+		setEntityIntent((prev) => ({ ...prev, context: 'edit' }))
+		setShowEntityAsFullPanel(true)
+		if (editingContext) {
+			onEditContext(editingContext)
+			return
+		}
+		if (viewContext) {
+			onEditContext(viewContext)
+			return
+		}
+		onCreateContext()
+	}
+
+	const handleSelectWorkMode = (mode: WorkViewMode) => {
+		setActiveWorkMode(mode)
+		setShowEntityAsFullPanel(false)
+		navigateToView(mode)
+	}
+
+	const handleSelectMetaMode = (mode: MetaViewMode) => {
+		setShowEntityAsFullPanel(false)
+		navigateToView(mode)
+	}
+
+	const openEmptyInspectWorkspace = (entity: EntityWorkspace) => {
+		leaveMetaOverrideIfNeeded()
+		setActiveEntity(entity)
+		setEntityIntent((prev) => ({ ...prev, [entity]: 'inspect' }))
+		setShowEntityAsFullPanel(true)
+		setEditorViewMode('view')
+		setViewDatasetState(null)
+		setViewCollectionState(null)
+		setViewCollectionEventsState([])
+		setViewContextState(null)
+		setViewContextDatasetsState([])
+		setViewContextCollectionsState([])
+	}
+
+	const handleLoadDataset = (event: NDKGeoEvent) => {
+		onLoadDataset(event)
+		leaveMetaOverrideIfNeeded()
+		setActiveEntity('geometry')
+		setEntityIntent((prev) => ({ ...prev, geometry: 'edit' }))
+		setShowEntityAsFullPanel(true)
+	}
+
+	const handleInspectDataset = (event: NDKGeoEvent) => {
+		onInspectDataset(event)
+		leaveMetaOverrideIfNeeded()
+		setActiveEntity('geometry')
+		setEntityIntent((prev) => ({ ...prev, geometry: 'inspect' }))
+		setShowEntityAsFullPanel(true)
+	}
+
+	const handleInspectCollection = (collection: NDKGeoCollectionEvent, datasets: NDKGeoEvent[]) => {
+		onInspectCollection(collection, datasets)
+		leaveMetaOverrideIfNeeded()
+		setActiveEntity('collection')
+		setEntityIntent((prev) => ({ ...prev, collection: 'inspect' }))
+		setShowEntityAsFullPanel(true)
+	}
+
+	const handleInspectContext = (context: NDKMapContextEvent) => {
+		onInspectContext(context)
+		leaveMetaOverrideIfNeeded()
+		setActiveEntity('context')
+		setEntityIntent((prev) => ({ ...prev, context: 'inspect' }))
+		setShowEntityAsFullPanel(true)
+	}
+
+	const handleCreateCollection = () => {
+		onCreateCollection()
+		leaveMetaOverrideIfNeeded()
+		setActiveEntity('collection')
+		setShowEntityAsFullPanel(true)
+	}
+
+	const handleCreateContext = () => {
+		onCreateContext()
+		leaveMetaOverrideIfNeeded()
+		setActiveEntity('context')
+		setShowEntityAsFullPanel(true)
+	}
+
+	const handleEditCollection = (collection: NDKGeoCollectionEvent) => {
+		onEditCollection(collection)
+		leaveMetaOverrideIfNeeded()
+		setActiveEntity('collection')
+		setEntityIntent((prev) => ({ ...prev, collection: 'edit' }))
+		setShowEntityAsFullPanel(true)
+	}
+
+	const handleEditContext = (context: NDKMapContextEvent) => {
+		onEditContext(context)
+		leaveMetaOverrideIfNeeded()
+		setActiveEntity('context')
+		setEntityIntent((prev) => ({ ...prev, context: 'edit' }))
+		setShowEntityAsFullPanel(true)
+	}
+
+	const handleSaveCollection = (collection: NDKGeoCollectionEvent) => {
+		onSaveCollection?.(collection)
+		setShowEntityAsFullPanel(false)
+		setActiveWorkMode('collections')
+		navigateToView('collections')
+	}
+
+	const handleCloseCollectionEditor = () => {
+		onCloseCollectionEditor?.()
+		setShowEntityAsFullPanel(false)
+		setActiveWorkMode('collections')
+		navigateToView('collections')
+	}
+
+	const handleSaveContext = (context: NDKMapContextEvent) => {
+		onSaveContext?.(context)
+		setShowEntityAsFullPanel(false)
+		setActiveWorkMode('contexts')
+		navigateToView('contexts')
+	}
+
+	const handleCloseContextEditor = () => {
+		onCloseContextEditor?.()
+		setShowEntityAsFullPanel(false)
+		setActiveWorkMode('contexts')
+		navigateToView('contexts')
+	}
+
+	const currentEntityIntent = entityIntent[activeEntity]
+
+	const handleEntityIntentChange = (intent: 'inspect' | 'edit') => {
+		if (intent === currentEntityIntent) return
+		setEntityIntent((prev) => ({ ...prev, [activeEntity]: intent }))
+
+		if (activeEntity === 'geometry') {
+			if (intent === 'edit') {
+				openGeometryWorkspace()
+			} else if (activeDataset) {
+				handleInspectDataset(activeDataset)
+			} else {
+				openEmptyInspectWorkspace('geometry')
+			}
+			return
+		}
+
+		if (activeEntity === 'collection') {
+			if (intent === 'edit') {
+				const target = editingCollection ?? viewCollection
+				if (target) {
+					handleEditCollection(target)
+				} else {
+					openCollectionWorkspace()
+				}
+			} else {
+				const target = viewCollection ?? editingCollection
+				if (target) {
+					handleInspectCollection(target, [])
+				} else {
+					openEmptyInspectWorkspace('collection')
+				}
+			}
+			return
+		}
+
+		if (intent === 'edit') {
+			const target = editingContext ?? viewContext
+			if (target) {
+				handleEditContext(target)
+			} else {
+				openContextWorkspace()
+			}
+		} else {
+			const target = viewContext ?? editingContext
+			if (target) {
+				handleInspectContext(target)
+			} else {
+				openEmptyInspectWorkspace('context')
+			}
+		}
+	}
 
 	/** Common props for GeoDatasetsPanelContent */
 	const datasetsPanelProps = {
@@ -281,7 +551,7 @@ export function AppSidebar({
 		isPublishing,
 		deletingKey,
 		onClearEditing,
-		onLoadDataset,
+		onLoadDataset: handleLoadDataset,
 		onToggleVisibility,
 		onToggleAllVisibility,
 		onToggleCollectionVisibility,
@@ -291,14 +561,14 @@ export function AppSidebar({
 		getDatasetKey,
 		getDatasetName,
 		onZoomToCollection,
-		onInspectDataset,
-		onInspectCollection,
-		onInspectContext,
+		onInspectDataset: handleInspectDataset,
+		onInspectCollection: handleInspectCollection,
+		onInspectContext: handleInspectContext,
 		onOpenDebug,
-		onCreateCollection,
-		onCreateContext,
-		onEditCollection,
-		onEditContext,
+		onCreateCollection: handleCreateCollection,
+		onCreateContext: handleCreateContext,
+		onEditCollection: handleEditCollection,
+		onEditContext: handleEditContext,
 		isFocused,
 		onExitFocus,
 		onFilteredDatasetKeysChange,
@@ -313,26 +583,26 @@ export function AppSidebar({
 		collectionVisibility,
 		isPublishing,
 		deletingKey,
-		onLoadDataset,
+		onLoadDataset: handleLoadDataset,
 		onToggleVisibility,
 		onToggleAllVisibility,
 		onZoomToDataset,
 		onDeleteDataset,
 		getDatasetKey,
 		getDatasetName,
-		onInspectDataset,
+		onInspectDataset: handleInspectDataset,
 		onToggleCollectionVisibility,
 		onToggleAllCollectionVisibility,
 		onZoomToCollection,
-		onInspectCollection,
-		onEditCollection,
+		onInspectCollection: handleInspectCollection,
+		onEditCollection: handleEditCollection,
 		onOpenDebug,
 	}
 
 	/** Common props for GeoEditorInfoPanelContent */
 	const editorPanelProps = {
 		currentUserPubkey,
-		onLoadDataset,
+		onLoadDataset: handleLoadDataset,
 		onToggleVisibility,
 		onZoomToDataset,
 		onDeleteDataset,
@@ -342,72 +612,36 @@ export function AppSidebar({
 		onClose: () => {},
 		getDatasetKey,
 		getDatasetName,
-		onInspectCollection,
+		onInspectCollection: handleInspectCollection,
 		onCommentGeometryVisibility,
 		onZoomToBounds,
 		availableFeatures,
 		onMentionVisibilityToggle,
 		onMentionZoomTo,
-		onEditCollection,
+		onEditCollection: handleEditCollection,
 		collectionEditorMode,
 		editingCollection,
-		onSaveCollection,
-		onCloseCollectionEditor,
+		onSaveCollection: handleSaveCollection,
+		onCloseCollectionEditor: handleCloseCollectionEditor,
 		contextEditorMode,
 		editingContext,
-		onSaveContext,
-		onCloseContextEditor,
+		onSaveContext: handleSaveContext,
+		onCloseContextEditor: handleCloseContextEditor,
 		mapContextEvents,
 		onZoomToFeature,
 		featureCollectionForUpload,
 		onBlossomUploadComplete,
 		ndk,
 	}
-	const splitCompanionEditorPanelProps = {
-		...editorPanelProps,
-		collectionEditorMode: 'none' as const,
-		editingCollection: null,
-		contextEditorMode: 'none' as const,
-		editingContext: null,
-	}
 
-	/** Render non-editor panel content based on active mode */
-	const renderPrimaryContent = (mode: SidebarContentMode) => {
+	const renderWorkContent = (mode: WorkViewMode) => {
 		switch (mode) {
 			case 'datasets':
 				return <GeoDatasetsPanelContent mode="datasets" {...datasetsPanelProps} />
-
 			case 'collections':
 				return <GeoDatasetsPanelContent mode="collections" {...datasetsPanelProps} />
-
 			case 'contexts':
 				return <GeoDatasetsPanelContent mode="contexts" {...datasetsPanelProps} />
-
-			case 'context-editor':
-				return (
-					<GeoEditorInfoPanelContent
-						{...editorPanelProps}
-						contextEditorMode={contextEditorMode !== 'none' ? contextEditorMode : 'create'}
-					/>
-				)
-
-			case 'posts':
-				return <ShoutboxPanel />
-
-			case 'settings':
-				return (
-					<div className="p-4">
-						<MapSettingsPanel />
-					</div>
-				)
-
-			case 'wallet':
-				return (
-					<div className="p-4">
-						<Nip60Wallet />
-					</div>
-				)
-
 			case 'chat':
 				return (
 					<ChatPanel
@@ -418,51 +652,76 @@ export function AppSidebar({
 						getDatasetName={getDatasetName}
 					/>
 				)
-
-			case 'help':
-				return <HelpPanel multiSelectModifier={multiSelectModifier} />
-
 			case 'user': {
-				// Show user profile panel - use route pubkey if available, otherwise current user
 				const profilePubkey = userPubkey ?? currentUserPubkey
 				if (!profilePubkey) {
 					return (
 						<div className="p-4 text-center text-gray-500">
-							<p>Connect to view your profile</p>
+							<p>Connect to view your entities</p>
 						</div>
 					)
 				}
 				return <UserProfilePanel pubkey={profilePubkey} {...userProfilePanelProps} />
 			}
-
 			default:
 				return null
 		}
 	}
 
-	/** Render full content area, optionally with editor companion split */
-	const renderContent = () => {
-		if (contentMode === 'edit') {
-			return <GeoEditorInfoPanelContent {...editorPanelProps} />
+	const renderMetaContent = (mode: MetaViewMode) => {
+		switch (mode) {
+			case 'posts':
+				return <ShoutboxPanel />
+			case 'wallet':
+				return (
+					<div className="p-4">
+						<Nip60Wallet />
+					</div>
+				)
+			case 'settings':
+				return (
+					<div className="p-4">
+						<MapSettingsPanel />
+					</div>
+				)
+			case 'help':
+				return <HelpPanel multiSelectModifier={multiSelectModifier} />
+			default:
+				return null
 		}
+	}
 
-		if (showSplitCompanion) {
+	const renderEntityContent = () => <GeoEditorInfoPanelContent {...editorPanelProps} />
+
+	/** Render full content area according to split + workspace rules */
+	const renderContent = () => {
+		if (splitWithEditor && !metaModeActive) {
 			return (
 				<ResizablePanelGroup direction="vertical" className="h-full">
-					<ResizablePanel id={`${contentMode}-panel`} defaultSize={52} minSize={20}>
-						<div className="h-full overflow-y-auto">{renderPrimaryContent(contentMode)}</div>
+					<ResizablePanel id={`${activeEntity}-editor`} defaultSize={52} minSize={20}>
+						<div className="h-full overflow-y-auto">{renderEntityContent()}</div>
 					</ResizablePanel>
 					<ResizableHandle withHandle />
-					<ResizablePanel id="editor-panel" defaultSize={48} minSize={20}>
-						<div className="h-full overflow-y-auto">
-							<GeoEditorInfoPanelContent {...splitCompanionEditorPanelProps} />
-						</div>
+					<ResizablePanel id={`${activeWorkMode}-panel`} defaultSize={48} minSize={20}>
+						<div className="h-full overflow-y-auto">{renderWorkContent(activeWorkMode)}</div>
 					</ResizablePanel>
 				</ResizablePanelGroup>
 			)
 		}
 
-		return renderPrimaryContent(contentMode)
+		if (metaModeActive && isMetaMode(contentMode)) {
+			return renderMetaContent(contentMode)
+		}
+
+		if (showEntityAsFullPanel || contentMode === 'edit' || contentMode === 'context-editor') {
+			return renderEntityContent()
+		}
+
+		if (isWorkMode(contentMode)) {
+			return renderWorkContent(contentMode)
+		}
+
+		return renderWorkContent(activeWorkMode)
 	}
 
 	return (
@@ -491,31 +750,39 @@ export function AppSidebar({
 					<SidebarGroup>
 						<SidebarGroupContent className="px-1.5 md:px-0">
 							<SidebarMenu>
-								<SidebarMenuItem key={editorNavItem.mode}>
-									<SidebarMenuButton
-										tooltip={{ children: editorNavItem.title, hidden: false }}
-										onClick={() => {
-											onOpenGeometryEditor?.()
-											navigateToView(editorNavItem.mode)
-											setOpen(true)
-										}}
-										isActive={viewMode === editorNavItem.mode}
-										className="px-2.5 md:px-2 border border-orange-300 bg-orange-50 text-orange-900 hover:bg-orange-100 data-[active=true]:bg-orange-600 data-[active=true]:text-white data-[active=true]:border-orange-600 font-semibold shadow-sm"
-									>
-										<editorNavItem.icon />
-										<span>{editorNavItem.title}</span>
-									</SidebarMenuButton>
-								</SidebarMenuItem>
+								{entityNavItems.map((item) => (
+									<SidebarMenuItem key={item.entity}>
+										<SidebarMenuButton
+											tooltip={{ children: item.title, hidden: false }}
+											onClick={() => {
+												if (item.entity === 'geometry') {
+													openGeometryWorkspace()
+												} else if (item.entity === 'collection') {
+													openCollectionWorkspace()
+												} else {
+													openContextWorkspace()
+												}
+												setOpen(true)
+											}}
+											isActive={
+												activeEntity === item.entity && (splitWithEditor || showEntityAsFullPanel)
+											}
+											className="px-2.5 md:px-2 border border-red-300 bg-red-50 text-red-900 hover:bg-red-100 data-[active=true]:bg-red-600 data-[active=true]:text-white data-[active=true]:border-red-600 font-semibold shadow-sm"
+										>
+											<item.icon />
+											<span>{item.title}</span>
+										</SidebarMenuButton>
+									</SidebarMenuItem>
+								))}
 
 								<SidebarMenuItem key="editor-split-toggle">
 									<SidebarMenuButton
 										tooltip={{
-											children: 'Toggle split layout with geometry editor companion.',
+											children: 'Toggle entity/work split layout.',
 											hidden: false,
 										}}
 										onClick={() => setSplitWithEditor((prev) => !prev)}
 										isActive={splitWithEditor}
-										disabled={!canUseSplitCompanion}
 										className="px-2.5 md:px-2 border border-orange-200 bg-orange-50/70 text-orange-800 hover:bg-orange-100 data-[active=true]:bg-orange-600 data-[active=true]:text-white data-[active=true]:border-orange-600"
 									>
 										<PanelTop />
@@ -523,17 +790,18 @@ export function AppSidebar({
 									</SidebarMenuButton>
 								</SidebarMenuItem>
 
-								{primaryNavItems.map((item) => (
+								{workNavItems.map((item) => (
 									<SidebarMenuItem key={item.mode}>
 										<SidebarMenuButton
 											tooltip={{ children: item.title, hidden: false }}
 											onClick={() => {
-												navigateToView(item.mode)
+												handleSelectWorkMode(item.mode)
 												setOpen(true)
 											}}
 											isActive={
-												viewMode === item.mode ||
-												(viewMode === 'combined' && item.mode === 'datasets')
+												isWorkMode(contentMode) &&
+												contentMode === item.mode &&
+												(!showEntityAsFullPanel || splitWithEditor)
 											}
 											className="px-2.5 md:px-2"
 										>
@@ -554,10 +822,10 @@ export function AppSidebar({
 								<SidebarMenuButton
 									tooltip={{ children: item.title, hidden: false }}
 									onClick={() => {
-										navigateToView(item.mode)
+										handleSelectMetaMode(item.mode)
 										setOpen(true)
 									}}
-									isActive={viewMode === item.mode}
+									isActive={isMetaMode(contentMode) && contentMode === item.mode}
 									className="px-2.5 md:px-2"
 								>
 									<item.icon />
@@ -573,13 +841,31 @@ export function AppSidebar({
 			<Sidebar collapsible="none" className="hidden flex-1 md:flex">
 				<SidebarHeader className="gap-3.5 border-b p-4">
 					<div className="flex w-full items-center gap-2">
-						<div className="text-foreground flex items-center gap-2 text-base font-medium shrink-0 min-w-0">
-							<span className="truncate">{currentTitle}</span>
-							{showSplitCompanion && (
-								<span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-700">
-									Split
-								</span>
-							)}
+						<div className="shrink-0">
+							<div className="inline-flex items-center rounded-md border border-border bg-background p-0.5">
+								<button
+									type="button"
+									className={`px-2 py-1 text-[10px] font-semibold uppercase tracking-wide rounded ${
+										currentEntityIntent === 'inspect'
+											? 'bg-muted text-foreground'
+											: 'text-muted-foreground'
+									}`}
+									onClick={() => handleEntityIntentChange('inspect')}
+								>
+									Inspect
+								</button>
+								<button
+									type="button"
+									className={`px-2 py-1 text-[10px] font-semibold uppercase tracking-wide rounded ${
+										currentEntityIntent === 'edit'
+											? 'bg-muted text-foreground'
+											: 'text-muted-foreground'
+									}`}
+									onClick={() => handleEntityIntentChange('edit')}
+								>
+									Edit
+								</button>
+							</div>
 						</div>
 
 						<div className="min-w-0 flex-1">
