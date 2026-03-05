@@ -951,7 +951,6 @@ export function GeoEditorView() {
 		editingCollection,
 		contextEditorMode,
 		editingContext,
-		clearEditorModes,
 		handleCreateCollection,
 		handleEditCollection,
 		handleSaveCollection,
@@ -1025,19 +1024,7 @@ export function GeoEditorView() {
 	])
 
 	// Feature popup handlers
-	const {
-		featurePopupData,
-		setFeaturePopupData,
-		handleFeaturePopupClose,
-		handleFeaturePopupZoom,
-		handleFeaturePopupEdit,
-		handleFeaturePopupInspect,
-	} = useFeaturePopup({
-		handleZoomToBounds,
-		handleLoadDatasetForEditing,
-		handleInspectDataset,
-		clearEditorModes,
-	})
+	const { featurePopupData, setFeaturePopupData } = useFeaturePopup()
 
 	// Pan lock and magnifier
 	const togglePanLock = useCallback(() => {
@@ -1057,7 +1044,6 @@ export function GeoEditorView() {
 		currentUserPubkey: currentUser?.pubkey,
 		getDatasetName,
 		handleInspectDatasetWithoutFocus,
-		ensureResolvedFeatureCollection,
 		setFeaturePopupData,
 	})
 
@@ -1297,15 +1283,8 @@ export function GeoEditorView() {
 						}}
 					/>
 
-					{/* Feature Popup - appears when clicking a geometry on the map */}
-					<FeaturePopup
-						data={featurePopupData}
-						containerRef={mapContainerRef}
-						onInspect={handleFeaturePopupInspect}
-						onEdit={handleFeaturePopupEdit}
-						onZoom={handleFeaturePopupZoom}
-						onClose={handleFeaturePopupClose}
-					/>
+					{/* Feature Popup - appears when hovering a geometry on the map */}
+					<FeaturePopup data={featurePopupData} containerRef={mapContainerRef} />
 
 					{mapError && (
 						<div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded z-50">

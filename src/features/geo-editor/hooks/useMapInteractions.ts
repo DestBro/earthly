@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import type maplibregl from 'maplibre-gl'
+import type { Feature, Geometry } from 'geojson'
 import type { NDKGeoEvent } from '@/lib/ndk/NDKGeoEvent'
 import { bboxFromGeometry } from '@/lib/geo/bbox'
 import { useEditorStore } from '../store'
@@ -22,7 +23,6 @@ interface UseMapInteractionsParams {
 	currentUserPubkey: string | undefined
 	getDatasetName: (event: NDKGeoEvent) => string
 	handleInspectDatasetWithoutFocus: (event: NDKGeoEvent) => void
-	ensureResolvedFeatureCollection: (event: NDKGeoEvent) => Promise<GeoJSON.FeatureCollection>
 	setFeaturePopupData: (data: FeaturePopupData | null) => void
 }
 
@@ -34,18 +34,16 @@ export function useMapInteractions({
 	currentUserPubkey,
 	getDatasetName,
 	handleInspectDatasetWithoutFocus,
-	ensureResolvedFeatureCollection,
 	setFeaturePopupData,
 }: UseMapInteractionsParams) {
 	const viewMode = useEditorStore((state) => state.viewMode)
 	const currentMode = useEditorStore((state) => state.mode)
 	const setFocusedMapGeometry = useEditorStore((state) => state.setFocusedMapGeometry)
+	const mapInstance = mapRef.current
+	const isInDrawingMode = currentMode.startsWith('draw_')
 
 	useEffect(() => {
-		if (!mapRef.current || !remoteLayersReady) return
-		const mapInstance = mapRef.current
-
-		const isInDrawingMode = currentMode.startsWith('draw_')
+		if (!mapInstance || !remoteLayersReady) return
 
 		const remoteLayers = [
 			REMOTE_FILL_LAYER,
@@ -86,7 +84,7 @@ export function useMapInteractions({
 			}
 		}
 
-		const handleMapDatasetClick = (event: maplibregl.MapLayerMouseEvent & any) => {
+		const handleMapDatasetClick = (event: maplibregl.MapLayerMouseEvent) => {
 			const feature = event.features?.[0]
 			if (!feature) return
 
@@ -117,19 +115,39 @@ export function useMapInteractions({
 				geoEventsRef.current.find((ev) => (ev.datasetId ?? ev.id) === datasetId)
 
 			if (!dataset) return
+			handleInspectDatasetWithoutFocus(dataset)
+		}
 
-			const isOwner = currentUserPubkey === dataset.pubkey
-			const datasetName = getDatasetName(dataset)
+		const handleMapDatasetHover = (event: maplibregl.MapLayerMouseEvent) => {
+			const feature = event.features?.[0]
+			if (!feature || viewMode === 'edit') {
+				setFeaturePopupData(null)
+				return
+			}
+
+			if (!feature?.properties) {
+				setFeaturePopupData(null)
+				return
+			}
+
+			const sourceEventId = feature.properties.sourceEventId as string | undefined
+			const datasetId = feature.properties.datasetId as string | undefined
+			const dataset =
+				geoEventsRef.current.find((ev) => ev.id === sourceEventId) ??
+				geoEventsRef.current.find((ev) => (ev.datasetId ?? ev.id) === datasetId)
+
+			if (!dataset) {
+				setFeaturePopupData(null)
+				return
+			}
+
 			setFeaturePopupData({
 				dataset,
-				feature: feature as any,
+				feature: feature as unknown as Feature<Geometry>,
 				clickPosition: { x: event.point.x, y: event.point.y },
-				isOwner,
-				datasetName,
+				isOwner: currentUserPubkey === dataset.pubkey,
+				datasetName: getDatasetName(dataset),
 			})
-
-			ensureResolvedFeatureCollection(dataset).catch(() => undefined)
-			handleInspectDatasetWithoutFocus(dataset)
 		}
 
 		const handleMouseEnter = () => {
@@ -140,11 +158,13 @@ export function useMapInteractions({
 		const handleMouseLeave = () => {
 			if (isInDrawingMode) return
 			mapInstance.getCanvas().style.cursor = ''
+			setFeaturePopupData(null)
 		}
 
 		for (const layer of remoteLayers) {
 			if (mapInstance.getLayer(layer)) {
 				mapInstance.on('click', layer, handleMapDatasetClick)
+				mapInstance.on('mousemove', layer, handleMapDatasetHover)
 				mapInstance.on('mouseenter', layer, handleMouseEnter)
 				mapInstance.on('mouseleave', layer, handleMouseLeave)
 			}
@@ -160,6 +180,7 @@ export function useMapInteractions({
 			for (const layer of remoteLayers) {
 				try {
 					mapInstance.off('click', layer, handleMapDatasetClick)
+					mapInstance.off('mousemove', layer, handleMapDatasetHover)
 					mapInstance.off('mouseenter', layer, handleMouseEnter)
 					mapInstance.off('mouseleave', layer, handleMouseLeave)
 				} catch {
@@ -175,8 +196,9 @@ export function useMapInteractions({
 			}
 		}
 	}, [
+		mapInstance,
+		isInDrawingMode,
 		handleInspectDatasetWithoutFocus,
-		ensureResolvedFeatureCollection,
 		geoEventsRef,
 		remoteLayersReady,
 		setFocusedMapGeometry,
@@ -184,5 +206,6 @@ export function useMapInteractions({
 		viewMode,
 		currentUserPubkey,
 		getDatasetName,
+		setFeaturePopupData,
 	])
 }
