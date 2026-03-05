@@ -66,7 +66,7 @@ function decodeContextCoordinateFromNaddr(naddr: string): string | undefined {
  * Parse the current hash into a RouteState
  *
  * URL patterns:
- * - #/ or #/datasets → datasets view, no focus, no context scope
+ * - #/ or #/contexts → contexts view, no focus, no context scope
  * - #/{sidebarView} → specified sidebar view, no focus, no context scope
  * - #/{sidebarView}/{focusType}/{naddr} → specified sidebar + focus, no context scope
  * - #/context/{contextNaddr}/{sidebarView?} → context scope + sidebar
@@ -75,19 +75,19 @@ function decodeContextCoordinateFromNaddr(naddr: string): string | undefined {
 function parseHash(): RouteState {
 	const hash = window.location.hash.slice(1) // Remove leading #
 	if (!hash || hash === '/') {
-		return { focusType: 'none', sidebarView: 'datasets' }
+		return { focusType: 'none', sidebarView: 'contexts' }
 	}
 
 	// Split path segments: /segment1/segment2/segment3...
 	const segments = hash.split('/').filter(Boolean)
 
 	if (segments.length === 0) {
-		return { focusType: 'none', sidebarView: 'datasets' }
+		return { focusType: 'none', sidebarView: 'contexts' }
 	}
 
 	const first = segments[0]
 	if (!first) {
-		return { focusType: 'none', sidebarView: 'datasets' }
+		return { focusType: 'none', sidebarView: 'contexts' }
 	}
 
 	// Handle user profile route: #/user/{npub_or_pubkey}
@@ -163,8 +163,8 @@ function parseHash(): RouteState {
 		return { focusType: 'none', sidebarView: resolvedFirst }
 	}
 
-	// Unknown route, default to datasets
-	return { focusType: 'none', sidebarView: 'datasets' }
+	// Unknown route, default to contexts
+	return { focusType: 'none', sidebarView: 'contexts' }
 }
 
 /**

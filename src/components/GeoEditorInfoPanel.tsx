@@ -111,7 +111,7 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 		availableFeatures = [],
 		onMentionVisibilityToggle,
 		onMentionZoomTo,
-		onEditCollection,
+		onEditCollection: _onEditCollection,
 		collectionEditorMode = 'none',
 		editingCollection,
 		onSaveCollection,
@@ -587,7 +587,6 @@ export function GeoEditorInfoPanelContent(props: GeoEditorInfoPanelProps) {
 				availableFeatures={availableFeatures}
 				onMentionVisibilityToggle={onMentionVisibilityToggle}
 				onMentionZoomTo={onMentionZoomTo}
-				onEditCollection={onEditCollection}
 			/>
 		)
 	}

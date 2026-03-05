@@ -967,7 +967,6 @@ export function GeoEditorView() {
 		handleInspectCollectionWithModeSwitch,
 	} = useCollectionContextEditor({
 		isMobile,
-		exitViewMode,
 		ensureInfoPanelVisible,
 		encodeContextNaddr,
 		navigateToContext,

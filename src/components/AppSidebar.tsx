@@ -221,7 +221,6 @@ export function AppSidebar({
 }: AppSidebarProps) {
 	const { setOpen, sidebarExpanded, setSidebarExpanded } = useSidebar()
 	const viewMode = useEditorStore((state) => state.sidebarViewMode)
-	const editorViewMode = useEditorStore((state) => state.viewMode)
 	const viewDataset = useEditorStore((state) => state.viewDataset)
 	const viewCollection = useEditorStore((state) => state.viewCollection)
 	const viewContext = useEditorStore((state) => state.viewContext)
@@ -309,7 +308,7 @@ export function AppSidebar({
 			return
 		}
 
-		if (viewDataset || editorViewMode === 'view') {
+		if (viewDataset) {
 			setActiveEntity('geometry')
 			if (!splitWithEditor) {
 				setShowEntityAsFullPanel(true)
@@ -318,12 +317,29 @@ export function AppSidebar({
 	}, [
 		collectionEditorMode,
 		contextEditorMode,
-		editorViewMode,
 		splitWithEditor,
 		viewCollection,
 		viewContext,
 		viewDataset,
 	])
+
+	useEffect(() => {
+		if (collectionEditorMode !== 'none') {
+			setEntityIntent((prev) => ({ ...prev, collection: 'edit' }))
+		}
+		if (contextEditorMode !== 'none') {
+			setEntityIntent((prev) => ({ ...prev, context: 'edit' }))
+		}
+		if (viewDataset) {
+			setEntityIntent((prev) => ({ ...prev, geometry: 'inspect' }))
+		}
+		if (viewCollection) {
+			setEntityIntent((prev) => ({ ...prev, collection: 'inspect' }))
+		}
+		if (viewContext) {
+			setEntityIntent((prev) => ({ ...prev, context: 'inspect' }))
+		}
+	}, [collectionEditorMode, contextEditorMode, viewCollection, viewContext, viewDataset])
 
 	const leaveMetaOverrideIfNeeded = () => {
 		if (metaModeActive) {
@@ -487,14 +503,27 @@ export function AppSidebar({
 	}
 
 	const currentEntityIntent = entityIntent[activeEntity]
+	const entityToggleEnabled = !metaModeActive && (splitWithEditor || showEntityAsFullPanel)
+	const geometryEditLabel =
+		activeEntity === 'geometry' &&
+		viewDataset &&
+		currentUserPubkey &&
+		viewDataset.pubkey !== currentUserPubkey
+			? 'Load copy'
+			: 'Edit'
 
 	const handleEntityIntentChange = (intent: 'inspect' | 'edit') => {
+		if (!entityToggleEnabled) return
 		if (intent === currentEntityIntent) return
 		setEntityIntent((prev) => ({ ...prev, [activeEntity]: intent }))
 
 		if (activeEntity === 'geometry') {
 			if (intent === 'edit') {
-				openGeometryWorkspace()
+				if (viewDataset) {
+					handleLoadDataset(viewDataset)
+				} else {
+					openGeometryWorkspace()
+				}
 			} else if (activeDataset) {
 				handleInspectDataset(activeDataset)
 			} else {
@@ -842,9 +871,14 @@ export function AppSidebar({
 				<SidebarHeader className="gap-3.5 border-b p-4">
 					<div className="flex w-full items-center gap-2">
 						<div className="shrink-0">
-							<div className="inline-flex items-center rounded-md border border-border bg-background p-0.5">
+							<div
+								className={`inline-flex items-center rounded-md border border-border bg-background p-0.5 ${
+									entityToggleEnabled ? '' : 'opacity-45'
+								}`}
+							>
 								<button
 									type="button"
+									disabled={!entityToggleEnabled}
 									className={`px-2 py-1 text-[10px] font-semibold uppercase tracking-wide rounded ${
 										currentEntityIntent === 'inspect'
 											? 'bg-muted text-foreground'
@@ -856,6 +890,7 @@ export function AppSidebar({
 								</button>
 								<button
 									type="button"
+									disabled={!entityToggleEnabled}
 									className={`px-2 py-1 text-[10px] font-semibold uppercase tracking-wide rounded ${
 										currentEntityIntent === 'edit'
 											? 'bg-muted text-foreground'
@@ -863,7 +898,7 @@ export function AppSidebar({
 									}`}
 									onClick={() => handleEntityIntentChange('edit')}
 								>
-									Edit
+									{geometryEditLabel}
 								</button>
 							</div>
 						</div>

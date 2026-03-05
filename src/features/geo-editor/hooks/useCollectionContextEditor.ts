@@ -6,7 +6,6 @@ import { useEditorStore, type SidebarViewMode } from '../store'
 
 interface UseCollectionContextEditorParams {
 	isMobile: boolean
-	exitViewMode: () => void
 	ensureInfoPanelVisible: () => void
 	encodeContextNaddr: (context: NDKMapContextEvent) => string | null
 	navigateToContext: (contextNaddr: string, sidebarView?: SidebarViewMode) => void
@@ -19,7 +18,6 @@ interface UseCollectionContextEditorParams {
 
 export function useCollectionContextEditor({
 	isMobile,
-	exitViewMode,
 	ensureInfoPanelVisible,
 	encodeContextNaddr,
 	navigateToContext,
@@ -45,6 +43,25 @@ export function useCollectionContextEditor({
 	const [contextEditorMode, setContextEditorMode] = useState<'none' | 'create' | 'edit'>('none')
 	const [editingContext, setEditingContext] = useState<NDKMapContextEvent | null>(null)
 
+	const prepareNonGeometryEditorWorkspace = useCallback(() => {
+		// Keep global view mode out of geometry edit so toolbar stays disabled.
+		setViewModeState('view')
+		setViewDatasetState(null)
+		setViewCollectionState(null)
+		setViewContext(null)
+		setViewContextDatasets([])
+		setViewContextCollections([])
+		clearFocus()
+	}, [
+		setViewModeState,
+		setViewDatasetState,
+		setViewCollectionState,
+		setViewContext,
+		setViewContextDatasets,
+		setViewContextCollections,
+		clearFocus,
+	])
+
 	/** Reset both editor modes */
 	const clearEditorModes = useCallback(() => {
 		setCollectionEditorMode('none')
@@ -59,9 +76,9 @@ export function useCollectionContextEditor({
 		setEditingCollection(null)
 		setContextEditorMode('none')
 		setEditingContext(null)
-		exitViewMode()
+		prepareNonGeometryEditorWorkspace()
 		if (!isMobile) setShowInfoPanel(true)
-	}, [isMobile, setShowInfoPanel, exitViewMode])
+	}, [isMobile, setShowInfoPanel, prepareNonGeometryEditorWorkspace])
 
 	const handleEditCollection = useCallback(
 		(collection: NDKGeoCollectionEvent) => {
@@ -69,10 +86,10 @@ export function useCollectionContextEditor({
 			setEditingCollection(collection)
 			setContextEditorMode('none')
 			setEditingContext(null)
-			exitViewMode()
+			prepareNonGeometryEditorWorkspace()
 			if (!isMobile) setShowInfoPanel(true)
 		},
-		[isMobile, setShowInfoPanel, exitViewMode],
+		[isMobile, setShowInfoPanel, prepareNonGeometryEditorWorkspace],
 	)
 
 	const handleSaveCollection = useCallback((_collection: NDKGeoCollectionEvent) => {
@@ -124,27 +141,15 @@ export function useCollectionContextEditor({
 	const handleCreateContext = useCallback(() => {
 		clearEditorModes()
 		setContextEditorMode('create')
-		setViewModeState('edit')
-		setViewDatasetState(null)
-		setViewCollectionState(null)
-		setViewContext(null)
-		setViewContextDatasets([])
-		setViewContextCollections([])
-		clearFocus()
+		prepareNonGeometryEditorWorkspace()
 		navigateToView('context-editor')
 		if (!isMobile) setShowInfoPanel(true)
 	}, [
 		isMobile,
 		setShowInfoPanel,
-		setViewModeState,
-		setViewDatasetState,
-		setViewCollectionState,
-		setViewContext,
-		setViewContextDatasets,
-		setViewContextCollections,
-		clearFocus,
 		navigateToView,
 		clearEditorModes,
+		prepareNonGeometryEditorWorkspace,
 	])
 
 	const handleEditContext = useCallback(
@@ -152,28 +157,16 @@ export function useCollectionContextEditor({
 			clearEditorModes()
 			setContextEditorMode('edit')
 			setEditingContext(context)
-			setViewModeState('edit')
-			setViewDatasetState(null)
-			setViewCollectionState(null)
-			setViewContext(null)
-			setViewContextDatasets([])
-			setViewContextCollections([])
-			clearFocus()
+			prepareNonGeometryEditorWorkspace()
 			navigateToView('context-editor')
 			if (!isMobile) setShowInfoPanel(true)
 		},
 		[
 			isMobile,
 			setShowInfoPanel,
-			setViewModeState,
-			setViewDatasetState,
-			setViewCollectionState,
-			setViewContext,
-			setViewContextDatasets,
-			setViewContextCollections,
-			clearFocus,
 			navigateToView,
 			clearEditorModes,
+			prepareNonGeometryEditorWorkspace,
 		],
 	)
 

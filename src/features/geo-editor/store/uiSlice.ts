@@ -17,7 +17,7 @@ export const createUISlice: StateCreator<EditorState, [], [], UISlice> = (set) =
 	mobilePanelTab: 'datasets',
 	mobilePanelSnap: 'peek',
 	inspectorActive: false,
-	sidebarViewMode: 'datasets',
+	sidebarViewMode: 'contexts',
 	sidebarExpanded: false,
 
 	setNewCollectionProp: (newCollectionProp) => set({ newCollectionProp }),

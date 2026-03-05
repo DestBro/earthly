@@ -1,4 +1,4 @@
-import { Maximize2, FileText, MessageCircle, MapPin, Pencil } from 'lucide-react'
+import { Maximize2, FileText, MessageCircle, MapPin } from 'lucide-react'
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import type { FeatureCollection } from 'geojson'
 import { useEditorStore } from '@/features/geo-editor/store'
@@ -44,7 +44,6 @@ export interface ViewModePanelProps {
 	) => void
 	/** Callback to zoom to a mentioned geometry */
 	onMentionZoomTo?: (address: string, featureId: string | undefined) => void
-	onEditCollection?: (collection: NDKGeoCollectionEvent) => void
 }
 
 type ViewTab = 'details' | 'comments'
@@ -80,7 +79,6 @@ export function ViewModePanel({
 	availableFeatures = [],
 	onMentionVisibilityToggle,
 	onMentionZoomTo,
-	onEditCollection,
 }: ViewModePanelProps) {
 	const [activeTab, setActiveTab] = useState<ViewTab>('details')
 	const [visibleGeojsonCommentIds, setVisibleGeojsonCommentIds] = useState<Set<string>>(new Set())
@@ -95,25 +93,11 @@ export function ViewModePanel({
 	const contextFilterMode = useEditorStore((state) => state.contextFilterMode)
 	const features = useEditorStore((state) => state.features)
 	const selectedFeatureIds = useEditorStore((state) => state.selectedFeatureIds)
-	const setViewMode = useEditorStore((state) => state.setViewMode)
-	const setViewDataset = useEditorStore((state) => state.setViewDataset)
-	const setViewCollection = useEditorStore((state) => state.setViewCollection)
 
 	const headerTitle = viewCollection ? 'Collection overview' : 'Dataset overview'
 
 	// Get the target for comments (either dataset or collection)
 	const commentTarget = viewDataset ?? viewCollection
-
-	// Switch to edit mode
-	const handleSwitchToEdit = useCallback(() => {
-		if (viewCollection && onEditCollection) {
-			onEditCollection(viewCollection)
-		} else {
-			setViewMode('edit')
-			setViewDataset(null)
-			setViewCollection(null)
-		}
-	}, [setViewMode, setViewDataset, setViewCollection, viewCollection, onEditCollection])
 
 	// Reset comment-related state when target changes
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentional reset on target change
@@ -249,18 +233,6 @@ export function ViewModePanel({
 			<div className="flex-shrink-0 flex items-center justify-between gap-2 mb-3">
 				<div className="flex items-center gap-2">
 					<h2 className="text-lg font-bold text-gray-900">{headerTitle}</h2>
-					{(!viewCollection || viewCollection.pubkey === currentUserPubkey) && (
-						<Button
-							size="xs"
-							variant="ghost"
-							onClick={handleSwitchToEdit}
-							title={viewCollection ? 'Edit collection' : 'Switch to edit mode'}
-							className="h-6 px-2 text-xs text-gray-500 hover:text-gray-700"
-						>
-							<Pencil className="h-3 w-3 mr-1" />
-							Edit
-						</Button>
-					)}
 				</div>
 			</div>
 
