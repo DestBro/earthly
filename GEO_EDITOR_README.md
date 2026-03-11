@@ -63,7 +63,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 // Initialize map
 const map = new Map({
   container: 'map',
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://mafrend.com/map/mafrend-style.json',
   center: [-74.006, 40.7128],
   zoom: 12
 });

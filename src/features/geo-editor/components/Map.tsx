@@ -161,7 +161,7 @@ function findLongestPrefixMatch(
 }
 
 export const GeoEditorMap: React.FC<MapProps> = ({
-	style: initialStyle = 'https://tiles.openfreemap.org/styles/liberty',
+	style: initialStyle = 'https://mafrend.com/map/mafrend-style.json',
 	center: centerProp,
 	zoom: zoomProp,
 	children,
